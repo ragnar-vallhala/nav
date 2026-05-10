@@ -6,9 +6,13 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/navrobotec/nav/registry-api/internal/api"
+	"github.com/navrobotec/nav/registry-api/internal/database"
 )
 
 func main() {
+	// Initialize Relational Core
+	database.Connect()
+
 	app := fiber.New(fiber.Config{
 		AppName: "Nav Registry Service v1.0",
 	})

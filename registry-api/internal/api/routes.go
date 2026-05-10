@@ -2,13 +2,14 @@ package api
 
 import (
 	"github.com/gofiber/fiber/v2"
+	"github.com/navrobotec/nav/registry-api/internal/auth"
 )
 
 // RegisterRoutes hooks up specific application endpoints
 func RegisterRoutes(app *fiber.App) {
 	v1 := app.Group("/api/v1")
 
-	v1.Post("/publish", publishPackage)
+	v1.Post("/publish", auth.RequireToken(), publishPackage)
 	v1.Get("/search", searchPackages)
 	v1.Get("/package/:name", getPackageMetadata)
 	v1.Post("/auth/login", authenticate)
