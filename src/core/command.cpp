@@ -223,7 +223,7 @@ endif()
     ui::step("Cloning", "Pulling dependency: NavHAL Framework");
 
     // Execute live git clone from remote
-    auto result = ctx.execute({"git", "clone", "--depth", "1", "--progress", repo_url, "NavHAL"}, extern_path);
+    auto result = ctx.execute({"git", "clone", "--depth", "1", "--branch", "stable", "--progress", repo_url, "NavHAL"}, extern_path);
     
     if (result.exit_code == 0) {
          // Remove unwanted samples folder immediately to free up noise
@@ -535,7 +535,7 @@ int UpdateCommand::run(IExecutionContext& ctx, const std::vector<std::string>& /
     // 2. Framework Self-Healing
     if (!fs::exists("extern/NavHAL")) {
         ui::step("Cloning", "Core Dependency 'NavHAL' missing! Pulling secure vector...");
-        auto clone_res = ctx.execute({"git", "clone", "--progress", "https://github.com/ragnar-vallhala/NavHAL.git", "extern/NavHAL"});
+        auto clone_res = ctx.execute({"git", "clone", "--branch", "stable", "--progress", "https://github.com/ragnar-vallhala/NavHAL.git", "extern/NavHAL"});
         
         if (clone_res.exit_code == 0) {
             fs::remove_all("extern/NavHAL/samples");
