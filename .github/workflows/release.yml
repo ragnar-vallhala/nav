@@ -44,7 +44,7 @@ jobs:
           body: |
             # Nav — Embedded Development Orchestrator
 
-            Nav is a unified embedded systems development tool focused on robotics, drones, firmware, and hardware deployment workflows.
+            Nav is a unified embedded systems development tool focused on robotics, firmware, and hardware deployment workflows.
             
             **Release Highlights:**
             - Dynamic path-based hardware validation.

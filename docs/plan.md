@@ -2,7 +2,7 @@
 
 ## Vision
 
-Nav is a unified embedded development orchestration system designed for robotics, drones, microcontrollers, edge AI systems, and distributed hardware platforms.
+Nav is a unified embedded development orchestration system designed for robotics, embedded boards, microcontrollers, edge AI systems, and distributed hardware platforms.
 
 The goal is to provide:
 
@@ -163,7 +163,7 @@ Example:
 
 ```toml
 [project]
-name = "drone-flight-controller"
+name = "flight-controller"
 version = "0.1.0"
 
 [target]
@@ -417,7 +417,7 @@ Future:
 * network-connected robotics systems
 * OTA firmware
 * cluster management
-* drone fleet deployment
+* fleet deployment
 
 ---
 
@@ -728,7 +728,7 @@ Nav can evolve into:
 
 * robotics OS tooling
 * embedded cloud infrastructure
-* drone deployment system
+* deployment system
 * distributed robotics runtime
 * autonomous system deployment framework
 * hardware DevOps platform
@@ -736,7 +736,7 @@ Nav can evolve into:
 Especially valuable for:
 
 * robotics startups
-* drone ecosystems
+* ecosystems
 * edge AI systems
 * industrial automation
 * embedded AI inference
@@ -779,8 +779,8 @@ Especially valuable for:
 # Example Future UX
 
 ```bash
-nav init drone-fw
-cd drone-fw
+nav init fw
+cd fw
 
 nav add imu-driver
 nav add freertos
