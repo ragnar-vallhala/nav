@@ -3,10 +3,24 @@
 #include <iostream>
 #include <fstream>
 #include <filesystem>
+#include <chrono>
+#include <thread>
+#include <map>
+#include <fcntl.h>
+#include <termios.h>
+#include <unistd.h>
+#include <csignal>
+#include <atomic>
+#include <filesystem>
 
 #include "nav/core/ui.hpp"
 
 namespace fs = std::filesystem;
+
+static std::atomic<bool> g_running_monitor{true};
+void handle_sigint(int /*s*/) {
+    g_running_monitor = false;
+}
 
 namespace nav::core {
 
@@ -133,12 +147,16 @@ set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
 )" + ("\nproject(" + proj_name + " C CXX ASM)\n\n") + R"(set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # 1. Sync global configuration to dependency path
-message(STATUS "[Nav] Synchronizing configuration state...")
-execute_process(
-    COMMAND ${CMAKE_COMMAND} -E copy 
-    "${CMAKE_CURRENT_SOURCE_DIR}/.config" 
-    "${CMAKE_CURRENT_SOURCE_DIR}/extern/NavHAL/.config"
-)
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.config")
+    message(STATUS "[Nav] Locking active configuration context...")
+    configure_file(
+        "${CMAKE_CURRENT_SOURCE_DIR}/.config" 
+        "${CMAKE_CURRENT_SOURCE_DIR}/extern/NavHAL/.config" 
+        COPYONLY
+    )
+else()
+    message(WARNING "[Nav] Master '.config' not detected in project root! Utilizing ambient internal repository defaults.")
+endif()
 
 # 2. Add NavHAL Dependency Framework
 add_subdirectory(extern/NavHAL)
@@ -287,13 +305,146 @@ int UploadCommand::run(IExecutionContext& ctx, const std::vector<std::string>& /
     return upload_res.exit_code;
 }
 
-int MonitorCommand::run(IExecutionContext& ctx, const std::vector<std::string>& /*args*/) {
-    std::cout << "Executing: monitor" << std::endl;
+int MonitorCommand::run(IExecutionContext& /*ctx*/, const std::vector<std::string>& args) {
+    std::string target_port = "";
+    std::string baud_str = "9600";
+
+    // 1. Parse Args
+    for (size_t i = 0; i < args.size(); ++i) {
+        if ((args[i] == "--port" || args[i] == "-p") && (i + 1 < args.size())) {
+            target_port = args[++i];
+        } else if ((args[i] == "--baud" || args[i] == "-b") && (i + 1 < args.size())) {
+            baud_str = args[++i];
+        }
+    }
+
+    // 2. Autodetect port
+    if (target_port.empty()) {
+        ui::step("Scanning", "Autodetecting active serial hardware interfaces...");
+        try {
+            for (const auto& entry : fs::directory_iterator("/dev")) {
+                std::string dev_path = entry.path().string();
+                if (dev_path.find("ttyACM") != std::string::npos || dev_path.find("ttyUSB") != std::string::npos) {
+                    target_port = dev_path;
+                    break;
+                }
+            }
+        } catch (...) {}
+    }
+
+    if (target_port.empty()) {
+        ui::error("Auto-detection failed. No hardware detected. Specify manually.");
+        return 1;
+    }
+
+    // 3. Resolve Baud constant
+    speed_t baud_rate = B9600; // fallback
+    static const std::map<std::string, speed_t> baud_map = {
+        {"9600", B9600}, {"19200", B19200}, {"38400", B38400},
+        {"57600", B57600}, {"115200", B115200}
+    };
+    auto it = baud_map.find(baud_str);
+    if (it != baud_map.end()) {
+        baud_rate = it->second;
+    } else {
+        ui::warning("Unknown baud requested (" + baud_str + "). Falling back to 9600.");
+    }
+
+    // 4. Establish Native Device Link
+    ui::step("Monitoring", "Opening direct native pipe: [" + target_port + "] at " + baud_str + " baud...");
+    
+    int fd = open(target_port.c_str(), O_RDWR | O_NOCTTY | O_SYNC | O_NONBLOCK);
+    if (fd < 0) {
+        ui::error("Kernel Access Denied! Permission denied or device already locked.");
+        return 1;
+    }
+
+    // Standard POSIX Termios configuration for raw serial streaming
+    struct termios tty;
+    if (tcgetattr(fd, &tty) != 0) {
+        ui::error("Hardware API Fault: Could not read termios properties.");
+        close(fd);
+        return 1;
+    }
+
+    cfsetospeed(&tty, baud_rate);
+    cfsetispeed(&tty, baud_rate);
+
+    tty.c_cflag = (tty.c_cflag & ~CSIZE) | CS8;
+    tty.c_iflag &= ~IGNBRK; 
+    tty.c_lflag = 0; // purely raw
+    tty.c_oflag = 0;
+    tty.c_cc[VMIN]  = 0; 
+    tty.c_cc[VTIME] = 5; // 0.5 sec read timeout block
+
+    tty.c_iflag &= ~(IXON | IXOFF | IXANY); // disable flow control
+    tty.c_cflag |= (CLOCAL | CREAD); // ignore ctrl signals, enable read
+    tty.c_cflag &= ~(PARENB | PARODD); // disable parity
+    tty.c_cflag &= ~CSTOPB;
+    tty.c_cflag &= ~CRTSCTS;
+
+    if (tcsetattr(fd, TCSANOW, &tty) != 0) {
+        ui::error("Hardware API Fault: Could not lock target baud configuration.");
+        close(fd);
+        return 1;
+    }
+
+    ui::success("Successfully latched interface. Capturing raw telemetry stream now...");
+    ui::info("System notice: [Press Ctrl+C to cleanly detatch]");
+    std::cout << "-------------------------------------------------------------\n" << std::endl;
+
+    // 5. Secure SIGINT and Enter Active Listening Ring Loop
+    g_running_monitor = true;
+    auto old_handler = std::signal(SIGINT, handle_sigint);
+
+    char read_buffer[1024];
+    while (g_running_monitor) {
+        ssize_t bytes_read = read(fd, read_buffer, sizeof(read_buffer));
+        if (bytes_read > 0) {
+            std::cout.write(read_buffer, bytes_read);
+            std::cout.flush();
+        } else if (bytes_read < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
+             // Fatal IO collapse
+             ui::error("\nCritical Link Failure: Connection severed by host kernel.");
+             break;
+        }
+        
+        // Brief rest to save host CPU cycle spin
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    // Restore clean state
+    std::signal(SIGINT, old_handler);
+    close(fd);
+
+    std::cout << "\n\n";
+    ui::success("Link detatched gracefully. Channel closed.");
     return 0;
 }
 
-int CleanCommand::run(IExecutionContext& ctx, const std::vector<std::string>& /*args*/) {
-    std::cout << "Executing: clean" << std::endl;
+int CleanCommand::run(IExecutionContext& /*ctx*/, const std::vector<std::string>& /*args*/) {
+    ui::step("Cleaning", "Analyzing intermediate cache status and target binary presence...");
+
+    if (!fs::exists("nav.toml")) {
+        ui::error("Cleanup aborted! Please execute command from within a valid project root.");
+        return 1;
+    }
+
+    if (!fs::exists("build")) {
+        ui::info("Workspace structure is already pristine. No 'build/' directory detected.");
+        ui::success("System cleanly purged (nothing to do).");
+        return 0;
+    }
+
+    try {
+        ui::info("Purging cached object data and binary artifacts...");
+        fs::remove_all("build");
+        ui::success("Workspace flushed! Build context successfully reset to defaults.");
+    } catch (const std::exception& e) {
+        ui::error("Cache purge failed! File handle may be locked by another process.");
+        return 1;
+    }
+
     return 0;
 }
 
@@ -373,8 +524,110 @@ int CheckCommand::run(IExecutionContext& ctx, const std::vector<std::string>& /*
 }
 
 int UpdateCommand::run(IExecutionContext& ctx, const std::vector<std::string>& /*args*/) {
-    std::cout << "Executing: update" << std::endl;
-    return 0;
+    ui::step("Updating", "Synchronizing ecosystem dependencies and validation metrics...");
+
+    // 1. Local Descriptor Check
+    if (!fs::exists("nav.toml")) {
+        ui::error("Update halted! Command must be executed within project root.");
+        return 1;
+    }
+
+    // 2. Framework Self-Healing
+    if (!fs::exists("extern/NavHAL")) {
+        ui::step("Cloning", "Core Dependency 'NavHAL' missing! Pulling secure vector...");
+        auto clone_res = ctx.execute({"git", "clone", "--progress", "https://github.com/ragnar-vallhala/NavHAL.git", "extern/NavHAL"});
+        
+        if (clone_res.exit_code == 0) {
+            fs::remove_all("extern/NavHAL/samples");
+            ui::success("Successfully tethered NavHAL framework into local workspace.");
+        } else {
+            ui::error("Network fault! Remote repository fetch failed.");
+            return 1;
+        }
+    } else {
+        ui::info("Framework dependency present and secured.");
+    }
+
+    // 3. Extract Target Board Profile
+    std::string board_id = "";
+    std::ifstream toml_file("nav.toml");
+    std::string line;
+    while (std::getline(toml_file, line)) {
+        if (line.find("board") != std::string::npos && line.find("=") != std::string::npos) {
+            size_t q1 = line.find('"');
+            size_t q2 = line.find('"', q1 + 1);
+            if (q1 != std::string::npos && q2 != std::string::npos) {
+                board_id = line.substr(q1 + 1, q2 - q1 - 1);
+                break;
+            }
+        }
+    }
+
+    // 4. Evaluate Missing Requirements
+    ToolchainManager tm;
+    std::vector<std::string> missing_bins;
+
+    auto sys_reqs = tm.get_system_requirements();
+    for (const auto& req : sys_reqs) {
+        if (req.binary_name == "apt" || req.binary_name == "dnf" || req.binary_name == "pacman") continue;
+        if (!tm.probe_tool(ctx, req).is_found) { missing_bins.push_back(req.binary_name); }
+    }
+
+    if (!board_id.empty()) {
+        auto proj_reqs = tm.get_project_requirements(board_id);
+        for (const auto& req : proj_reqs) {
+             if (!tm.probe_tool(ctx, req).is_found) { missing_bins.push_back(req.binary_name); }
+        }
+    }
+
+    if (missing_bins.empty()) {
+        ui::success("Verification absolute! All local toolchains verified and active.");
+        return 0;
+    }
+
+    // 5. Adaptive Tool Auto-Installation System
+    ui::step("Provisioning", "Autodiscovering package paths for missing system dependencies...");
+    
+    std::vector<std::string> packages_to_install;
+    // Manual Mapping from Binary Name to System Package Names (Debian/Ubuntu)
+    for (const auto& bin : missing_bins) {
+        if (bin == "cmake") packages_to_install.push_back("cmake");
+        else if (bin == "git") packages_to_install.push_back("git");
+        else if (bin == "arm-none-eabi-gcc") packages_to_install.push_back("gcc-arm-none-eabi");
+        else if (bin == "st-flash") packages_to_install.push_back("stlink-tools");
+        else if (bin == "python3") packages_to_install.push_back("python3");
+    }
+
+    if (packages_to_install.empty()) {
+        ui::warning("Detected unique tooling, but could not resolve canonical system package mappings automatically.");
+        return 0;
+    }
+
+    std::string installer = "";
+    if (fs::exists("/usr/bin/apt")) {
+        installer = "apt";
+    } else {
+        ui::warning("Automatic Provisioning only available on Debian/Ubuntu/Mint systems currently.");
+        return 0;
+    }
+
+    ui::info("Required system components: " + std::to_string(packages_to_install.size()));
+    
+    std::vector<std::string> install_cmd = {"sudo", installer, "install", "-y"};
+    for(const auto& p : packages_to_install) {
+        install_cmd.push_back(p);
+    }
+
+    ui::step("Installing", "Invoking system package manager elevation sequence...");
+    auto ins_res = ctx.execute(install_cmd);
+
+    if (ins_res.exit_code == 0) {
+        ui::success("Environment secured! Total system state synchronized.");
+    } else {
+        ui::error("Installation execution fault. Please run manually via shell.");
+    }
+
+    return ins_res.exit_code;
 }
 
 } // namespace nav::core
