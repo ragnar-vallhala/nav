@@ -10,7 +10,7 @@
 namespace nav::core {
 
 // A robust helper to execute using fork/execvp and capture all output from a single merged stream (stdout+stderr)
-static CommandResult run_raw_command(const std::vector<std::string>& cmd, const std::string& working_dir) {
+static CommandResult run_raw_command(const std::vector<std::string>& cmd, const std::string& working_dir, bool silent) {
     CommandResult result{-1, "", ""};
 
     if (cmd.empty()) {
@@ -55,7 +55,6 @@ static CommandResult run_raw_command(const std::vector<std::string>& cmd, const 
         execvp(args[0], args.data());
         
         // If exec fails
-        std::cerr << "Failed to execute: " << args[0] << "\n";
         exit(127);
     } else { // Parent
         close(pipefd[1]); // Close write end
@@ -66,9 +65,11 @@ static CommandResult run_raw_command(const std::vector<std::string>& cmd, const 
         while ((count = read(pipefd[0], buffer.data(), buffer.size())) > 0) {
             output.write(buffer.data(), count);
             
-            // Mirror stream live to standard output
-            std::cout.write(buffer.data(), count);
-            std::cout.flush();
+            // Mirror stream live only if requested not to be silent
+            if (!silent) {
+                std::cout.write(buffer.data(), count);
+                std::cout.flush();
+            }
         }
         close(pipefd[0]);
 
@@ -82,9 +83,9 @@ static CommandResult run_raw_command(const std::vector<std::string>& cmd, const 
     return result;
 }
 
-CommandResult HostExecutionContext::execute(const std::vector<std::string>& cmd, const std::string& working_dir) {
+CommandResult HostExecutionContext::execute(const std::vector<std::string>& cmd, const std::string& working_dir, bool silent) {
     // Delegate to generic runner
-    return run_raw_command(cmd, working_dir);
+    return run_raw_command(cmd, working_dir, silent);
 }
 
 } // namespace nav::core

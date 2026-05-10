@@ -17,13 +17,15 @@ public:
     virtual ~IExecutionContext() = default;
     
     virtual CommandResult execute(const std::vector<std::string>& cmd, 
-                                  const std::string& working_dir = "") = 0;
+                                  const std::string& working_dir = "",
+                                  bool silent = false) = 0;
 };
 
 class HostExecutionContext : public IExecutionContext {
 public:
     CommandResult execute(const std::vector<std::string>& cmd, 
-                          const std::string& working_dir = "") override;
+                          const std::string& working_dir = "",
+                          bool silent = false) override;
 };
 
 } // namespace nav::core

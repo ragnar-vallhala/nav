@@ -9,6 +9,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 add_library(nav_core STATIC
     src/core/execution_context.cpp
     src/core/command.cpp
+    src/core/toolchain.cpp
 )
 
 target_include_directories(nav_core PUBLIC
