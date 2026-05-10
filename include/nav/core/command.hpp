@@ -60,4 +60,28 @@ public:
     std::string help_text() const override { return "Refresh installed package indices and toolchains."; }
 };
 
+class AddCommand : public ICommand {
+public:
+    int run(IExecutionContext& ctx, const std::vector<std::string>& args) override;
+    std::string help_text() const override { return "Secure external library dependency into local project cache."; }
+};
+
+class SearchCommand : public ICommand {
+public:
+    int run(IExecutionContext& ctx, const std::vector<std::string>& args) override;
+    std::string help_text() const override { return "Query package registry indexes for specified modules."; }
+};
+
+class LoginCommand : public ICommand {
+public:
+    int run(IExecutionContext& ctx, const std::vector<std::string>& args) override;
+    std::string help_text() const override { return "Establish authenticated session tether with secured registry servers."; }
+};
+
+class PublishCommand : public ICommand {
+public:
+    int run(IExecutionContext& ctx, const std::vector<std::string>& args) override;
+    std::string help_text() const override { return "Broadcast local package artifacts upward to public/private registries."; }
+};
+
 } // namespace nav::core

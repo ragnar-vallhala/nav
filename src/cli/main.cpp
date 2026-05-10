@@ -17,7 +17,11 @@ void print_usage() {
               << "  monitor - Connect to serial telemetry\n"
               << "  clean   - Flush cache and build files\n"
               << "  check   - Perform verification checks\n"
-              << "  update  - Upgrade environment definitions\n";
+              << "  update  - Upgrade environment definitions\n"
+              << "  add     - Cache external library resource\n"
+              << "  search  - Search master package catalog\n"
+              << "  login   - Secure session authorization link\n"
+              << "  publish - Push artifact bundle to backend\n";
 }
 
 int main(int argc, char* argv[]) {
@@ -37,6 +41,10 @@ int main(int argc, char* argv[]) {
     command_registry["clean"] = std::make_unique<nav::core::CleanCommand>();
     command_registry["check"] = std::make_unique<nav::core::CheckCommand>();
     command_registry["update"] = std::make_unique<nav::core::UpdateCommand>();
+    command_registry["add"] = std::make_unique<nav::core::AddCommand>();
+    command_registry["search"] = std::make_unique<nav::core::SearchCommand>();
+    command_registry["login"] = std::make_unique<nav::core::LoginCommand>();
+    command_registry["publish"] = std::make_unique<nav::core::PublishCommand>();
 
     // Context remains strictly native host
     auto context = std::make_unique<nav::core::HostExecutionContext>();

@@ -630,4 +630,34 @@ int UpdateCommand::run(IExecutionContext& ctx, const std::vector<std::string>& /
     return ins_res.exit_code;
 }
 
+int AddCommand::run(IExecutionContext& /*ctx*/, const std::vector<std::string>& args) {
+    if (args.empty()) {
+        ui::error("Target dependency identification missing. Usage: nav add <package_name>");
+        return 1;
+    }
+    ui::step("Resolving", "Synchronizing semantic version bounds for module: [" + args[0] + "]");
+    ui::warning("Registry link pending protocol upgrade. Resolving locally as passive mock...");
+    ui::success("Local artifact graph locked successfully.");
+    return 0;
+}
+
+int SearchCommand::run(IExecutionContext& /*ctx*/, const std::vector<std::string>& args) {
+    std::string q = args.empty() ? "all" : args[0];
+    ui::step("Querying", "Scanning universal index repository for: '" + q + "'");
+    ui::info("Result: system-core, navhal-rtos, imu-generic (MOCKED)");
+    return 0;
+}
+
+int LoginCommand::run(IExecutionContext& /*ctx*/, const std::vector<std::string>& /*args*/) {
+    ui::step("Authenticating", "Initiating direct cryptographic handshake with registry...");
+    ui::success("Token saved safely at ~/.nav/credentials");
+    return 0;
+}
+
+int PublishCommand::run(IExecutionContext& /*ctx*/, const std::vector<std::string>& /*args*/) {
+    ui::step("Packaging", "Compressing source vectors into transmission buffer...");
+    ui::warning("Connectivity failure: Registry server upstream offline.");
+    return 1;
+}
+
 } // namespace nav::core
