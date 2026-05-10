@@ -23,3 +23,24 @@ add_executable(nav
 )
 
 target_link_libraries(nav PRIVATE nav_core)
+
+# --- Packaging and Installation Setup ---
+
+# 1. System-Wide Path Installation Target
+install(TARGETS nav DESTINATION bin)
+
+# 2. CPack Generator Config (For Debian Package Support)
+set(CPACK_PACKAGE_NAME "nav")
+set(CPACK_PACKAGE_VERSION "0.0.1")
+set(CPACK_PACKAGE_VENDOR "NAVROBOTEC PRIVATE LIMITED")
+set(CPACK_PACKAGE_CONTACT "support@navrobotec.com")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Firmware Development Tool")
+
+# Force DEB as main backend generator
+set(CPACK_GENERATOR "DEB")
+set(CPACK_DEBIAN_PACKAGE_MAINTAINER "ragnar-vallhala <support@navrobotec.com>")
+set(CPACK_DEBIAN_PACKAGE_SECTION "devel")
+set(CPACK_DEBIAN_PACKAGE_PRIORITY "optional")
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "git, cmake, python3, build-essential")
+
+include(CPack)
