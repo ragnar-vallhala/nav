@@ -34,7 +34,7 @@ set(CPACK_PACKAGE_NAME "nav")
 set(CPACK_PACKAGE_VERSION "0.0.1")
 set(CPACK_PACKAGE_VENDOR "NAVROBOTEC PRIVATE LIMITED")
 set(CPACK_PACKAGE_CONTACT "support@navrobotec.com")
-set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Firmware Development Tool")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Embedded Development Orchestrator for firmware and hardware deployment")
 
 # Force DEB as main backend generator
 set(CPACK_GENERATOR "DEB")
