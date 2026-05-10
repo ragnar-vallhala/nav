@@ -7,11 +7,13 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/navrobotec/nav/registry-api/internal/api"
 	"github.com/navrobotec/nav/registry-api/internal/database"
+	"github.com/navrobotec/nav/registry-api/internal/storage"
 )
 
 func main() {
-	// Initialize Relational Core
+	// Initialize Infrastructure Matrix
 	database.Connect()
+	storage.Connect()
 
 	app := fiber.New(fiber.Config{
 		AppName: "Nav Registry Service v1.0",
@@ -27,6 +29,9 @@ func main() {
 
 	// Setup Routes
 	api.RegisterRoutes(app)
+
+	// Mount Static Visualization Portal
+	app.Static("/", "./web")
 
 	log.Println("Starting Nav Registry service on :8081...")
 	log.Fatal(app.Listen(":8081"))

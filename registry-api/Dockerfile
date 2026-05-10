@@ -25,6 +25,7 @@ WORKDIR /root/
 # Inherit only the standalone runtime binary and critical TLS authorities
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=builder /registry-server .
+COPY --from=builder /app/web ./web
 
 # Standard API binding boundary
 EXPOSE 8081

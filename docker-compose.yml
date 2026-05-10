@@ -54,6 +54,8 @@ services:
       MINIO_SECRET_KEY: navpassword123
     ports:
       - "8081:8081"
+    volumes:
+      - ./registry-api/web:/root/web
     networks:
       - nav-mesh
 

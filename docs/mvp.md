@@ -22,7 +22,7 @@ Transition from static route listeners to transactional orchestrators.
     - `users` map (Argon2 hashes).
     - `tokens` table (salted hash digests).
     - `packages` registry metadata.
-- [ ] **Token Handler Logic**: Capability to generate, hash, securely store, and instantly revoke cryptographic opaque identifiers.
+- [x] **Token Handler Logic**: Capability to generate, hash, securely store, and instantly revoke cryptographic opaque identifiers.
 
 ### Storage & Sync Flow
 - [ ] **MinIO Object Uplink**: Functional handler utilizing the Go SDK to push `.tar.zst` binary streams into configured production buckets.
