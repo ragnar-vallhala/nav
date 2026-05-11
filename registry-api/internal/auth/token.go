@@ -45,3 +45,19 @@ func CreatePersistentToken(userID string, rawToken string, tokenName string) err
 
 	return nil
 }
+
+// GenerateTokenForUser performs high-level sequencing spawning fresh identifiers and anchoring them permanently.
+func GenerateTokenForUser(userID string, name string) (string, string, error) {
+	raw, err := GenerateToken()
+	if err != nil {
+		return "", "", err
+	}
+
+	err = CreatePersistentToken(userID, raw, name)
+	if err != nil {
+		return "", "", err
+	}
+
+	return raw, raw[:12], nil
+}
+

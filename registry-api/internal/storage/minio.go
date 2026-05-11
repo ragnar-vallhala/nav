@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"io"
 	"log"
 	"os"
 	"time"
@@ -30,6 +31,10 @@ func Connect() {
 	
 	if err := Storage.EnsureBucket(ctx, "nav-packages"); err != nil {
 		log.Fatalf("Failed securing critical 'nav-packages' bucket repository: %v", err)
+	}
+
+	if err := Storage.EnsureBucket(ctx, "community-assets"); err != nil {
+		log.Printf("Warning: Community-assets bucket initialization warning: %v", err)
 	}
 	
 	log.Println("Storage pipeline solidified and locked.")
@@ -67,13 +72,25 @@ func (c *Client) EnsureBucket(ctx context.Context, bucketName string) error {
 		return err
 	}
 	if !exists {
-		log.Printf("Provisioning primary storage bucket: %s\n", bucketName)
+		log.Printf("Provisioning storage bucket: %s\n", bucketName)
 		err = c.mc.MakeBucket(ctx, bucketName, minio.MakeBucketOptions{})
 		if err != nil {
 			return err
 		}
+		
+		// Apply Public Read-Only Policy so images can be viewed directly
+		policy := `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"AWS":["*"]},"Action":["s3:GetObject"],"Resource":["arn:aws:s3:::` + bucketName + `/*"]}]}`
+		c.mc.SetBucketPolicy(ctx, bucketName, policy)
 	}
 	return nil
+}
+
+// Upload synchronously delivers explicit data payload directly onto storage cluster
+func (c *Client) Upload(ctx context.Context, bucketName, objectName string, reader io.Reader, objectSize int64, contentType string) error {
+	_, err := c.mc.PutObject(ctx, bucketName, objectName, reader, objectSize, minio.PutObjectOptions{
+		ContentType: contentType,
+	})
+	return err
 }
 
 // GeneratePresignedUploadURL issues restricted, time-bound vector for direct binary push

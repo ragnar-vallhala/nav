@@ -6,3 +6,6 @@ compile_commands.json
 # Go Build Artifacts
 registry-api/registry-server
 /registry-api/bin/
+.env
+.env.local
+.env.production
