@@ -43,6 +43,7 @@ func RegisterRoutes(app *fiber.App) {
 	v1.Post("/publish", auth.RequireToken(), publishPackage)
 	
 	// Hyper-Secure Identifier Oversights (Token Management)
+	v1.Get("/auth/me", auth.RequireToken(), handleGetMe)
 	v1.Get("/tokens", auth.RequireToken(), listTokens)
 	v1.Post("/tokens", auth.RequireToken(), createToken)
 	v1.Delete("/tokens/:id", auth.RequireToken(), revokeToken)
@@ -51,12 +52,14 @@ func RegisterRoutes(app *fiber.App) {
 	v1.Get("/community/posts", listPosts)
 	v1.Get("/community/posts/:id", getPostDetail)
 	v1.Post("/community/posts", auth.RequireToken(), createPost)
+	v1.Delete("/community/posts/:id", auth.RequireToken(), deletePost)
 	v1.Post("/community/posts/:id/vote", auth.RequireToken(), votePost)
 	v1.Post("/community/upload", auth.RequireToken(), uploadAsset)
 	
 	// Interactive Thread Sub-Silos
 	v1.Get("/community/posts/:id/comments", listComments)
 	v1.Post("/community/posts/:id/comments", auth.RequireToken(), createComment)
+	v1.Delete("/community/comments/:id", auth.RequireToken(), deleteComment)
 
 	v1.Get("/search", searchPackages)
 	v1.Get("/package/:name", getPackageMetadata)
@@ -439,9 +442,10 @@ func uploadAsset(c *fiber.Ctx) error {
 	}
 	defer src.Close()
 
-	// Create unique collision-resistant key
+	// Create unique collision-resistant key and sanitize spaces for safe URI usage
+	sanitizedName := strings.ReplaceAll(file.Filename, " ", "_")
 	t := time.Now().UnixNano()
-	objectName := fmt.Sprintf("img_%d_%s", t, file.Filename)
+	objectName := fmt.Sprintf("img_%d_%s", t, sanitizedName)
 	bucket := "community-assets"
 
 	// Deploy directly onto MinIO grid
@@ -492,6 +496,52 @@ func listComments(c *fiber.Ctx) error {
 		}
 	}
 	return c.JSON(comments)
+}
+
+// FINAL LIFECYCLE GATEWAYS (Deletion & Self Discovery)
+
+func handleGetMe(c *fiber.Ctx) error {
+	userID := c.Locals("user_id").(string)
+	var username, email string
+	err := database.DB.QueryRow("SELECT username, email FROM users WHERE id = $1", userID).Scan(&username, &email)
+	if err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Identity severed."})
+	}
+	return c.JSON(fiber.Map{
+		"id": userID,
+		"username": username,
+		"email": email,
+	})
+}
+
+func deletePost(c *fiber.Ctx) error {
+	userID := c.Locals("user_id").(string)
+	postID := c.Params("id")
+	
+	// Strictly gate deletion by absolute ownership
+	res, err := database.DB.Exec("DELETE FROM community_posts WHERE id = $1 AND user_id = $2", postID, userID)
+	if err != nil { return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Purge sequence aborted"}) }
+	
+	count, _ := res.RowsAffected()
+	if count == 0 {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Access denied or node already purged"})
+	}
+	return c.JSON(fiber.Map{"status": "purged_successfully"})
+}
+
+func deleteComment(c *fiber.Ctx) error {
+	userID := c.Locals("user_id").(string)
+	commentID := c.Params("id")
+
+	// Strictly gate deletion by absolute ownership. Cascading logic handles descendants.
+	res, err := database.DB.Exec("DELETE FROM community_comments WHERE id = $1 AND user_id = $2", commentID, userID)
+	if err != nil { return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Purge sequence aborted"}) }
+
+	count, _ := res.RowsAffected()
+	if count == 0 {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Access denied or node already purged"})
+	}
+	return c.JSON(fiber.Map{"status": "purged_successfully"})
 }
 
 func createComment(c *fiber.Ctx) error {

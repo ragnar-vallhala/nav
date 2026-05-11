@@ -5,11 +5,17 @@ import ReactMarkdown from 'react-markdown';
 import { 
   Compass, LayoutGrid, Package, FolderGit, Settings, 
   User, Activity, Bell, Search, Download, Shield,
-  Bold, Italic, Link, Code, List, Image as ImageIcon, Share2, CornerDownRight, ArrowLeft
+  Bold, Italic, Link, Code, List, Image as ImageIcon, Share2, CornerDownRight, ArrowLeft, Trash2
 } from 'lucide-react';
 import NextLink from 'next/link';
 
+const getApiBase = () => {
+  if (typeof window !== 'undefined' && window.location.hostname === 'localhost') return 'http://localhost:8081';
+  return '';
+};
+
 export default function Home({ defaultContext = 'registry', activePostId }: { defaultContext?: 'registry' | 'docs' | 'community', activePostId?: string }) {
+  const apiHost = getApiBase();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<any[]>([]);
   const [searching, setSearching] = useState(false);
@@ -45,6 +51,8 @@ export default function Home({ defaultContext = 'registry', activePostId }: { de
   const [commentsCache, setCommentsCache] = useState<Record<string, any[]>>({});
   const [newCommentBody, setNewCommentBody] = useState('');
   const [replyTo, setReplyTo] = useState<string | null>(null);
+  const [activeUsername, setActiveUsername] = useState<string | null>(null);
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [singlePost, setSinglePost] = useState<any | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
@@ -55,9 +63,50 @@ export default function Home({ defaultContext = 'registry', activePostId }: { de
     setTimeout(() => setToast(null), 4500);
   };
 
+  const fetchMe = async () => {
+    if (!sessionToken) { setActiveUsername(null); return; }
+    try {
+      const response = await fetch(`${apiHost}/api/v1/auth/me`, {
+        headers: { 'Authorization': `Bearer ${sessionToken}` }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setActiveUsername(data.username);
+      }
+    } catch (e) {}
+  };
+
+  const handleDeletePost = async (postId: string) => {
+    try {
+      const res = await fetch(`${apiHost}/api/v1/community/posts/${postId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${sessionToken}` }
+      });
+      if (res.ok) {
+        setPendingDeleteId(null);
+        triggerNotice("> NODE PURGED SUCCESSFULLY.");
+        if (activePostId) { window.location.href = '/community'; }
+        else { fetchPosts(); }
+      }
+    } catch (e) {}
+  };
+
+  const handleDeleteComment = async (commentId: string, postId: string) => {
+    try {
+      const res = await fetch(`${apiHost}/api/v1/community/comments/${commentId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${sessionToken}` }
+      });
+      if (res.ok) {
+        setPendingDeleteId(null);
+        triggerNotice("> ECHO PURGED SUCCESSFULLY.");
+        toggleComments(postId); // Force local reconciliation
+      }
+    } catch (e) {}
+  };
+
   const fetchPosts = async () => {
     try {
-      const apiHost = window.location.hostname === 'localhost' ? 'http://localhost:8081' : '';
       const headers: HeadersInit = {};
       if (sessionToken) { headers['Authorization'] = `Bearer ${sessionToken}`; }
       
@@ -71,7 +120,6 @@ export default function Home({ defaultContext = 'registry', activePostId }: { de
 
   const fetchSinglePost = async (id: string) => {
     try {
-      const apiHost = window.location.hostname === 'localhost' ? 'http://localhost:8081' : '';
       const headers: HeadersInit = {};
       if (sessionToken) { headers['Authorization'] = `Bearer ${sessionToken}`; }
 
@@ -89,7 +137,6 @@ export default function Home({ defaultContext = 'registry', activePostId }: { de
     if (!sessionToken) { openAuth(true); return; }
     if (!newPostTitle.trim()) return;
     try {
-      const apiHost = window.location.hostname === 'localhost' ? 'http://localhost:8081' : '';
       const response = await fetch(`${apiHost}/api/v1/community/posts`, {
         method: 'POST',
         headers: { 
@@ -113,7 +160,6 @@ export default function Home({ defaultContext = 'registry', activePostId }: { de
     formData.append('file', file);
     
     try {
-      const apiHost = window.location.hostname === 'localhost' ? 'http://localhost:8081' : '';
       const response = await fetch(`${apiHost}/api/v1/community/upload`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${sessionToken}` },
@@ -130,7 +176,6 @@ export default function Home({ defaultContext = 'registry', activePostId }: { de
   const handleVote = async (postId: string, delta: number) => {
     if (!sessionToken) { openAuth(true); return; }
     try {
-      const apiHost = window.location.hostname === 'localhost' ? 'http://localhost:8081' : '';
       await fetch(`${apiHost}/api/v1/community/posts/${postId}/vote`, {
         method: 'POST',
         headers: { 
@@ -169,7 +214,6 @@ export default function Home({ defaultContext = 'registry', activePostId }: { de
     }
     setOpenComments(postId);
     try {
-      const apiHost = window.location.hostname === 'localhost' ? 'http://localhost:8081' : '';
       const res = await fetch(`${apiHost}/api/v1/community/posts/${postId}/comments`);
       if (res.ok) {
         const list = await res.json();
@@ -182,7 +226,6 @@ export default function Home({ defaultContext = 'registry', activePostId }: { de
     if (!sessionToken) { openAuth(true); return; }
     if (!newCommentBody.trim()) return;
     try {
-      const apiHost = window.location.hostname === 'localhost' ? 'http://localhost:8081' : '';
       const response = await fetch(`${apiHost}/api/v1/community/posts/${postId}/comments`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${sessionToken}`, 'Content-Type': 'application/json' },
@@ -223,9 +266,23 @@ export default function Home({ defaultContext = 'registry', activePostId }: { de
               <span style={{ color: '#58a6ff', fontWeight: '600' }}>u/{comment.username}</span> 
               • {new Date(comment.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
             </span>
-            <button onClick={() => setReplyTo(replyTo === comment.id ? null : comment.id)} style={{ background: 'none', border: 'none', color: '#58a6ff', fontSize: '11px', cursor: 'pointer', padding: 0 }}>
-              Reply
-            </button>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button onClick={() => setReplyTo(replyTo === comment.id ? null : comment.id)} style={{ background: 'none', border: 'none', color: '#58a6ff', fontSize: '11px', cursor: 'pointer', padding: 0 }}>
+                Reply
+              </button>
+              {activeUsername === comment.username && (
+                pendingDeleteId === comment.id ? (
+                  <div style={{ display: 'flex', gap: '4px', alignItems: 'center', fontSize: '11px' }}>
+                    <span onClick={() => handleDeleteComment(comment.id, postId)} style={{ cursor: 'pointer', color: '#f85149', fontWeight: 'bold', textDecoration: 'underline' }}>Sure?</span>
+                    <span onClick={() => setPendingDeleteId(null)} style={{ cursor: 'pointer', color: '#8b949e' }}>No</span>
+                  </div>
+                ) : (
+                  <button onClick={() => setPendingDeleteId(comment.id)} style={{ background: 'none', border: 'none', color: '#f85149', fontSize: '11px', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', gap: '2px' }}>
+                    <Trash2 size={10} /> Delete
+                  </button>
+                )
+              )}
+            </div>
           </div>
           <div style={{ fontSize: '13px', color: '#c9d1d9', whiteSpace: 'pre-wrap' }}>{comment.content}</div>
           
@@ -252,7 +309,10 @@ export default function Home({ defaultContext = 'registry', activePostId }: { de
   useEffect(() => {
     const cached = localStorage.getItem('nav_session');
     if (cached) setSessionToken(cached);
+    else setActiveUsername(null);
     
+    if (sessionToken) fetchMe();
+
     if (activePostId) {
       fetchSinglePost(activePostId);
     } else if (defaultContext === 'community') {
@@ -267,7 +327,6 @@ export default function Home({ defaultContext = 'registry', activePostId }: { de
     
     setSearching(true);
     try {
-      const apiHost = window.location.hostname === 'localhost' ? 'http://localhost:8081' : '';
       // The refactored search accepts empty query implicitly via '%'.
       const response = await fetch(`${apiHost}/api/v1/search?q=${encodeURIComponent(query)}`);
       const data = await response.json();
@@ -287,7 +346,6 @@ export default function Home({ defaultContext = 'registry', activePostId }: { de
   };
 
   const handleAuthSubmit = async () => {
-    const apiHost = window.location.hostname === 'localhost' ? 'http://localhost:8081' : '';
     const endpoint = isLoginMode ? '/api/v1/auth/login' : '/api/v1/auth/register';
     try {
       const response = await fetch(`${apiHost}${endpoint}`, {
@@ -313,7 +371,6 @@ export default function Home({ defaultContext = 'registry', activePostId }: { de
   };
 
   const handleVerifySubmit = async () => {
-    const apiHost = window.location.hostname === 'localhost' ? 'http://localhost:8081' : '';
     try {
       const response = await fetch(`${apiHost}/api/v1/auth/verify`, {
         method: 'POST',
@@ -347,7 +404,6 @@ export default function Home({ defaultContext = 'registry', activePostId }: { de
     const targetToken = tokenOverride || sessionToken;
     if (!targetToken) return;
 
-    const apiHost = window.location.hostname === 'localhost' ? 'http://localhost:8081' : '';
     try {
       const response = await fetch(`${apiHost}/api/v1/tokens`, {
         headers: { 'Authorization': `Bearer ${targetToken}` }
@@ -361,7 +417,6 @@ export default function Home({ defaultContext = 'registry', activePostId }: { de
 
   const handleCreateNewToken = async () => {
     if (!sessionToken) return;
-    const apiHost = window.location.hostname === 'localhost' ? 'http://localhost:8081' : '';
     try {
       const response = await fetch(`${apiHost}/api/v1/tokens`, {
         method: 'POST',
@@ -380,7 +435,6 @@ export default function Home({ defaultContext = 'registry', activePostId }: { de
   const handleRevokeToken = async (id: string) => {
     if (!sessionToken) return;
 
-    const apiHost = window.location.hostname === 'localhost' ? 'http://localhost:8081' : '';
     try {
       const response = await fetch(`${apiHost}/api/v1/tokens/${id}`, {
         method: 'DELETE',
@@ -442,17 +496,7 @@ export default function Home({ defaultContext = 'registry', activePostId }: { de
               </a>
             </>
           ) : (
-            <>
-              <NextLink href="/community" className={`nav-item ${activeTab === 'community' ? 'active' : ''}`}>
-                <Activity size={18} /> <span>All Boards</span>
-              </NextLink>
-              <a href="#" className="nav-item">
-                <User size={18} /> <span>Operators</span>
-              </a>
-              <a href="#" className="nav-item">
-                <Bell size={18} /> <span>Trends</span>
-              </a>
-            </>
+            <></>
           )}
         </nav>
       </aside>
@@ -508,7 +552,7 @@ export default function Home({ defaultContext = 'registry', activePostId }: { de
                       </div>
                       <h1 style={{ fontSize: '24px', color: '#fff', marginBottom: '16px', fontWeight: '600', lineHeight: '1.3' }}>{singlePost.title}</h1>
                       <div className="pro-markdown-renderer" style={{ marginBottom: '20px' }}>
-                        <ReactMarkdown components={{ img: ({node, ...props}) => <img {...props} style={{ maxWidth: '100%', maxHeight: '600px', border: '1px solid #30363d', borderRadius: '6px', margin: '12px 0', display: 'block' }} /> }}>
+                        <ReactMarkdown components={{ img: ({node, src, alt, ...props}) => <img src={src} alt={alt} style={{ maxWidth: '100%', maxHeight: '600px', border: '1px solid #30363d', borderRadius: '6px', margin: '12px 0', display: 'block' }} /> }}>
                           {singlePost.content || ''}
                         </ReactMarkdown>
                       </div>
@@ -517,6 +561,16 @@ export default function Home({ defaultContext = 'registry', activePostId }: { de
                           <Share2 size={14} /> Share
                         </button>
                         <span onClick={handleReport} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}><Shield size={14} /> Report</span>
+                        {activeUsername === singlePost.username && (
+                          pendingDeleteId === singlePost.id ? (
+                            <span style={{ display: 'flex', gap: '8px', alignItems: 'center', color: '#f85149' }}>
+                              <span onClick={() => handleDeletePost(singlePost.id)} style={{ cursor: 'pointer', fontWeight: 'bold', textDecoration: 'underline' }}>Confirm Purge?</span>
+                              <span onClick={() => setPendingDeleteId(null)} style={{ cursor: 'pointer', color: '#8b949e' }}>Cancel</span>
+                            </span>
+                          ) : (
+                            <span onClick={() => setPendingDeleteId(singlePost.id)} style={{ cursor: 'pointer', color: '#f85149', display: 'flex', alignItems: 'center', gap: '4px' }}><Trash2 size={14} /> Delete</span>
+                          )
+                        )}
                       </div>
                       
                       <div style={{ marginTop: '24px', borderTop: '1px dashed #30363d', paddingTop: '20px' }}>
@@ -722,7 +776,7 @@ export default function Home({ defaultContext = 'registry', activePostId }: { de
                         <div className="pro-markdown-renderer" style={{ marginBottom: '16px' }}>
                           <ReactMarkdown 
                             components={{
-                              img: ({node, ...props}) => <img {...props} style={{ maxWidth: '100%', maxHeight: '500px', border: '1px solid #30363d', borderRadius: '6px', margin: '12px 0', display: 'block' }} />
+                              img: ({node, src, alt, ...props}) => <img src={src} alt={alt} style={{ maxWidth: '100%', maxHeight: '500px', border: '1px solid #30363d', borderRadius: '6px', margin: '12px 0', display: 'block' }} />
                             }}
                           >
                             {post.content || ''}
@@ -737,6 +791,16 @@ export default function Home({ defaultContext = 'registry', activePostId }: { de
                             <Share2 size={14} /> Share
                           </button>
                           <span onClick={handleReport} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}><Shield size={14} /> Report</span>
+                          {activeUsername === post.username && (
+                            pendingDeleteId === post.id ? (
+                              <span style={{ display: 'flex', gap: '6px', alignItems: 'center', fontSize: '12px', color: '#f85149' }}>
+                                <span onClick={() => handleDeletePost(post.id)} style={{ cursor: 'pointer', fontWeight: 'bold', textDecoration: 'underline' }}>Confirm?</span>
+                                <span onClick={() => setPendingDeleteId(null)} style={{ cursor: 'pointer', color: '#8b949e' }}>No</span>
+                              </span>
+                            ) : (
+                              <span onClick={() => setPendingDeleteId(post.id)} style={{ cursor: 'pointer', color: '#f85149', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px' }}><Trash2 size={14} /> Delete</span>
+                            )
+                          )}
                         </div>
 
                         {/* Expanded Discussion Thread Tree */}
@@ -771,7 +835,7 @@ export default function Home({ defaultContext = 'registry', activePostId }: { de
                     <div style={{ color: '#8b949e' }}>Void detected. Launch the very first narrative node broadcast above.</div>
                   </div>
                 )}
-              </div>
+            </div>
             </div>
           ) : (
             /* ==============================================
