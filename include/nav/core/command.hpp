@@ -2,7 +2,6 @@
 
 #include <vector>
 #include <string>
-#include <memory>
 #include "nav/core/execution_context.hpp"
 
 namespace nav::core {

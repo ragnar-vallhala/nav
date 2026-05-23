@@ -11,7 +11,7 @@ namespace nav::core {
 
 // A robust helper to execute using fork/execvp and capture all output from a single merged stream (stdout+stderr)
 static CommandResult run_raw_command(const std::vector<std::string>& cmd, const std::string& working_dir, bool silent) {
-    CommandResult result{-1, "", ""};
+    CommandResult result{-1, ""};
 
     if (cmd.empty()) {
         return result;
@@ -77,7 +77,7 @@ static CommandResult run_raw_command(const std::vector<std::string>& cmd, const 
         waitpid(pid, &status, 0);
         
         result.exit_code = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
-        result.stdout_output = output.str();
+        result.output = output.str();
     }
 
     return result;

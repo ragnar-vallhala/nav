@@ -2,14 +2,13 @@
 
 #include <string>
 #include <vector>
-#include <memory>
 
 namespace nav::core {
 
 struct CommandResult {
     int exit_code;
-    std::string stdout_output;
-    std::string stderr_output;
+    // Merged stdout+stderr capture (the child has both fds duped onto a single pipe).
+    std::string output;
 };
 
 class IExecutionContext {

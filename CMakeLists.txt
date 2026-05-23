@@ -5,17 +5,51 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+include(FetchContent)
+FetchContent_Declare(
+    tomlplusplus
+    GIT_REPOSITORY https://github.com/marzer/tomlplusplus.git
+    GIT_TAG        v3.4.0
+    GIT_SHALLOW    TRUE
+)
+FetchContent_MakeAvailable(tomlplusplus)
+
+# --- Embedded project templates ---
+# Each template is read into a CMake variable and inlined into a generated
+# header via raw string literals (delimiter NAVTPL). Templates must NOT contain
+# the literal sequence )NAVTPL" or the generated header will fail to parse.
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/templates/nav.toml.in"      NAV_TPL_TOML)
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/templates/dot_config.in"    NAV_TPL_CONFIG)
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/templates/main.c.in"        NAV_TPL_MAIN_C)
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/templates/cmakelists.txt.in" NAV_TPL_CMAKELISTS)
+configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/templates/embedded.hpp.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/include/nav/templates/embedded.hpp"
+    @ONLY
+)
+
 # Core library
 add_library(nav_core STATIC
     src/core/execution_context.cpp
-    src/core/command.cpp
     src/core/toolchain.cpp
+    src/core/config.cpp
+    src/core/commands/create.cpp
+    src/core/commands/build.cpp
+    src/core/commands/upload.cpp
+    src/core/commands/monitor.cpp
+    src/core/commands/clean.cpp
+    src/core/commands/check.cpp
+    src/core/commands/update.cpp
+    src/core/commands/registry.cpp
 )
 
 target_include_directories(nav_core PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/generated/include>
     $<INSTALL_INTERFACE:include>
 )
+
+target_link_libraries(nav_core PUBLIC tomlplusplus::tomlplusplus)
 
 # CLI executable
 add_executable(nav
@@ -23,6 +57,7 @@ add_executable(nav
 )
 
 target_link_libraries(nav PRIVATE nav_core)
+target_compile_definitions(nav PRIVATE NAV_VERSION="${PROJECT_VERSION}")
 
 # --- Packaging and Installation Setup ---
 
