@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(Nav VERSION 0.1.0 LANGUAGES CXX)
+project(Nav VERSION 1.0.2 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -66,7 +66,7 @@ install(TARGETS nav DESTINATION bin)
 
 # 2. CPack Generator Config (For Debian Package Support)
 set(CPACK_PACKAGE_NAME "nav")
-set(CPACK_PACKAGE_VERSION "0.0.1")
+set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
 set(CPACK_PACKAGE_VENDOR "NAVROBOTEC PRIVATE LIMITED")
 set(CPACK_PACKAGE_CONTACT "support@navrobotec.com")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Embedded Development Orchestrator for firmware and hardware deployment")
