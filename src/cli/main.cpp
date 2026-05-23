@@ -8,6 +8,10 @@
 #include "nav/core/command.hpp"
 #include "nav/core/ui.hpp"
 
+#ifndef NAV_VERSION
+#define NAV_VERSION "0.0.0-dev"
+#endif
+
 void print_usage() {
     std::cout << "Usage: nav <command> [args...]\n\n"
               << "Commands:\n"
@@ -18,10 +22,13 @@ void print_usage() {
               << "  clean   - Flush cache and build files\n"
               << "  check   - Perform verification checks\n"
               << "  update  - Upgrade environment definitions\n"
-              << "  add     - Cache external library resource\n"
-              << "  search  - Search master package catalog\n"
-              << "  login   - Secure session authorization link\n"
-              << "  publish - Push artifact bundle to backend\n";
+              << "  add     - Cache external library resource     (coming soon)\n"
+              << "  search  - Search master package catalog       (coming soon)\n"
+              << "  login   - Secure session authorization link   (coming soon)\n"
+              << "  publish - Push artifact bundle to backend     (coming soon)\n"
+              << "\nFlags:\n"
+              << "  --version, -v   Print version and exit\n"
+              << "  --help, help    Print this message\n";
 }
 
 int main(int argc, char* argv[]) {
@@ -29,6 +36,11 @@ int main(int argc, char* argv[]) {
 
     if (args.empty() || args[0] == "--help" || args[0] == "help") {
         print_usage();
+        return 0;
+    }
+
+    if (args[0] == "--version" || args[0] == "-v") {
+        std::cout << "nav " << NAV_VERSION << "\n";
         return 0;
     }
 
