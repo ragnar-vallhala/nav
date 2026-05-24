@@ -1,0 +1,13 @@
+{
+  "namespace": "testuser",
+  "name": "blink-led",
+  "version": "0.1.0",
+  "description": "Sample STM32F401 blink package for the Nav test registry.",
+  "targets": ["stm32f401", "cortex-m4"],
+  "toolchains": ["arm-none-eabi", "stlink"],
+  "build": {
+    "system": "cmake",
+    "entry": "CMakeLists.txt"
+  },
+  "dependencies": []
+}

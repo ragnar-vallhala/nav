@@ -1,0 +1,28 @@
+build/
+build-*/
+*.elf
+*.bin
+*.json
+.cache/
+node_modules/
+dist/
+*.log
+out/
+*.vsix
+.aider*
+.config*
+plan/
+
+# Generated documentation (docs/ source is tracked; generated output is not)
+docs/html/
+docs/latex/
+
+# LaTeX build artifacts
+docs/*.aux
+docs/*.fdb_latexmk
+docs/*.fls
+docs/*.out
+docs/*.synctex.gz
+docs/*.toc
+docs/*.pdf
+docs/sections/*.aux
