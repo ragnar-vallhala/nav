@@ -253,13 +253,32 @@ code {
   font-size: 18px;
 }
 
-.install-card code {
+.command-line {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.command-line code {
+  flex: 1;
   display: block;
-  min-height: 58px;
-  padding: 12px;
+  padding: 10px 12px;
   border-radius: var(--radius);
   background: var(--secondary);
   overflow-wrap: anywhere;
+}
+
+.install-card .command-line code {
+  display: block;
+  min-height: 58px;
+}
+
+.copy-button {
+  align-self: stretch;
+  min-width: 38px;
+  min-height: 38px;
+  padding: 0;
+  border: 1px solid var(--border);
 }
 
 .card {
@@ -635,8 +654,8 @@ code {
   margin-top: 12px;
 }
 
-.command-stack code {
-  padding: 6px 8px;
+.command-stack .command-line code {
+  padding: 8px;
   border-radius: calc(var(--radius) - 2px);
   background: var(--muted);
 }
