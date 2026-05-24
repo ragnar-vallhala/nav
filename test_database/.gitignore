@@ -1,0 +1,15 @@
+.env
+.env.*
+!.env.example
+!.env.production.example
+!**/.env.example
+secrets/
+**/secrets/
+*client_secret*.json
+**/*client_secret*.json
+node_modules/
+dist/
+coverage/
+nav/.nav-home/
+nav/*.navpkg
+vendor/*.navpkg

@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nav Registry | High-Performance Package Hub</title>
+    <meta name="description" content="The high-performance robotic software and library index. Locate, deploy, and manage packages.">
+    
+    <!-- Typography -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lucide-static@0.344.0/font/lucide.min.css">
+    
+    <!-- Application CSS -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Deep Matrix Layout Layer -->
+    <div class="app-container">
+        
+        <!-- Left Dynamic Sidebar -->
+        <aside class="sidebar">
+            <div class="logo-section">
+                <i class="lucide-compass logo-icon"></i>
+                <span class="logo-text">Nav <span class="accent-text">Registry</span></span>
+            </div>
+            
+            <nav class="nav-menu">
+                <a href="#" class="nav-item active" id="link-dashboard">
+                    <i class="lucide-layout-grid"></i> <span>Dashboard</span>
+                </a>
+                <a href="#" class="nav-item" id="link-packages">
+                    <i class="lucide-package"></i> <span>Packages</span>
+                </a>
+                <a href="#" class="nav-item">
+                    <i class="lucide-folder-git"></i> <span>Projects</span>
+                </a>
+                <a href="#" class="nav-item">
+                    <i class="lucide-settings"></i> <span>Settings</span>
+                </a>
+            </nav>
+            
+            <div class="sidebar-divider"></div>
+            
+            <nav class="nav-menu footer-menu">
+                <a href="#" class="nav-item">
+                    <i class="lucide-user"></i> <span>Account</span>
+                </a>
+                <a href="#" class="nav-item">
+                    <i class="lucide-activity"></i> <span>Activity</span>
+                </a>
+            </nav>
+        </aside>
+
+        <!-- Main Dynamic Content Core -->
+        <main class="content-area">
+            <!-- Top Nav Bar -->
+            <header class="top-nav">
+                <div class="top-links">
+                    <a href="#" class="top-link active">Packages</a>
+                    <a href="#" class="top-link">Docs</a>
+                    <a href="#" class="top-link">Community</a>
+                </div>
+                
+                <div class="header-actions">
+                    <button class="icon-btn">
+                        <i class="lucide-bell"></i>
+                    </button>
+                    <button class="primary-btn">Publish</button>
+                </div>
+            </header>
+
+            <!-- Dynamic Scene Holder -->
+            <div class="scene">
+                <!-- Hero Spotlight Search Section -->
+                <section class="hero-spotlight">
+                    <div class="glow-backdrop"></div>
+                    
+                    <div class="search-matrix-container">
+                        <div class="search-bar-glow">
+                            <i class="lucide-search search-icon"></i>
+                            <input type="text" id="main-search-input" placeholder="Search packages..." autocomplete="off">
+                            <button id="search-trigger-btn" class="search-action-btn">Search</button>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Content Matrix Grid -->
+                <section class="package-grid-section">
+                    <div class="section-header">
+                        <h2>Featured Robotics Packages</h2>
+                    </div>
+
+                    <div class="package-grid" id="catalog-grid">
+                        <!-- Dynamic Hydration Area via JS -->
+                        <div class="loading-shimmer">Loading catalog...</div>
+                    </div>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <!-- Application Logic Orchestrator -->
+    <script src="app.js" type="module"></script>
+</body>
+</html>

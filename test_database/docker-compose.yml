@@ -1,0 +1,105 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: nav-test-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: nav_sample
+      POSTGRES_PASSWORD: nav_sample_password
+      POSTGRES_DB: nav_sample_registry
+    ports:
+      - "25432:5432"
+    volumes:
+      - nav_test_postgres:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/001-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nav_sample -d nav_sample_registry"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks:
+      - nav-test
+
+  minio:
+    image: minio/minio:latest
+    container_name: nav-test-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: navsample
+      MINIO_ROOT_PASSWORD: navsamplepassword
+    ports:
+      - "29000:9000"
+      - "29001:9001"
+    volumes:
+      - nav_test_minio:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks:
+      - nav-test
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: nav-test-backend
+    restart: unless-stopped
+    env_file:
+      - ../.env.local
+    environment:
+      NODE_ENV: development
+      PORT: 14000
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:13000}
+      BACKEND_URL: ${BACKEND_URL:-http://localhost:14000}
+      JWT_SECRET: nav_sample_dev_secret_change_me
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: nav_sample
+      DB_PASSWORD: nav_sample_password
+      DB_NAME: nav_sample_registry
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: 9000
+      MINIO_USE_SSL: "false"
+      MINIO_ACCESS_KEY: navsample
+      MINIO_SECRET_KEY: navsamplepassword
+      GOOGLE_CLIENT_ID: 345878765572-djfhefckq1qn718a9f1ad31oq2o4s0ar.apps.googleusercontent.com
+      GOOGLE_CALLBACK_URL: ${GOOGLE_CALLBACK_URL:-http://localhost:14000/auth/google/callback}
+      GITHUB_CALLBACK_URL: ${GITHUB_CALLBACK_URL:-http://localhost:14000/auth/github/callback}
+      SEED_CATALOG: ${SEED_CATALOG:-true}
+      SEED_DEMO_DATA: ${SEED_DEMO_DATA:-true}
+    ports:
+      - "14000:14000"
+    volumes:
+      - ./vendor/NavHAL:/app/vendor/NavHAL:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    networks:
+      - nav-test
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: nav-test-frontend
+    restart: unless-stopped
+    environment:
+      VITE_API_BASE: ${VITE_API_BASE:-http://localhost:14000}
+    ports:
+      - "13000:13000"
+    depends_on:
+      - backend
+    networks:
+      - nav-test
+
+networks:
+  nav-test:
+    driver: bridge
+
+volumes:
+  nav_test_postgres:
+  nav_test_minio:
