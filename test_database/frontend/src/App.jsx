@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   ChevronRight,
   CircuitBoard,
+  Copy,
   Database,
   Download,
   Github,
@@ -68,6 +69,33 @@ function Label({ children, className = '' }) {
 
 function Alert({ children, variant = 'default' }) {
   return <div className={cn('alert', `alert-${variant}`)}>{children}</div>;
+}
+
+function CommandLine({ command }) {
+  const [copied, setCopied] = useState(false);
+
+  async function copyCommand() {
+    await navigator.clipboard.writeText(command);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1600);
+  }
+
+  return (
+    <div className="command-line">
+      <code>{command}</code>
+      <Button
+        className="copy-button"
+        variant="ghost"
+        size="sm"
+        type="button"
+        title={copied ? 'Copied' : 'Copy command'}
+        aria-label={copied ? 'Command copied' : 'Copy command'}
+        onClick={copyCommand}
+      >
+        {copied ? <CheckCircle2 size={16} /> : <Copy size={16} />}
+      </Button>
+    </div>
+  );
 }
 
 function Table({ columns, rows, renderRow, empty }) {
@@ -888,7 +916,7 @@ function HomePage() {
                 <installer.icon size={20} />
                 <h2>{installer.name}</h2>
               </div>
-              <code>{installer.command}</code>
+              <CommandLine command={installer.command} />
             </Card>
           ))}
         </div>
@@ -1310,9 +1338,9 @@ function PackageDetailPage({ route, filteredPackages, downloadPackage, navigate,
                   <Button variant="outline" onClick={() => downloadPackage(pkg)}>Download archive</Button>
                 </div>
                 <div className="command-stack">
-                  <code>nav install {pkg.namespace}/{pkg.slug}{pkg.latest_version ? `@${pkg.latest_version}` : ''}</code>
-                  <code>nav info {pkg.namespace}/{pkg.slug}</code>
-                  <code>nav docs {pkg.namespace}/{pkg.slug}</code>
+                  <CommandLine command={`nav install ${pkg.namespace}/${pkg.slug}${pkg.latest_version ? `@${pkg.latest_version}` : ''}`} />
+                  <CommandLine command={`nav info ${pkg.namespace}/${pkg.slug}`} />
+                  <CommandLine command={`nav docs ${pkg.namespace}/${pkg.slug}`} />
                 </div>
               </Card>
 
@@ -1329,9 +1357,9 @@ function PackageDetailPage({ route, filteredPackages, downloadPackage, navigate,
                 <Card className="section-card">
                   <h2>Package commands</h2>
                   <div className="command-stack">
-                    <code>nav search {pkg.slug}</code>
-                    <code>nav install {pkg.namespace}/{pkg.slug}</code>
-                    <code>nav update {pkg.namespace}/{pkg.slug}</code>
+                    <CommandLine command={`nav search ${pkg.slug}`} />
+                    <CommandLine command={`nav install ${pkg.namespace}/${pkg.slug}`} />
+                    <CommandLine command={`nav update ${pkg.namespace}/${pkg.slug}`} />
                   </div>
                 </Card>
               </div>
@@ -1784,7 +1812,7 @@ function PackageCard({ pkg, onDownload, navigate }) {
             <span><Globe2 size={14} /> public</span>
           </div>
           <div className="command-stack">
-            <code>{installCommand}</code>
+            <CommandLine command={installCommand} />
           </div>
         </div>
       </div>
