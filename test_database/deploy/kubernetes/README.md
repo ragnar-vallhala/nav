@@ -30,3 +30,25 @@ docker save nav-registry-frontend:dev | k3s ctr images import -
 
 The backend ingress strips `/api` before forwarding requests, matching the API
 routes and OAuth callback URLs used by the application.
+
+## Development Artifact Catalog
+
+This deployment intentionally mirrors a compact set of real artifacts rather
+than every SDK and vendor archive. It is enough to validate package resolution,
+checksums, extraction, compilation, and flashing while the registry is in
+development. Add larger SDK families only after MinIO is moved to dedicated or
+external object storage with capacity monitoring and backups.
+
+## Scaling Boundary
+
+The frontend deployment has CPU-based horizontal autoscaling from one to three
+pods. The backend stores OAuth session state in Postgres, so a restart no
+longer loses sign-in state; it remains configured at one replica while startup
+catalog seeding is coupled to the web process.
+
+Postgres and MinIO use single-node persistent volumes in this development
+cluster. They persist data, but they are not highly available. Before a public
+production launch, use managed or replicated Postgres and S3-compatible object
+storage, publish multi-architecture images to a registry, and move catalog
+seeding into a single-run deployment job before horizontally scaling the
+backend.
