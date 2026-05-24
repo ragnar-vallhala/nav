@@ -1367,11 +1367,10 @@ function PackageDetailPage({ route, filteredPackages, downloadPackage, navigate,
               <Card className="section-card">
                 <h2>Maintainers</h2>
                 <div className="repo-list">
-                  {(details?.maintainers || []).map(maintainer => (
-                    <article className="repo-row" key={maintainer.email}>
+                  {(details?.maintainers || []).map((maintainer, index) => (
+                    <article className="repo-row" key={`${maintainer.name}-${maintainer.role}-${index}`}>
                       <div>
-                        <h3>{maintainer.name || maintainer.email}</h3>
-                        <p>{maintainer.email}</p>
+                        <h3>{maintainer.name || 'Nav maintainer'}</h3>
                       </div>
                       <Badge variant="outline">{maintainer.role}</Badge>
                     </article>
