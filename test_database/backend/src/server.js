@@ -4,6 +4,7 @@ import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import session from 'express-session';
+import connectPgSimple from 'connect-pg-simple';
 import passport from 'passport';
 import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import { Strategy as GitHubStrategy } from 'passport-github2';
@@ -51,6 +52,7 @@ const config = {
 
 const pool = new Pool(config.db);
 const minio = new Minio.Client(config.minio);
+const PgSessionStore = connectPgSimple(session);
 
 function sha256(value) {
   return crypto.createHash('sha256').update(value).digest('hex');
@@ -891,6 +893,14 @@ async function ensureSchema() {
   await pool.query(`CREATE EXTENSION IF NOT EXISTS pgcrypto`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS system_role TEXT NOT NULL DEFAULT 'user'`);
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS http_sessions (
+      sid VARCHAR NOT NULL PRIMARY KEY,
+      sess JSON NOT NULL,
+      expire TIMESTAMP(6) NOT NULL
+    )
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_http_sessions_expire ON http_sessions(expire)`);
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS tokens (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -1280,6 +1290,9 @@ async function main() {
   configurePassport();
 
   const app = express();
+  if (config.isProduction) {
+    app.set('trust proxy', 1);
+  }
   app.use(cors({
     credentials: true,
     origin(origin, callback) {
@@ -1293,9 +1306,21 @@ async function main() {
   app.use(express.json({ limit: '2mb' }));
   app.use(cookieParser());
   app.use(session({
+    store: new PgSessionStore({
+      pool,
+      tableName: 'http_sessions'
+    }),
+    name: `${config.cookieName}_oauth`,
     secret: config.jwtSecret,
     resave: false,
-    saveUninitialized: false
+    saveUninitialized: false,
+    proxy: config.isProduction,
+    cookie: {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: config.isProduction,
+      maxAge: 10 * 60 * 1000
+    }
   }));
   app.use(passport.initialize());
 

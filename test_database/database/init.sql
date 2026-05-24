@@ -230,6 +230,12 @@ CREATE TABLE IF NOT EXISTS audit_logs (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS http_sessions (
+    sid VARCHAR NOT NULL PRIMARY KEY,
+    sess JSON NOT NULL,
+    expire TIMESTAMP(6) NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_packages_search ON packages USING GIN(to_tsvector('english', name || ' ' || slug || ' ' || COALESCE(description, '')));
 CREATE INDEX IF NOT EXISTS idx_tokens_user ON tokens(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_namespace_members_user ON namespace_members(user_id);
@@ -237,3 +243,4 @@ CREATE INDEX IF NOT EXISTS idx_package_versions_package ON package_versions(pack
 CREATE INDEX IF NOT EXISTS idx_package_artifacts_version ON package_artifacts(package_version_id, artifact_type);
 CREATE INDEX IF NOT EXISTS idx_toolchain_artifacts_lookup ON toolchain_artifacts(os, arch);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_action_time ON audit_logs(action, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_http_sessions_expire ON http_sessions(expire);
