@@ -1666,7 +1666,7 @@ echo "Nav installed. Open a new terminal, or run: . \\"$profile_file\\"; nav che
     const q = `%${req.query.q || ''}%`;
     const result = await pool.query(`
       SELECT ns.name AS namespace, p.name, p.slug, p.description, p.license, p.total_downloads,
-             pv.version AS latest_version, pa.storage_bucket, pa.storage_key, pa.sha256, pa.size_bytes
+             pv.version AS latest_version, pa.sha256, pa.size_bytes
       FROM packages p
       JOIN namespaces ns ON ns.id = p.namespace_id
       LEFT JOIN LATERAL (
@@ -1727,14 +1727,14 @@ echo "Nav installed. Open a new terminal, or run: . \\"$profile_file\\"; nav che
     }
     const versions = await pool.query(`
       SELECT pv.version, pv.manifest, pv.readme, pv.changelog, pv.checksum_sha256, pv.yanked, pv.downloads, pv.created_at,
-             pa.storage_bucket, pa.storage_key, pa.content_type, pa.size_bytes, pa.sha256
+             pa.content_type, pa.size_bytes, pa.sha256
       FROM package_versions pv
       LEFT JOIN package_artifacts pa ON pa.package_version_id = pv.id AND pa.artifact_type = 'archive'
       WHERE pv.package_id = $1
       ORDER BY pv.created_at DESC
     `, [pkg.id]);
     const maintainers = await pool.query(`
-      SELECT u.name, u.email, pm.role
+      SELECT u.name, pm.role
       FROM package_maintainers pm JOIN users u ON u.id = pm.user_id
       WHERE pm.package_id = $1 ORDER BY pm.created_at ASC
     `, [pkg.id]);
@@ -1744,7 +1744,7 @@ echo "Nav installed. Open a new terminal, or run: . \\"$profile_file\\"; nav che
   app.get('/packages/:namespace/:name/versions', async (req, res) => {
     const result = await pool.query(`
       SELECT pv.version, pv.changelog, pv.checksum_sha256, pv.yanked, pv.downloads, pv.created_at,
-             pa.storage_bucket, pa.storage_key, pa.size_bytes, pa.sha256
+             pa.size_bytes, pa.sha256
       FROM package_versions pv
       JOIN packages p ON p.id = pv.package_id
       JOIN namespaces ns ON ns.id = p.namespace_id
@@ -1979,7 +1979,7 @@ echo "Nav installed. Open a new terminal, or run: . \\"$profile_file\\"; nav che
     const result = await pool.query(`
       SELECT tv.name AS vendor, tv.kind AS vendor_kind, tv.trust_level,
              t.name, t.description, t.source_kind, t.status, t.homepage_url,
-             tver.version, tver.manifest, ta.os, ta.arch, ta.archive_format, ta.storage_bucket, ta.storage_key,
+             tver.version, tver.manifest, ta.os, ta.arch, ta.archive_format,
              ta.size_bytes, ta.sha256, ta.signature, ta.upstream_url, ta.provenance
       FROM toolchains t
       JOIN toolchain_vendors tv ON tv.id = t.vendor_id

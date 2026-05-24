@@ -1029,10 +1029,6 @@ async function installToolchain(toolchain) {
     sha256: archiveHash,
     signature: toolchain.signature,
     upstream_url: toolchain.upstream_url,
-    registry_storage: {
-      bucket: toolchain.storage_bucket,
-      key: toolchain.storage_key
-    },
     archive_format: archiveFormat,
     installed_at: new Date().toISOString()
   }, null, 2));
