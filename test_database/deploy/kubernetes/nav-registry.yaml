@@ -90,13 +90,6 @@ spec:
                 - pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"
             initialDelaySeconds: 5
             periodSeconds: 5
-          resources:
-            requests:
-              cpu: 50m
-              memory: 256Mi
-            limits:
-              cpu: "1"
-              memory: 1Gi
           volumeMounts:
             - name: data
               mountPath: /var/lib/postgresql/data
@@ -168,13 +161,6 @@ spec:
               port: 9000
             initialDelaySeconds: 5
             periodSeconds: 5
-          resources:
-            requests:
-              cpu: 50m
-              memory: 256Mi
-            limits:
-              cpu: "1"
-              memory: 1Gi
           volumeMounts:
             - name: data
               mountPath: /data
@@ -355,13 +341,6 @@ spec:
                   name: nav-registry-secrets
                   key: EMAIL_FROM_NAME
                   optional: true
-          resources:
-            requests:
-              cpu: 50m
-              memory: 256Mi
-            limits:
-              cpu: "1"
-              memory: 1Gi
           startupProbe:
             httpGet:
               path: /health
@@ -415,33 +394,6 @@ spec:
               path: /
               port: 80
             periodSeconds: 10
-          resources:
-            requests:
-              cpu: 10m
-              memory: 32Mi
-            limits:
-              cpu: 250m
-              memory: 128Mi
----
-apiVersion: autoscaling/v2
-kind: HorizontalPodAutoscaler
-metadata:
-  name: frontend
-  namespace: nav-registry
-spec:
-  scaleTargetRef:
-    apiVersion: apps/v1
-    kind: Deployment
-    name: frontend
-  minReplicas: 1
-  maxReplicas: 3
-  metrics:
-    - type: Resource
-      resource:
-        name: cpu
-        target:
-          type: Utilization
-          averageUtilization: 70
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress

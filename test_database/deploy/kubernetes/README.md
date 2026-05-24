@@ -41,10 +41,14 @@ external object storage with capacity monitoring and backups.
 
 ## Scaling Boundary
 
-The frontend deployment has CPU-based horizontal autoscaling from one to three
-pods. The backend stores OAuth session state in Postgres, so a restart no
-longer loses sign-in state; it remains configured at one replica while startup
-catalog seeding is coupled to the web process.
+The backend stores OAuth session state in Postgres, so a restart no longer
+loses sign-in state. Horizontal pod autoscaling is deliberately not enabled on
+the current development host: its only AMD64 schedulable node already has all
+allocatable CPU reserved by existing workloads. Add CPU capacity or publish
+multi-architecture images for available workers before enabling an HPA.
+
+The backend also remains configured at one replica while startup catalog
+seeding is coupled to the web process.
 
 Postgres and MinIO use single-node persistent volumes in this development
 cluster. They persist data, but they are not highly available. Before a public
