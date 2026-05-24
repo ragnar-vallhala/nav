@@ -539,8 +539,25 @@ async function collectPackageSnapshot(rootDir, options = {}) {
 async function getNavHalPackageFiles() {
   const sourceDir = process.env.NAVHAL_SOURCE_DIR || path.join(process.cwd(), 'vendor', 'NavHAL');
   try {
-    await fs.promises.access(path.join(sourceDir, 'nav.json'));
+    await fs.promises.access(path.join(sourceDir, 'CMakeLists.txt'));
     const files = await collectPackageSnapshot(sourceDir);
+    if (!files.some(file => file.path === 'nav.json' || file.path === 'nav.toml')) {
+      files.push({
+        path: 'nav.json',
+        content_base64: Buffer.from(JSON.stringify({
+          name: 'navhal',
+          namespace: 'nav',
+          version: '0.1.0',
+          description: 'Hardware abstraction layer mirrored from ragnar-vallhala/NavHAL.',
+          license: 'MIT',
+          repository: 'https://github.com/ragnar-vallhala/NavHAL.git',
+          kind: 'library',
+          language: ['c', 'c++'],
+          targets: ['esp32', 'stm32', 'rp2040', 'avr'],
+          toolchains: ['nav-packager']
+        }, null, 2)).toString('base64')
+      });
+    }
     console.log(`[seed] nav/navhal uses real NavHAL snapshot from ${sourceDir} (${files.length} files)`);
     return files;
   } catch (error) {
