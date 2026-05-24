@@ -1,0 +1,442 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: nav-registry
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-data
+  namespace: nav-registry
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: minio-data
+  namespace: nav-registry
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: nav-registry
+spec:
+  selector:
+    app: nav-postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: nav-registry
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nav-postgres
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: nav-postgres
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: srv1237670
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: nav-registry-secrets
+                  key: DB_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: nav-registry-secrets
+                  key: DB_PASSWORD
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: nav-registry-secrets
+                  key: DB_NAME
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+            - name: init
+              mountPath: /docker-entrypoint-initdb.d
+              readOnly: true
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: postgres-data
+        - name: init
+          configMap:
+            name: nav-database-init
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio
+  namespace: nav-registry
+spec:
+  selector:
+    app: nav-minio
+  ports:
+    - name: api
+      port: 9000
+      targetPort: 9000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: minio
+  namespace: nav-registry
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nav-minio
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: nav-minio
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: srv1237670
+      containers:
+        - name: minio
+          image: minio/minio:latest
+          args:
+            - server
+            - /data
+          ports:
+            - containerPort: 9000
+          env:
+            - name: MINIO_ROOT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: nav-registry-secrets
+                  key: MINIO_ACCESS_KEY
+            - name: MINIO_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: nav-registry-secrets
+                  key: MINIO_SECRET_KEY
+          readinessProbe:
+            httpGet:
+              path: /minio/health/ready
+              port: 9000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: minio-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: nav-registry
+spec:
+  selector:
+    app: nav-backend
+  ports:
+    - name: http
+      port: 14000
+      targetPort: 14000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: nav-registry
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nav-backend
+  template:
+    metadata:
+      labels:
+        app: nav-backend
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: srv1237670
+      containers:
+        - name: backend
+          image: nav-registry-backend:dev
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 14000
+          env:
+            - name: NODE_ENV
+              value: production
+            - name: PORT
+              value: "14000"
+            - name: FRONTEND_URL
+              value: https://nav.navrobotec.online
+            - name: BACKEND_URL
+              value: https://nav.navrobotec.online/api
+            - name: AUTH_COOKIE_NAME
+              value: nav_token
+            - name: DB_HOST
+              value: postgres
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: nav-registry-secrets
+                  key: DB_USER
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: nav-registry-secrets
+                  key: DB_PASSWORD
+            - name: DB_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: nav-registry-secrets
+                  key: DB_NAME
+            - name: MINIO_ENDPOINT
+              value: minio
+            - name: MINIO_PORT
+              value: "9000"
+            - name: MINIO_USE_SSL
+              value: "false"
+            - name: MINIO_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: nav-registry-secrets
+                  key: MINIO_ACCESS_KEY
+            - name: MINIO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: nav-registry-secrets
+                  key: MINIO_SECRET_KEY
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: nav-registry-secrets
+                  key: JWT_SECRET
+            - name: NAV_ROOT_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: nav-registry-secrets
+                  key: NAV_ROOT_NAME
+            - name: NAV_ROOT_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: nav-registry-secrets
+                  key: NAV_ROOT_EMAIL
+            - name: NAV_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: nav-registry-secrets
+                  key: NAV_ROOT_PASSWORD
+            - name: SEED_CATALOG
+              value: "true"
+            - name: SEED_DEMO_DATA
+              value: "false"
+            - name: GOOGLE_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: nav-registry-secrets
+                  key: GOOGLE_CLIENT_ID
+                  optional: true
+            - name: GOOGLE_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: nav-registry-secrets
+                  key: GOOGLE_CLIENT_SECRET
+                  optional: true
+            - name: GOOGLE_CALLBACK_URL
+              value: https://nav.navrobotec.online/api/auth/google/callback
+            - name: GITHUB_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: nav-registry-secrets
+                  key: GITHUB_CLIENT_ID
+                  optional: true
+            - name: GITHUB_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: nav-registry-secrets
+                  key: GITHUB_CLIENT_SECRET
+                  optional: true
+            - name: GITHUB_CALLBACK_URL
+              value: https://nav.navrobotec.online/api/auth/github/callback
+            - name: SMTP_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: nav-registry-secrets
+                  key: SMTP_HOST
+                  optional: true
+            - name: SMTP_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: nav-registry-secrets
+                  key: SMTP_PORT
+                  optional: true
+            - name: SMTP_USER
+              valueFrom:
+                secretKeyRef:
+                  name: nav-registry-secrets
+                  key: SMTP_USER
+                  optional: true
+            - name: SMTP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: nav-registry-secrets
+                  key: SMTP_PASSWORD
+                  optional: true
+            - name: GOOGLE_APP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: nav-registry-secrets
+                  key: GOOGLE_APP_PASSWORD
+                  optional: true
+            - name: EMAIL_FROM_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: nav-registry-secrets
+                  key: EMAIL_FROM_NAME
+                  optional: true
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 14000
+            failureThreshold: 60
+            periodSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 14000
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  namespace: nav-registry
+spec:
+  selector:
+    app: nav-frontend
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: nav-registry
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nav-frontend
+  template:
+    metadata:
+      labels:
+        app: nav-frontend
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: srv1237670
+      containers:
+        - name: frontend
+          image: nav-registry-frontend:dev
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 80
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            periodSeconds: 10
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: nav-registry-api
+  namespace: nav-registry
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: 120m
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    nginx.ingress.kubernetes.io/use-regex: "true"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: nav.navrobotec.online
+      http:
+        paths:
+          - path: /api(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: backend
+                port:
+                  number: 14000
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: nav-registry-web
+  namespace: nav-registry
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - nav.navrobotec.online
+      secretName: nav-registry-prod-tls
+  rules:
+    - host: nav.navrobotec.online
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend
+                port:
+                  number: 80

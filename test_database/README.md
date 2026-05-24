@@ -106,7 +106,9 @@ nav monitor --port COM8 --baud 9600
 
 ## Deploy To `nav.navrobotec.online`
 
-Production uses [docker-compose.production.yml](./docker-compose.production.yml) and [Caddyfile](./Caddyfile). Caddy terminates HTTPS and routes `/api/*` to the backend. Postgres and MinIO remain on the private Docker network.
+For a standalone server, production can use [docker-compose.production.yml](./docker-compose.production.yml) and [Caddyfile](./Caddyfile). Caddy terminates HTTPS and routes `/api/*` to the backend. Postgres and MinIO remain on the private Docker network.
+
+The current Nav hosting server already has a shared Kubernetes `ingress-nginx` edge and cert-manager Let's Encrypt issuer serving other applications. On that server, use [deploy/kubernetes/nav-registry.yaml](./deploy/kubernetes/nav-registry.yaml) instead of starting another Caddy listener. This preserves the existing ports and registers `nav.navrobotec.online` with the established multi-application HTTPS ingress.
 
 1. Point the DNS record for `nav.navrobotec.online` to the server IP.
 2. Install Docker Engine with the Compose plugin on the server.
