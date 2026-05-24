@@ -256,6 +256,19 @@ async function waitForDatabase() {
   throw new Error('Postgres did not become ready');
 }
 
+async function waitForObjectStorage() {
+  for (let attempt = 1; attempt <= 30; attempt += 1) {
+    try {
+      await minio.listBuckets();
+      return;
+    } catch (error) {
+      console.log(`[storage] waiting for MinIO (${attempt}/30)`);
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+  }
+  throw new Error('MinIO did not become ready');
+}
+
 async function ensureBucket(bucket) {
   const exists = await minio.bucketExists(bucket).catch(() => false);
   if (!exists) {
@@ -1284,6 +1297,7 @@ async function main() {
   }
   await waitForDatabase();
   await ensureSchema();
+  await waitForObjectStorage();
   await ensureBucket('nav-packages');
   await ensureBucket('nav-toolchains');
   await seedRegistry();
