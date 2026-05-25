@@ -194,11 +194,35 @@ CREATE TABLE IF NOT EXISTS publish_sessions (
     content_type TEXT,
     size_bytes BIGINT,
     upload_storage_key TEXT NOT NULL,
+    quarantine_storage_key TEXT,
     expected_sha256 TEXT,
     uploaded_sha256 TEXT,
+    manifest JSONB NOT NULL DEFAULT '{}',
+    readme TEXT,
+    changelog TEXT,
+    integrity_signature TEXT,
     expires_at TIMESTAMPTZ NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+CREATE TABLE IF NOT EXISTS scan_jobs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    subject_type TEXT NOT NULL,
+    subject_id UUID NOT NULL,
+    status TEXT NOT NULL DEFAULT 'queued',
+    priority INT NOT NULL DEFAULT 100,
+    attempts INT NOT NULL DEFAULT 0,
+    max_attempts INT NOT NULL DEFAULT 3,
+    last_error TEXT,
+    locked_by TEXT,
+    locked_at TIMESTAMPTZ,
+    started_at TIMESTAMPTZ,
+    finished_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_scan_jobs_queue ON scan_jobs(status, priority, created_at);
 
 CREATE TABLE IF NOT EXISTS security_scans (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

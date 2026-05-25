@@ -77,6 +77,34 @@ services:
         condition: service_started
     networks: [nav-internal]
 
+  worker:
+    build:
+      context: .
+      dockerfile: worker/Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: 9000
+      MINIO_USE_SSL: "false"
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      NAV_SCAN_MAX_ARCHIVE_BYTES: ${NAV_SCAN_MAX_ARCHIVE_BYTES:-104857600}
+      NAV_SCAN_MAX_EXPANDED_BYTES: ${NAV_SCAN_MAX_EXPANDED_BYTES:-262144000}
+      NAV_SCAN_MAX_FILES: ${NAV_SCAN_MAX_FILES:-5000}
+      NAV_SCAN_MAX_COMPRESSION_RATIO: ${NAV_SCAN_MAX_COMPRESSION_RATIO:-100}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    networks: [nav-internal]
+
   frontend:
     build:
       context: ./frontend

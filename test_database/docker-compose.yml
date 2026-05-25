@@ -82,6 +82,37 @@ services:
     networks:
       - nav-test
 
+  worker:
+    build:
+      context: .
+      dockerfile: worker/Dockerfile
+    container_name: nav-test-worker
+    restart: unless-stopped
+    env_file:
+      - ../.env.local
+    environment:
+      NODE_ENV: development
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: nav_sample
+      DB_PASSWORD: nav_sample_password
+      DB_NAME: nav_sample_registry
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: 9000
+      MINIO_USE_SSL: "false"
+      MINIO_ACCESS_KEY: navsample
+      MINIO_SECRET_KEY: navsamplepassword
+      NAV_SCAN_MAX_ARCHIVE_BYTES: 104857600
+      NAV_SCAN_MAX_EXPANDED_BYTES: 262144000
+      NAV_SCAN_MAX_FILES: 5000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    networks:
+      - nav-test
+
   frontend:
     build:
       context: ./frontend

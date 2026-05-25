@@ -54,9 +54,15 @@ const config = {
 const pool = new Pool(config.db);
 const minio = new Minio.Client(config.minio);
 const PgSessionStore = connectPgSimple(session);
+const PACKAGE_BUCKET = 'nav-packages';
+const QUARANTINE_BUCKET = 'nav-quarantine';
 
 function sha256(value) {
   return crypto.createHash('sha256').update(value).digest('hex');
+}
+
+function resultSafeId() {
+  return crypto.randomUUID();
 }
 
 function cliArtifactPath() {
@@ -974,6 +980,30 @@ async function ensureSchema() {
   await pool.query(`ALTER TABLE publish_sessions ADD COLUMN IF NOT EXISTS content_type TEXT`);
   await pool.query(`ALTER TABLE publish_sessions ADD COLUMN IF NOT EXISTS size_bytes BIGINT`);
   await pool.query(`ALTER TABLE publish_sessions ADD COLUMN IF NOT EXISTS uploaded_sha256 TEXT`);
+  await pool.query(`ALTER TABLE publish_sessions ADD COLUMN IF NOT EXISTS quarantine_storage_key TEXT`);
+  await pool.query(`ALTER TABLE publish_sessions ADD COLUMN IF NOT EXISTS manifest JSONB NOT NULL DEFAULT '{}'`);
+  await pool.query(`ALTER TABLE publish_sessions ADD COLUMN IF NOT EXISTS readme TEXT`);
+  await pool.query(`ALTER TABLE publish_sessions ADD COLUMN IF NOT EXISTS changelog TEXT`);
+  await pool.query(`ALTER TABLE publish_sessions ADD COLUMN IF NOT EXISTS integrity_signature TEXT`);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS scan_jobs (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      subject_type TEXT NOT NULL,
+      subject_id UUID NOT NULL,
+      status TEXT NOT NULL DEFAULT 'queued',
+      priority INT NOT NULL DEFAULT 100,
+      attempts INT NOT NULL DEFAULT 0,
+      max_attempts INT NOT NULL DEFAULT 3,
+      last_error TEXT,
+      locked_by TEXT,
+      locked_at TIMESTAMPTZ,
+      started_at TIMESTAMPTZ,
+      finished_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_scan_jobs_queue ON scan_jobs(status, priority, created_at)`);
   await pool.query(`ALTER TABLE package_versions ADD COLUMN IF NOT EXISTS changelog TEXT`);
   await pool.query(`ALTER TABLE toolchain_artifacts ALTER COLUMN signature DROP NOT NULL`);
 }
@@ -1360,7 +1390,8 @@ async function main() {
   await waitForDatabase();
   await ensureSchema();
   await waitForObjectStorage();
-  await ensureBucket('nav-packages');
+  await ensureBucket(PACKAGE_BUCKET);
+  await ensureBucket(QUARANTINE_BUCKET);
   await ensureBucket('nav-toolchains');
   await seedRegistry();
   configurePassport();
@@ -1963,10 +1994,11 @@ echo "Nav installed. Open a new terminal, or run: . \\"$profile_file\\"; nav che
     if (existing.rowCount > 0) return res.status(409).json({ error: 'Package version already exists and is immutable' });
     const fileName = slugify(req.body.file_name || `${packageSlug}-${version}.tar.zst`);
     const key = `public/${namespaceName}/${packageSlug}/${version}/${fileName}`;
+    const quarantineKey = `quarantine/${resultSafeId()}/${namespaceName}/${packageSlug}/${version}/${fileName}`;
     const result = await pool.query(
       `INSERT INTO publish_sessions
-       (user_id, package_id, version, status, file_name, content_type, size_bytes, upload_storage_key, expected_sha256, expires_at)
-       VALUES ($1, $2, $3, 'initialized', $4, $5, $6, $7, $8, now() + interval '30 minutes')
+       (user_id, package_id, version, status, file_name, content_type, size_bytes, upload_storage_key, quarantine_storage_key, expected_sha256, expires_at)
+       VALUES ($1, $2, $3, 'initialized', $4, $5, $6, $7, $8, $9, now() + interval '30 minutes')
        RETURNING *`,
       [
         req.user.sub,
@@ -1976,6 +2008,7 @@ echo "Nav installed. Open a new terminal, or run: . \\"$profile_file\\"; nav che
         req.body.content_type || 'application/octet-stream',
         req.body.size_bytes || null,
         key,
+        quarantineKey,
         req.body.expected_sha256 || null
       ]
     );
@@ -2009,14 +2042,17 @@ echo "Nav installed. Open a new terminal, or run: . \\"$profile_file\\"; nav che
     if (session.rows[0].expected_sha256 && session.rows[0].expected_sha256 !== hash) {
       return res.status(400).json({ error: 'Uploaded archive SHA256 does not match expected_sha256' });
     }
-    await ensureBucket('nav-packages');
-    await minio.putObject('nav-packages', session.rows[0].upload_storage_key, buffer, buffer.length, {
+    await ensureBucket(QUARANTINE_BUCKET);
+    const quarantineKey = session.rows[0].quarantine_storage_key || `quarantine/${session.rows[0].id}/${session.rows[0].file_name}`;
+    await minio.putObject(QUARANTINE_BUCKET, quarantineKey, buffer, buffer.length, {
       'Content-Type': session.rows[0].content_type || req.headers['content-type'] || 'application/octet-stream',
       'x-amz-meta-sha256': hash
     });
     const updated = await pool.query(
-      `UPDATE publish_sessions SET status = 'uploaded', size_bytes = $1, uploaded_sha256 = $2 WHERE id = $3 RETURNING *`,
-      [buffer.length, hash, session.rows[0].id]
+      `UPDATE publish_sessions
+       SET status = 'uploaded', size_bytes = $1, uploaded_sha256 = $2, quarantine_storage_key = $3
+       WHERE id = $4 RETURNING *`,
+      [buffer.length, hash, quarantineKey, session.rows[0].id]
     );
     await audit(req.user.sub, 'publish.upload', 'publish_session', session.rows[0].id, { bytes: buffer.length, sha256: hash }, req);
     res.json({ session: updated.rows[0], sha256: hash, size_bytes: buffer.length });
@@ -2039,53 +2075,57 @@ echo "Nav installed. Open a new terminal, or run: . \\"$profile_file\\"; nav che
     if (changelog && !manifest.changelog) {
       manifest.changelog = changelog;
     }
-    const versionRow = await pool.query(
-      `INSERT INTO package_versions (package_id, version, manifest, readme, changelog, checksum_sha256, integrity_signature, published_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    const existingJob = await pool.query(
+      `SELECT id FROM scan_jobs WHERE subject_type = 'publish_session' AND subject_id = $1 AND status IN ('queued', 'running', 'passed')`,
+      [item.id]
+    );
+    if (existingJob.rowCount === 0) {
+      await pool.query(
+        `INSERT INTO scan_jobs (subject_type, subject_id, status, priority)
+         VALUES ('publish_session', $1, 'queued', 100)`,
+        [item.id]
+      );
+    }
+    const queued = await pool.query(
+      `UPDATE publish_sessions
+       SET status = 'queued',
+           manifest = $1,
+           readme = $2,
+           changelog = $3,
+           integrity_signature = $4
+       WHERE id = $5
        RETURNING *`,
-      [
-        item.package_id,
-        item.version,
-        manifest,
-        req.body.readme || '',
-        changelog || null,
-        item.uploaded_sha256,
-        req.body.integrity_signature || null,
-        req.user.sub
-      ]
-    ).catch(error => {
-      if (error.code === '23505') {
-        const conflict = new Error('Package version already exists and is immutable');
-        conflict.status = 409;
-        throw conflict;
-      }
-      throw error;
-    });
-    await pool.query(
-      `INSERT INTO package_artifacts (package_version_id, artifact_type, storage_bucket, storage_key, content_type, size_bytes, sha256)
-       VALUES ($1, 'archive', 'nav-packages', $2, $3, $4, $5)`,
-      [versionRow.rows[0].id, item.upload_storage_key, item.content_type || 'application/octet-stream', item.size_bytes, item.uploaded_sha256]
+      [manifest, req.body.readme || '', changelog || null, req.body.integrity_signature || null, item.id]
     );
-    await pool.query(
-      `INSERT INTO security_scans (subject_type, subject_id, scanner, status, result)
-       VALUES ('package_version', $1, 'nav-archive-policy-v1', 'pass', $2)`,
-      [versionRow.rows[0].id, { checks: ['sha256', 'single-primary-archive', 'manifest-present'], validation_level: 'basic' }]
-    );
-    await pool.query(`UPDATE publish_sessions SET status = 'published' WHERE id = $1`, [item.id]);
-    await audit(req.user.sub, 'publish.complete', 'package_version', versionRow.rows[0].id, {
+    await audit(req.user.sub, 'publish.queued', 'publish_session', item.id, {
       namespace: item.namespace,
       package: item.slug,
       version: item.version
     }, req);
-    res.status(201).json({
-      version: versionRow.rows[0],
-      artifact: {
-        bucket: 'nav-packages',
-        key: item.upload_storage_key,
-        sha256: item.uploaded_sha256,
-        size_bytes: item.size_bytes
-      }
+    res.status(202).json({
+      session: queued.rows[0],
+      status: 'queued',
+      message: 'Archive accepted into quarantine and queued for security scan.'
     });
+  });
+
+  app.get('/publish/:sessionId/status', authRequired, async (req, res) => {
+    const result = await pool.query(
+      `SELECT ps.*, p.slug, ns.name AS namespace,
+              sj.id AS scan_job_id, sj.status AS scan_status, sj.last_error AS scan_error,
+              pv.id AS package_version_id
+       FROM publish_sessions ps
+       JOIN packages p ON p.id = ps.package_id
+       JOIN namespaces ns ON ns.id = p.namespace_id
+       LEFT JOIN scan_jobs sj ON sj.subject_type = 'publish_session' AND sj.subject_id = ps.id
+       LEFT JOIN package_versions pv ON pv.package_id = ps.package_id AND pv.version = ps.version
+       WHERE ps.id = $1 AND ps.user_id = $2
+       ORDER BY sj.created_at DESC
+       LIMIT 1`,
+      [req.params.sessionId, req.user.sub]
+    );
+    if (result.rowCount === 0) return res.status(404).json({ error: 'Publish session not found' });
+    res.json({ session: result.rows[0] });
   });
 
   app.get('/packages/:namespace/:name/versions/:version/download', async (req, res) => {
