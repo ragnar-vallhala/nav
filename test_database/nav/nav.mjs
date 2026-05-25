@@ -6,6 +6,7 @@ import os from 'node:os';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
+import http from 'node:http';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const LEGACY_HOME = path.join(ROOT, '.nav-home');
@@ -122,7 +123,8 @@ Usage:
   nav help
   nav check
   nav signup <name> <email> <password>
-  nav login <email> <password>
+  nav login
+  nav logout
   nav whoami
 
   nav search [query]
@@ -155,7 +157,8 @@ Usage:
 
 Examples:
   nav signup "Your Name" you@example.com <password>
-  nav login you@example.com <password>
+  nav login
+  nav logout
   nav search esp32
   nav setup
   # empty folders are initialized from nav/navhal@0.1.0 in the registry
@@ -225,7 +228,8 @@ async function main() {
     if (!command || command === 'help' || command === '--help') return usage();
     if (command === 'check') return check(subcommand);
     if (command === 'signup') return signup(subcommand, rest[0], rest[1]);
-    if (command === 'login') return login(subcommand, rest[0]);
+    if (command === 'login') return login([subcommand, ...rest].filter(Boolean));
+    if (command === 'logout') return logout();
     if (command === 'whoami') return whoami();
     if (command === 'search') return packageList([subcommand, ...rest].filter(Boolean).join(' '));
     if (command === 'namespace') return namespaceCommand(subcommand, rest);
@@ -326,14 +330,130 @@ async function signup(name, email, password) {
   console.log('Check your email for the 5-minute OTP, then verify in the web dashboard.');
 }
 
-async function login(email, password) {
-  if (!email || !password) throw new Error('login requires <email> <password>');
-  const data = await request('/auth/login', {
-    method: 'POST',
-    body: JSON.stringify({ email, password })
-  });
-  await writeConfig({ token: data.token, user: data.user, registry: API });
+async function login(rawArgs = []) {
+  if (rawArgs.length > 0) {
+    throw new Error('nav login no longer accepts passwords in the terminal. Run `nav login` and complete sign-in in your browser.');
+  }
+
+  const state = crypto.randomBytes(18).toString('hex');
+  const result = await waitForBrowserLogin(state);
+  await writeConfig({ token: result.token, registry: API });
+  const data = await request('/me');
+  await writeConfig({ token: result.token, user: data.user, registry: API });
   console.log(`logged in as ${data.user.email}`);
+}
+
+async function logout() {
+  const config = await readConfig();
+  if (!config.token) {
+    console.log('not logged in');
+    return;
+  }
+  delete config.token;
+  delete config.user;
+  await writeConfig(config);
+  console.log('logged out');
+}
+
+async function waitForBrowserLogin(state) {
+  const server = http.createServer();
+  let settled = false;
+  let timeout;
+
+  const resultPromise = new Promise((resolve, reject) => {
+    server.on('request', (req, res) => {
+      const callbackUrl = new URL(req.url || '/', 'http://127.0.0.1');
+      if (callbackUrl.pathname !== '/callback') {
+        res.writeHead(404, { 'Content-Type': 'text/plain' });
+        res.end('Not found');
+        return;
+      }
+
+      const error = callbackUrl.searchParams.get('error');
+      const token = callbackUrl.searchParams.get('token');
+      const returnedState = callbackUrl.searchParams.get('state');
+
+      if (returnedState !== state) {
+        res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end('<h1>Nav login failed</h1><p>State mismatch. Close this tab and run nav login again.</p>');
+        if (!settled) {
+          settled = true;
+          reject(new Error('login state mismatch'));
+        }
+        return;
+      }
+
+      if (error || !token) {
+        res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(`<h1>Nav login failed</h1><p>${escapeHtml(error || 'Missing token')}</p>`);
+        if (!settled) {
+          settled = true;
+          reject(new Error(error || 'login did not return a token'));
+        }
+        return;
+      }
+
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end('<h1>Nav login complete</h1><p>You can close this browser tab and return to your terminal.</p>');
+      if (!settled) {
+        settled = true;
+        resolve({ token });
+      }
+    });
+
+    server.on('error', reject);
+    timeout = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        reject(new Error('login timed out after 10 minutes'));
+      }
+    }, 10 * 60 * 1000);
+  });
+
+  await new Promise((resolve, reject) => {
+    server.listen(0, '127.0.0.1', () => resolve());
+    server.once('error', reject);
+  });
+
+  const { port } = server.address();
+  const redirectUri = `http://127.0.0.1:${port}/callback`;
+  const loginUrl = `${API}/auth/cli/start?redirect_uri=${encodeURIComponent(redirectUri)}&state=${encodeURIComponent(state)}`;
+  console.log('Opening Nav login in your browser.');
+  console.log(`If it does not open, paste this link into your browser:\n${yellow(loginUrl)}`);
+  openBrowser(loginUrl);
+
+  try {
+    return await resultPromise;
+  } finally {
+    clearTimeout(timeout);
+    await new Promise(resolve => server.close(() => resolve()));
+  }
+}
+
+function openBrowser(url) {
+  const options = { detached: true, stdio: 'ignore' };
+  let child;
+  if (process.platform === 'win32') {
+    child = spawn('cmd', ['/c', 'start', '', url], options);
+  } else if (process.platform === 'darwin') {
+    child = spawn('open', [url], options);
+  } else {
+    child = spawn('xdg-open', [url], options);
+  }
+  child.on('error', () => {});
+  child.unref();
+}
+
+function yellow(value) {
+  return process.stdout.isTTY ? `\x1b[33m${value}\x1b[0m` : value;
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 async function whoami() {
@@ -839,7 +959,7 @@ async function toolchainCommand(subcommand, rest) {
       data.toolchains.map(tc => ({
         toolchain: `${tc.name}@${tc.version}`,
         vendor: `${tc.vendor_kind}/${tc.vendor}`,
-        platform: `${tc.os}/${tc.arch}`,
+        platform: tc.os && tc.arch ? `${tc.os}/${tc.arch}` : 'metadata',
         official: tc.homepage_url || tc.upstream_url || ''
       }))
     );

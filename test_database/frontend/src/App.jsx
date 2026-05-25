@@ -46,6 +46,39 @@ function cn(...classes) {
   return classes.filter(Boolean).join(' ');
 }
 
+function readCliLoginRequest() {
+  const url = new URL(window.location.href);
+  const redirectUri = url.searchParams.get('cli_redirect') || '';
+  const state = url.searchParams.get('state') || '';
+  if (!redirectUri || !state) return null;
+  try {
+    const callback = new URL(redirectUri);
+    const allowed = callback.protocol === 'http:'
+      && ['127.0.0.1', 'localhost'].includes(callback.hostname)
+      && callback.pathname === '/callback';
+    return allowed ? { redirectUri, state } : null;
+  } catch {
+    return null;
+  }
+}
+
+function completeCliLogin(cliLogin, token) {
+  if (!cliLogin?.redirectUri || !token) return false;
+  const callback = new URL(cliLogin.redirectUri);
+  callback.searchParams.set('token', token);
+  callback.searchParams.set('state', cliLogin.state);
+  window.location.href = callback.toString();
+  return true;
+}
+
+function withCliParams(url, cliLogin) {
+  if (!cliLogin) return url;
+  const nextUrl = new URL(url, window.location.origin);
+  nextUrl.searchParams.set('cli_redirect', cliLogin.redirectUri);
+  nextUrl.searchParams.set('state', cliLogin.state);
+  return nextUrl.toString();
+}
+
 function Button({ children, variant = 'default', size = 'default', className = '', ...props }) {
   return (
     <button className={cn('btn', `btn-${variant}`, `btn-${size}`, className)} {...props}>
@@ -259,6 +292,7 @@ function App() {
   const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(false);
   const [theme, setTheme] = useState(() => localStorage.getItem('nav_theme') || 'light');
+  const [cliLogin] = useState(() => readCliLoginRequest());
 
   const isAuthed = Boolean(token);
 
@@ -273,6 +307,8 @@ function App() {
     if (oauthToken) {
       localStorage.setItem(TOKEN_KEY, oauthToken);
       setToken(oauthToken);
+      const callbackLogin = readCliLoginRequest();
+      if (completeCliLogin(callbackLogin, oauthToken)) return;
       url.searchParams.delete('token');
       window.history.replaceState({}, '', '/');
       setRoute('home');
@@ -395,6 +431,7 @@ function App() {
       localStorage.setItem(TOKEN_KEY, data.token);
       setToken(data.token);
       setUser(data.user);
+      if (completeCliLogin(cliLogin, data.token)) return;
       setNotice('Authenticated.');
       navigate('home');
     } catch (err) {
@@ -420,6 +457,7 @@ function App() {
       localStorage.setItem(TOKEN_KEY, data.token);
       setToken(data.token);
       setUser(data.user);
+      if (completeCliLogin(cliLogin, data.token)) return;
       setNotice('Email verified.');
       navigate('home');
     } catch (err) {
@@ -455,6 +493,7 @@ function App() {
       localStorage.setItem(TOKEN_KEY, data.token);
       setToken(data.token);
       setUser(data.user);
+      if (completeCliLogin(cliLogin, data.token)) return;
       setNotice('Password reset complete.');
       navigate('home');
     } catch (err) {
@@ -723,6 +762,7 @@ function App() {
         notice={notice}
         submitAuth={submitAuth}
         navigate={navigate}
+        cliLogin={cliLogin}
       />
     );
   }
@@ -822,7 +862,7 @@ function Header({ route, navigate, isAuthed, user, logout, theme, setTheme }) {
   );
 }
 
-function AuthPage({ mode, form, setForm, providers, error, notice, submitAuth, navigate }) {
+function AuthPage({ mode, form, setForm, providers, error, notice, submitAuth, navigate, cliLogin }) {
   const isSignup = mode === 'signup';
 
   return (
@@ -865,11 +905,11 @@ function AuthPage({ mode, form, setForm, providers, error, notice, submitAuth, n
         <div className="divider"><span>or continue with</span></div>
 
         <div className="oauth-row">
-          <a className={cn('btn btn-outline btn-default', !providers.google && 'disabled')} href={providers.google ? `${API}/auth/google` : undefined}>
+          <a className={cn('btn btn-outline btn-default', !providers.google && 'disabled')} href={providers.google ? withCliParams(`${API}/auth/google`, cliLogin) : undefined}>
             <Mail size={16} />
             Google
           </a>
-          <a className={cn('btn btn-outline btn-default', !providers.github && 'disabled')} href={providers.github ? `${API}/auth/github` : undefined}>
+          <a className={cn('btn btn-outline btn-default', !providers.github && 'disabled')} href={providers.github ? withCliParams(`${API}/auth/github`, cliLogin) : undefined}>
             <Github size={16} />
             GitHub
           </a>

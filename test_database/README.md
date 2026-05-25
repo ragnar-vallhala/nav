@@ -82,7 +82,8 @@ The installer pins the CLI to the registry URL and adds `nav` to the user's shel
 
 ```powershell
 nav signup "Your Name" you@example.com "strong-password"
-nav login you@example.com "strong-password"
+nav login
+nav logout
 nav namespace create your-name
 nav package create your-name blink-driver "Blink driver for STM32"
 nav pack .\blink-driver --out .\blink-driver-0.1.0.navpkg
