@@ -611,7 +611,7 @@ async function getNavHalPackageFiles() {
           kind: 'library',
           language: ['c', 'c++'],
           targets: ['esp32', 'stm32', 'rp2040', 'avr'],
-          toolchains: ['arm-none-eabi']
+          toolchains: ['cmake', 'ninja', 'arm-none-eabi']
         }, null, 2)).toString('base64')
       });
     }
@@ -652,7 +652,9 @@ async function seedEmbeddedCatalog(maintainer, namespaceId) {
     { name: 'Microchip', slug: 'microchip', kind: 'hardware', trust: 'mirrored_official', url: 'https://www.microchip.com' },
     { name: 'NXP', slug: 'nxp', kind: 'hardware', trust: 'mirrored_official', url: 'https://www.nxp.com' },
     { name: 'MSYS2', slug: 'msys2', kind: 'official', trust: 'open_source', url: 'https://www.msys2.org' },
-    { name: 'AVRDUDE', slug: 'avrdude', kind: 'official', trust: 'open_source', url: 'https://github.com/avrdudes/avrdude' }
+    { name: 'AVRDUDE', slug: 'avrdude', kind: 'official', trust: 'open_source', url: 'https://github.com/avrdudes/avrdude' },
+    { name: 'Kitware', slug: 'kitware', kind: 'official', trust: 'mirrored_official', url: 'https://cmake.org' },
+    { name: 'Ninja Build', slug: 'ninja-build', kind: 'official', trust: 'open_source', url: 'https://ninja-build.org' }
   ];
 
   const vendors = new Map();
@@ -693,6 +695,30 @@ async function seedEmbeddedCatalog(maintainer, namespaceId) {
       platformDownloads: {
         'windows/x64': 'https://developer.arm.com/-/media/Files/downloads/gnu/14.3.rel1/binrel/arm-gnu-toolchain-14.3.rel1-mingw-w64-x86_64-arm-none-eabi.zip',
         'linux/x64': 'https://developer.arm.com/-/media/Files/downloads/gnu/14.3.rel1/binrel/arm-gnu-toolchain-14.3.rel1-x86_64-arm-none-eabi.tar.xz'
+      }
+    },
+    {
+      vendorSlug: 'kitware',
+      name: 'cmake',
+      description: 'CMake build system used by portable firmware projects.',
+      version: '3.31.8',
+      sourceKind: 'official',
+      manifest: { targets: ['host-build'], executables: ['cmake'] },
+      platforms: ['linux/x64'],
+      platformDownloads: {
+        'linux/x64': 'https://github.com/Kitware/CMake/releases/download/v3.31.8/cmake-3.31.8-linux-x86_64.tar.gz'
+      }
+    },
+    {
+      vendorSlug: 'ninja-build',
+      name: 'ninja',
+      description: 'Ninja fast build executor used by CMake firmware builds.',
+      version: '1.12.1',
+      sourceKind: 'official',
+      manifest: { targets: ['host-build'], executables: ['ninja'] },
+      platforms: ['linux/x64'],
+      platformDownloads: {
+        'linux/x64': 'https://github.com/ninja-build/ninja/releases/download/v1.12.1/ninja-linux.zip'
       }
     },
     {
@@ -852,7 +878,7 @@ async function seedEmbeddedCatalog(maintainer, namespaceId) {
       kind: 'library',
       language: ['c', 'c++'],
       targets: ['esp32', 'stm32', 'rp2040', 'avr'],
-      toolchains: ['arm-none-eabi'],
+      toolchains: ['cmake', 'ninja', 'arm-none-eabi'],
       build_system: 'cmake',
       cmake_generator: 'Ninja',
       cmake_sample: 'hal_blink',
