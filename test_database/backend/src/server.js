@@ -829,7 +829,8 @@ async function seedEmbeddedCatalog(maintainer, namespaceId) {
       build_output: 'build/navhal/samples/portable/01_hal_blink/hal_blink',
       board: null,
       target: 'host',
-      uploader: 'local',
+      uploader: null,
+      run: 'none',
       flash_address: null,
       auto_compile: false,
       include_paths: [
