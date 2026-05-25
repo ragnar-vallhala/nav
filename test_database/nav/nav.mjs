@@ -434,7 +434,7 @@ function openBrowser(url) {
   const options = { detached: true, stdio: 'ignore' };
   let child;
   if (process.platform === 'win32') {
-    child = spawn('cmd', ['/c', 'start', '', url], options);
+    child = spawn('powershell', ['-NoProfile', '-Command', 'Start-Process', '-FilePath', url], options);
   } else if (process.platform === 'darwin') {
     child = spawn('open', [url], options);
   } else {
