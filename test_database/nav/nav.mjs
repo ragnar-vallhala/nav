@@ -994,7 +994,7 @@ async function initializeFromRegistryPackage(projectDir, spec) {
     target: installed.manifest?.target || 'host',
     uploader: installed.manifest?.uploader || 'local',
     flash_address: installed.manifest?.flash_address || null,
-    toolchains: installed.manifest?.toolchains || []
+    toolchains: installed.manifest?.toolchains || ['arm-none-eabi']
   };
   await writeProjectManifest(projectDir, baseManifest);
   console.log(`${bold('base project:')} ${normalized.namespace}/${normalized.name}@${normalized.version}`);
@@ -1350,16 +1350,16 @@ async function resolveProject(manifest) {
   const platform = currentPlatform();
   const resolvedToolchains = [];
   for (const name of toolchainSet) {
+    const systemToolchain = await resolveSystemToolchain(name);
+    if (systemToolchain) {
+      resolvedToolchains.push(systemToolchain);
+      continue;
+    }
+
     const match = allToolchains.find(tc => tc.name === name && tc.os === platform.os && tc.arch === platform.arch)
       || allToolchains.find(tc => tc.name === name && tc.os === platform.os && tc.arch);
     if (match) {
       resolvedToolchains.push(match);
-      continue;
-    }
-
-    const systemToolchain = await resolveSystemToolchain(name);
-    if (systemToolchain) {
-      resolvedToolchains.push(systemToolchain);
       continue;
     }
 
@@ -1637,6 +1637,10 @@ async function extractToolchainArchive(archivePath, archiveFormat, installDir) {
   }
   if (archiveFormat === 'tar.gz') {
     await runCommand('tar', ['-xzf', archivePath, '-C', extractDir], process.cwd());
+    return;
+  }
+  if (archiveFormat === 'tar.xz') {
+    await runCommand('tar', ['-xJf', archivePath, '-C', extractDir], process.cwd());
     return;
   }
   throw new Error(`Unsupported toolchain archive format: ${archiveFormat}`);
@@ -2345,11 +2349,15 @@ function enhanceProjectManifest(manifest, projectDir) {
     manifest.cmake_generator ||= 'Ninja';
     manifest.cmake_sample ||= 'hal_blink';
     manifest.build_output ||= 'build/navhal/samples/portable/01_hal_blink/hal_blink';
-    manifest.board ||= 'nucleo_f401re';
-    manifest.target ||= 'stm32f401';
-    manifest.uploader ||= 'stlink';
-    manifest.flash_address ||= '0x08000000';
-    manifest.toolchains = unique([...(manifest.toolchains || []), 'arm-none-eabi', 'stlink']);
+    manifest.board ||= null;
+    manifest.target ||= 'host';
+    manifest.uploader ||= 'local';
+    manifest.flash_address ||= null;
+    if (Array.isArray(manifest.toolchains)) {
+      manifest.toolchains = manifest.toolchains.filter(item => !['nav-packager', 'stlink'].includes(item));
+    } else {
+      manifest.toolchains = ['arm-none-eabi'];
+    }
   }
   return manifest;
 }
@@ -2459,7 +2467,7 @@ async function lockPathsExist(lock) {
       return false;
     }
   }
-  return paths.length > 0;
+  return true;
 }
 
 function parseSpec(spec) {

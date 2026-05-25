@@ -389,7 +389,7 @@ async function seedToolchain({ vendors, vendorSlug, name, description, version, 
   for (const platform of platforms) {
     const [os, arch] = platform.split('/');
     const downloadUrl = platformDownloads[platform];
-    const archiveFormat = downloadUrl?.endsWith('.tar.gz') ? 'tar.gz' : 'zip';
+    const archiveFormat = downloadUrl?.endsWith('.tar.gz') ? 'tar.gz' : downloadUrl?.endsWith('.tar.xz') ? 'tar.xz' : 'zip';
     const archiveKey = `${sourceKind}/${vendor.slug}/${name}/${version}/${os}/${arch}/${name}-${version}.${archiveFormat}`;
     let archive;
     const existing = await pool.query(
@@ -411,7 +411,7 @@ async function seedToolchain({ vendors, vendorSlug, name, description, version, 
       };
     } else if (downloadUrl) {
       console.log(`[seed] downloading real toolchain ${name}@${version} ${platform}`);
-      archive = await putRemoteObject('nav-toolchains', archiveKey, downloadUrl, archiveFormat === 'zip' ? 'application/zip' : 'application/gzip');
+      archive = await putRemoteObject('nav-toolchains', archiveKey, downloadUrl, archiveFormat === 'zip' ? 'application/zip' : archiveFormat === 'tar.xz' ? 'application/x-xz' : 'application/gzip');
     } else if (config.isProduction) {
       console.warn(`[seed] skipping ${name}@${version} ${platform}; no real upstream artifact has been configured`);
       continue;
@@ -605,7 +605,7 @@ async function getNavHalPackageFiles() {
           kind: 'library',
           language: ['c', 'c++'],
           targets: ['esp32', 'stm32', 'rp2040', 'avr'],
-          toolchains: []
+          toolchains: ['arm-none-eabi']
         }, null, 2)).toString('base64')
       });
     }
@@ -685,7 +685,8 @@ async function seedEmbeddedCatalog(maintainer, namespaceId) {
       manifest: { targets: ['cortex-m0', 'cortex-m3', 'cortex-m4', 'cortex-m7', 'cortex-m33'], executables: ['arm-none-eabi-gcc', 'arm-none-eabi-g++', 'arm-none-eabi-objcopy'] },
       platforms: commonPlatforms,
       platformDownloads: {
-        'windows/x64': 'https://developer.arm.com/-/media/Files/downloads/gnu/14.3.rel1/binrel/arm-gnu-toolchain-14.3.rel1-mingw-w64-x86_64-arm-none-eabi.zip'
+        'windows/x64': 'https://developer.arm.com/-/media/Files/downloads/gnu/14.3.rel1/binrel/arm-gnu-toolchain-14.3.rel1-mingw-w64-x86_64-arm-none-eabi.zip',
+        'linux/x64': 'https://developer.arm.com/-/media/Files/downloads/gnu/14.3.rel1/binrel/arm-gnu-toolchain-14.3.rel1-x86_64-arm-none-eabi.tar.xz'
       }
     },
     {
@@ -821,7 +822,7 @@ async function seedEmbeddedCatalog(maintainer, namespaceId) {
       kind: 'library',
       language: ['c', 'c++'],
       targets: ['esp32', 'stm32', 'rp2040', 'avr'],
-      toolchains: [],
+      toolchains: ['arm-none-eabi'],
       build_system: 'cmake',
       cmake_generator: 'Ninja',
       cmake_sample: 'hal_blink',
