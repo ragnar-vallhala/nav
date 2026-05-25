@@ -197,6 +197,79 @@ function terminalWidth() {
   return Math.max(80, Number(process.stdout.columns || 120));
 }
 
+const COLORS = {
+  reset: '\x1b[0m',
+  bold: '\x1b[1m',
+  dim: '\x1b[2m',
+  red: '\x1b[31m',
+  green: '\x1b[32m',
+  yellow: '\x1b[33m',
+  blue: '\x1b[34m',
+  magenta: '\x1b[35m',
+  cyan: '\x1b[36m'
+};
+
+function supportsColor() {
+  return process.stdout.isTTY && process.env.NO_COLOR === undefined;
+}
+
+function color(value, name) {
+  if (!supportsColor() || !COLORS[name]) return String(value);
+  return `${COLORS[name]}${value}${COLORS.reset}`;
+}
+
+function bold(value) {
+  return color(value, 'bold');
+}
+
+function dim(value) {
+  return color(value, 'dim');
+}
+
+function green(value) {
+  return color(value, 'green');
+}
+
+function red(value) {
+  return color(value, 'red');
+}
+
+function yellow(value) {
+  return color(value, 'yellow');
+}
+
+function cyan(value) {
+  return color(value, 'cyan');
+}
+
+function blue(value) {
+  return color(value, 'blue');
+}
+
+function printInfo(message) {
+  console.log(`${blue('i')} ${message}`);
+}
+
+function printSuccess(message) {
+  console.log(`${green('ok')} ${message}`);
+}
+
+function printWarn(message) {
+  console.log(`${yellow('warn')} ${message}`);
+}
+
+function printStep(message) {
+  console.log(`${cyan('=>')} ${message}`);
+}
+
+function formatPath(value) {
+  return dim(value);
+}
+
+function formatCommand(value) {
+  return blue(value);
+}
+
 function truncateCell(value, width) {
   const text = String(value ?? '');
   if (text.length <= width) return text;
@@ -233,8 +306,8 @@ function printTable(columns, rows, { maxWidth = terminalWidth() } = {}) {
     .join('   ')
     .trimEnd();
   const header = Object.fromEntries(columns.map(column => [column.key, column.header]));
-  console.log(line(header));
-  console.log(columns.map((_, index) => '-'.repeat(preferred[index])).join('   ').trimEnd());
+  console.log(cyan(line(header)));
+  console.log(dim(columns.map((_, index) => '-'.repeat(preferred[index])).join('   ').trimEnd()));
   rows.forEach(row => console.log(line(row)));
 }
 
@@ -272,7 +345,7 @@ async function main() {
     if (command === 'toolchain') return toolchainCommand(subcommand, rest);
     throw new Error(`Unknown command: ${command}`);
   } catch (error) {
-    console.error(`nav: ${error.message}`);
+    console.error(red(`nav: ${error.message}`));
     process.exitCode = 1;
   }
 }
@@ -323,9 +396,9 @@ async function request(route, options = {}) {
 async function smoke() {
   const health = await request('/health');
   const stats = await request('/stats');
-  console.log(`backend: ${health.status}`);
-  console.log(`packages: ${stats.packages}, versions: ${stats.package_versions}, toolchains: ${stats.toolchains}`);
-  console.log(`registry: ${API}`);
+  console.log(`${bold('backend:')} ${health.status === 'healthy' ? green(health.status) : yellow(health.status)}`);
+  console.log(`${bold('packages:')} ${stats.packages}, ${bold('versions:')} ${stats.package_versions}, ${bold('toolchains:')} ${stats.toolchains}`);
+  console.log(`${bold('registry:')} ${cyan(API)}`);
 }
 
 async function check(projectArg) {
@@ -333,21 +406,21 @@ async function check(projectArg) {
   const projectDir = resolveExistingProjectDir(projectArg);
   const manifest = await readProjectManifest(projectDir).catch(() => null);
   if (!manifest) {
-    console.log('project: no nav.toml/nav.json found from current folder upward or below');
+    printWarn('project: no nav.toml/nav.json found from current folder upward or below');
     return;
   }
   const lockPath = path.join(projectDir, '.nav', 'lock.json');
   let lock = await readJson(lockPath).catch(() => null);
   if (!lock || !(await lockPathsExist(lock))) {
-    console.log('project dependencies/toolchains are not fully installed; running nav setup');
+    printInfo('project dependencies/toolchains are not fully installed; running nav setup');
     await setupProject(projectDir);
     lock = await readJson(lockPath).catch(() => null);
   }
-  console.log(`project: ${manifest.name || path.basename(projectDir)}`);
-  console.log(`board: ${manifest.board || '-'}`);
-  console.log(`dependencies: ${(manifest.dependencies || []).length}`);
-  console.log(`toolchains requested: ${(manifest.toolchains || []).join(', ') || '-'}`);
-  console.log(`lock: ${lock ? `${lock.toolchains.length} toolchains, ${lock.packages.length} packages` : 'missing, run nav setup'}`);
+  console.log(`${bold('project:')} ${manifest.name || path.basename(projectDir)}`);
+  console.log(`${bold('board:')} ${manifest.board || '-'}`);
+  console.log(`${bold('dependencies:')} ${(manifest.dependencies || []).length}`);
+  console.log(`${bold('toolchains requested:')} ${(manifest.toolchains || []).join(', ') || '-'}`);
+  console.log(`${bold('lock:')} ${lock ? green(`${lock.toolchains.length} toolchains, ${lock.packages.length} packages`) : yellow('missing, run nav setup')}`);
 }
 
 function parseSignupArgs(values = []) {
@@ -366,7 +439,7 @@ async function signup(values = []) {
     method: 'POST',
     body: JSON.stringify({ name, email, password })
   });
-  console.log(`OTP sent to ${data.email}.`);
+  printSuccess(`OTP sent to ${data.email}.`);
   if (!process.stdin.isTTY) {
     throw new Error('signup verification needs an interactive terminal so you can enter the OTP');
   }
@@ -384,7 +457,7 @@ async function verifyEmail(email, otp) {
     body: JSON.stringify({ email, otp })
   });
   await writeConfig({ token: result.token, user: result.user, registry: API });
-  console.log(`account created successfully and logged in as ${result.user.email}`);
+  printSuccess(`account created successfully and logged in as ${result.user.email}`);
 }
 
 async function login(rawArgs = []) {
@@ -397,19 +470,19 @@ async function login(rawArgs = []) {
   await writeConfig({ token: result.token, registry: API });
   const data = await request('/me');
   await writeConfig({ token: result.token, user: data.user, registry: API });
-  console.log(`logged in as ${data.user.email}`);
+  printSuccess(`logged in as ${data.user.email}`);
 }
 
 async function logout() {
   const config = await readConfig();
   if (!config.token) {
-    console.log('not logged in');
+    printWarn('not logged in');
     return;
   }
   delete config.token;
   delete config.user;
   await writeConfig(config);
-  console.log('logged out');
+  printSuccess('logged out');
 }
 
 async function updateCli() {
@@ -417,7 +490,7 @@ async function updateCli() {
   const tempPath = path.join(os.tmpdir(), `nav-cli-${Date.now()}-${crypto.randomBytes(4).toString('hex')}.mjs`);
   const backupPath = `${currentPath}.bak`;
 
-  console.log(`checking latest CLI from ${API}`);
+  printStep(`checking latest CLI from ${cyan(API)}`);
   const bytes = Buffer.from(await request('/downloads/nav/nav.mjs'));
   await fs.writeFile(tempPath, bytes);
 
@@ -427,7 +500,7 @@ async function updateCli() {
   const nextHash = await sha256File(tempPath);
   if (currentHash === nextHash) {
     await fs.rm(tempPath, { force: true });
-    console.log('Nav CLI is already up to date.');
+    printSuccess('Nav CLI is already up to date.');
     return;
   }
 
@@ -436,8 +509,8 @@ async function updateCli() {
   if (process.platform !== 'win32') await fs.chmod(currentPath, 0o755).catch(() => null);
   await fs.rm(tempPath, { force: true });
 
-  console.log('Nav CLI updated successfully.');
-  console.log(`backup: ${backupPath}`);
+  printSuccess('Nav CLI updated successfully.');
+  console.log(`${bold('backup:')} ${formatPath(backupPath)}`);
 }
 
 async function waitForBrowserLogin(state) {
@@ -515,7 +588,7 @@ async function waitForBrowserLogin(state) {
   const { port } = server.address();
   const redirectUri = `http://127.0.0.1:${port}/callback`;
   const loginUrl = `${API}/auth/cli/start?redirect_uri=${encodeURIComponent(redirectUri)}&state=${encodeURIComponent(state)}`;
-  console.log('Opening Nav login in your browser.');
+  printStep('Opening Nav login in your browser.');
   console.log(`If it does not open, paste this link into your browser:\n${yellow(loginUrl)}`);
   openBrowser(loginUrl);
 
@@ -648,10 +721,6 @@ function cliLoginPage({ title, message, tone }) {
 </html>`;
 }
 
-function yellow(value) {
-  return process.stdout.isTTY ? `\x1b[33m${value}\x1b[0m` : value;
-}
-
 function escapeHtml(value) {
   return String(value)
     .replace(/&/g, '&amp;')
@@ -662,7 +731,7 @@ function escapeHtml(value) {
 
 async function whoami() {
   const data = await request('/me');
-  console.log(`${data.user.name} <${data.user.email}>`);
+  console.log(`${bold(data.user.name)} ${dim(`<${data.user.email}>`)}`);
 }
 
 async function namespaceCommand(subcommand, rest) {
@@ -689,7 +758,7 @@ async function namespaceCommand(subcommand, rest) {
       method: 'POST',
       body: JSON.stringify({ name: rest[0] })
     });
-    console.log(`created namespace ${data.namespace.name}`);
+    printSuccess(`created namespace ${data.namespace.name}`);
     return;
   }
   if (subcommand === 'members') {
@@ -714,7 +783,7 @@ async function namespaceCommand(subcommand, rest) {
       method: 'POST',
       body: JSON.stringify({ email, role })
     });
-    console.log(`added ${data.member.email} as ${data.member.role}`);
+    printSuccess(`added ${data.member.email} as ${data.member.role}`);
     return;
   }
   throw new Error('namespace command must be list, create, members, or member-add');
@@ -729,7 +798,7 @@ async function packageCommand(subcommand, rest) {
       method: 'POST',
       body: JSON.stringify({ namespace, slug, name: slug, description })
     });
-    console.log(`created package ${data.package.namespace}/${data.package.slug}`);
+    printSuccess(`created package ${data.package.namespace}/${data.package.slug}`);
     return;
   }
   if (subcommand === 'info') return packageInfo(rest[0]);
@@ -756,10 +825,10 @@ async function packageList(query = '') {
 async function packageInfo(spec) {
   const { namespace, name } = parseSpec(spec);
   const data = await request(`/packages/${namespace}/${name}`);
-  console.log(`${data.package.namespace}/${data.package.slug}`);
+  console.log(bold(`${data.package.namespace}/${data.package.slug}`));
   console.log(data.package.description || '');
-  console.log(`license: ${data.package.license || '-'}`);
-  console.log('versions:');
+  console.log(`${bold('license:')} ${data.package.license || '-'}`);
+  console.log(bold('versions:'));
   printTable(
     [
       { key: 'version', header: 'Version', min: 10, max: 18 },
@@ -777,11 +846,11 @@ async function packageInfo(spec) {
 async function docs(spec) {
   const { namespace, name } = parseSpec(spec);
   const data = await request(`/packages/${namespace}/${name}/docs`);
-  console.log(`${data.package.namespace}/${data.package.name}`);
+  console.log(bold(`${data.package.namespace}/${data.package.name}`));
   console.log(data.package.description || '');
-  console.log('\nCommands:');
-  Object.entries(data.commands).forEach(([key, value]) => console.log(`  ${key}: ${value}`));
-  console.log('\nManifest:');
+  console.log(`\n${bold('Commands:')}`);
+  Object.entries(data.commands).forEach(([key, value]) => console.log(`  ${cyan(key)}: ${formatCommand(value)}`));
+  console.log(`\n${bold('Manifest:')}`);
   console.log(JSON.stringify(data.manifest, null, 2));
 }
 
@@ -790,8 +859,8 @@ async function createProject(projectName, rest) {
   const { board } = parseSetupArgs(rest, 'esp32-devkit-v1');
   const projectDir = path.resolve(projectName);
   await initializeProjectScaffold(projectDir, projectName, board, { overwriteMain: false });
-  console.log(`created ${projectDir}`);
-  console.log('next: cd into the project and run nav setup');
+  printSuccess(`created ${formatPath(projectDir)}`);
+  console.log(`${bold('next:')} ${formatCommand('cd into the project and run nav setup')}`);
 }
 
 async function initializeProjectScaffold(projectDir, projectName, board, options = {}) {
@@ -841,7 +910,7 @@ async function setupProject(projectInput) {
   const projectDir = resolveSetupProjectDir(projectArg);
   let manifest = await readProjectManifest(projectDir).catch(() => null);
   if (!manifest) {
-    console.log(`no nav.toml/nav.json found; initializing from registry package nav/navhal@0.1.0`);
+    printStep('no nav.toml/nav.json found; initializing from registry package nav/navhal@0.1.0');
     await initializeFromRegistryPackage(projectDir, 'nav/navhal@0.1.0');
     manifest = await readProjectManifest(projectDir);
   }
@@ -850,7 +919,7 @@ async function setupProject(projectInput) {
   const installedPackages = [];
 
   for (const pkg of resolution.packages) {
-    console.log(`resolving package ${pkg.namespace}/${pkg.name}@${pkg.version}`);
+    printStep(`resolving package ${pkg.namespace}/${pkg.name}@${pkg.version}`);
     const installed = await installPackageToProject(projectDir, pkg.spec, pkg.version);
     installedPackages.push(installed);
   }
@@ -858,7 +927,7 @@ async function setupProject(projectInput) {
   await materializeProjectRuntime(projectDir, manifest, installedPackages);
 
   for (const toolchain of resolution.toolchains) {
-    console.log(`resolving ${toolchain.os}/${toolchain.arch} toolchain ${toolchain.name}@${toolchain.version}`);
+    printStep(`resolving ${toolchain.os}/${toolchain.arch} toolchain ${toolchain.name}@${toolchain.version}`);
     const installed = await installToolchain(toolchain);
     installedToolchains.push(installed);
   }
@@ -877,9 +946,9 @@ async function setupProject(projectInput) {
   if (needsArduino(manifest, lock)) {
     await ensureArduinoEsp32(manifest, lock);
   }
-  console.log(`setup complete for ${lock.project}`);
-  console.log(`packages: ${installedPackages.length}`);
-  console.log(`toolchains: ${installedToolchains.map(item => `${item.name}@${item.version}`).join(', ') || '-'}`);
+  printSuccess(`setup complete for ${lock.project}`);
+  console.log(`${bold('packages:')} ${installedPackages.length}`);
+  console.log(`${bold('toolchains:')} ${installedToolchains.map(item => `${item.name}@${item.version}`).join(', ') || '-'}`);
 }
 
 async function initializeFromRegistryPackage(projectDir, spec) {
@@ -904,7 +973,7 @@ async function initializeFromRegistryPackage(projectDir, spec) {
     toolchains: installed.manifest?.toolchains || ['nav-packager', 'arm-none-eabi', 'stlink']
   };
   await writeProjectManifest(projectDir, baseManifest);
-  console.log(`base project: ${normalized.namespace}/${normalized.name}@${normalized.version}`);
+  console.log(`${bold('base project:')} ${normalized.namespace}/${normalized.name}@${normalized.version}`);
 }
 
 async function addPackage(spec) {
@@ -918,7 +987,7 @@ async function addPackage(spec) {
   manifest.dependencies = unique([...(manifest.dependencies || []), dependencySpec]);
   await writeProjectManifest(projectDir, manifest);
   await installPackageToProject(projectDir, `${normalized.namespace}/${normalized.name}`, normalized.version);
-  console.log(`added ${dependencySpec}`);
+  printSuccess(`added ${dependencySpec}`);
   await setupProject(projectDir);
 }
 
@@ -928,14 +997,14 @@ async function buildProject(projectArg) {
   const lockPath = path.join(projectDir, '.nav', 'lock.json');
   let lock = await readJson(lockPath).catch(() => null);
   if (!lock) {
-    console.log('no lockfile found; running nav setup first');
+    printInfo('no lockfile found; running nav setup first');
     await setupProject(projectDir);
     lock = await readJson(lockPath);
   }
   const requestedToolchains = manifest.toolchains || [];
   const missingToolchains = requestedToolchains.filter(name => !lock.toolchains.some(toolchain => toolchain.name === name));
   if (missingToolchains.length > 0) {
-    console.log(`lockfile is missing toolchains (${missingToolchains.join(', ')}); running nav setup first`);
+    printInfo(`lockfile is missing toolchains (${missingToolchains.join(', ')}); running nav setup first`);
     await setupProject(projectDir);
     lock = await readJson(lockPath);
   }
@@ -970,14 +1039,14 @@ async function buildProject(projectArg) {
     built_at: new Date().toISOString()
   };
   await fs.writeFile(path.join(buildDir, 'nav-build-report.json'), JSON.stringify(report, null, 2));
-  console.log(`build complete: ${outputPath}`);
+  printSuccess(`build complete: ${formatPath(outputPath)}`);
 }
 
 async function cleanProject(projectArg) {
   const projectDir = requireProjectDir(projectArg);
   await fs.rm(path.join(projectDir, 'build'), { recursive: true, force: true });
   await fs.rm(path.join(projectDir, '.nav', 'lock.json'), { force: true });
-  console.log('cleaned build outputs and lockfile');
+  printSuccess('cleaned build outputs and lockfile');
 }
 
 async function runProject(rawArgs = []) {
@@ -993,11 +1062,11 @@ async function uploadProject(rawArgs = []) {
   if (!lock) throw new Error('run nav setup/build before upload');
   const buildSystem = resolveBuildSystem(manifest, lock, projectDir);
   const uploader = resolveUploader(manifest, lock, buildSystem);
-  console.log(`upload plan: ${manifest.name || path.basename(projectDir)} -> ${manifest.board || 'unknown board'}`);
-  console.log(`registry-managed uploader: ${uploader}`);
+  console.log(`${bold('upload plan:')} ${manifest.name || path.basename(projectDir)} ${cyan('->')} ${manifest.board || 'unknown board'}`);
+  console.log(`${bold('registry-managed uploader:')} ${uploader}`);
   if (buildSystem === 'arduino-cli') {
     const ports = options.port ? [options.port] : await detectSerialPorts();
-    console.log(`detected serial ports: ${ports.length ? ports.join(', ') : 'none'}`);
+    console.log(`${bold('detected serial ports:')} ${ports.length ? green(ports.join(', ')) : yellow('none')}`);
     const port = options.port || choosePort(ports);
     if (!port) throw new Error('No serial port detected. Connect the ESP32 or pass --port COMx.');
     const arduino = await getArduinoContext(lock);
@@ -1021,7 +1090,7 @@ async function monitorProject(rawArgs = []) {
   const manifest = await readProjectManifest(projectDir).catch(() => ({}));
   const lock = await readJson(path.join(projectDir, '.nav', 'lock.json')).catch(() => null);
   if (!lock) throw new Error('run nav setup before monitor');
-  console.log(`monitor plan: ${manifest.board || 'unknown board'}`);
+  console.log(`${bold('monitor plan:')} ${manifest.board || 'unknown board'}`);
   if (manifest.build_system === 'stm32-gcc') {
     const port = options.port;
     if (!port) throw new Error('STM32 monitor needs a serial VCP port. Pass --port COMx if your board exposes one.');
@@ -1030,7 +1099,7 @@ async function monitorProject(rawArgs = []) {
   }
   const ports = options.port ? [options.port] : await detectSerialPorts();
   const port = options.port || choosePort(ports);
-  console.log(`detected serial ports: ${ports.length ? ports.join(', ') : 'none'}`);
+  console.log(`${bold('detected serial ports:')} ${ports.length ? green(ports.join(', ')) : yellow('none')}`);
   if (!port) throw new Error('No serial port detected. Connect the ESP32 or pass --port COMx.');
   const arduino = await getArduinoContext(lock);
   await runCommand(arduino.cli, ['--config-file', arduino.config, 'monitor', '-p', port, '-c', 'baudrate=115200'], projectDir);
@@ -1061,9 +1130,9 @@ async function pack(folder, rest) {
   const bytes = Buffer.from(JSON.stringify(bundle, null, 2));
   await fs.mkdir(path.dirname(path.resolve(out)), { recursive: true });
   await fs.writeFile(out, bytes);
-  console.log(`packed ${files.length} files -> ${out}`);
-  console.log(`manifest ${manifestFile}`);
-  console.log(`sha256 ${hash(bytes)}`);
+  printSuccess(`packed ${files.length} files ${cyan('->')} ${formatPath(out)}`);
+  console.log(`${bold('manifest:')} ${manifestFile}`);
+  console.log(`${bold('sha256:')} ${dim(hash(bytes))}`);
 }
 
 async function publish(namespace, rest) {
@@ -1107,13 +1176,13 @@ async function publish(namespace, rest) {
     })
   });
   if (complete.version?.version) {
-    console.log(`published ${namespace}/${name}@${complete.version.version}`);
+    printSuccess(`published ${namespace}/${name}@${complete.version.version}`);
     return;
   }
-  console.log(`queued security scan for ${namespace}/${name}@${version}`);
+  printInfo(`queued security scan for ${namespace}/${name}@${version}`);
   const final = await waitForPublish(init.session.id);
   if (final.session.status === 'published') {
-    console.log(`published ${namespace}/${name}@${version}`);
+    printSuccess(`published ${namespace}/${name}@${version}`);
     return;
   }
   const reason = final.session.scan_error || 'security scan rejected the archive';
@@ -1169,9 +1238,9 @@ async function install(spec) {
   await fs.mkdir(targetDir, { recursive: true });
   const out = path.join(targetDir, `${normalized.name}-${normalized.version}.navpkg`);
   await fs.writeFile(out, bytes);
-  console.log(`installed ${normalized.namespace}/${normalized.name}@${normalized.version}`);
-  console.log(out);
-  console.log(`sha256 ${hash(bytes)}`);
+  printSuccess(`installed ${normalized.namespace}/${normalized.name}@${normalized.version}`);
+  console.log(`${bold('archive:')} ${formatPath(out)}`);
+  console.log(`${bold('sha256:')} ${dim(hash(bytes))}`);
   return { ...normalized, archive: out, sha256: hash(bytes) };
 }
 
@@ -1207,7 +1276,7 @@ async function toolchainCommand(subcommand, rest) {
       },
       body: archive
     });
-    console.log(`published toolchain ${data.vendor.kind}/${data.vendor.name}/${data.toolchain.name}@${data.version.version}`);
+    printSuccess(`published toolchain ${data.vendor.kind}/${data.vendor.name}/${data.toolchain.name}@${data.version.version}`);
     return;
   }
   throw new Error('toolchain command must be list or publish');
@@ -1281,7 +1350,7 @@ async function installPackageToProject(projectDir, spec, versionOverride = null)
     const filesDir = path.join(packageDir, 'files');
     try {
       await fs.access(filesDir);
-      console.log(`  using cached package ${normalized.namespace}/${normalized.name}@${normalized.version}`);
+      console.log(`  ${green('cached')} package ${normalized.namespace}/${normalized.name}@${normalized.version}`);
       return {
         namespace: normalized.namespace,
         name: normalized.name,
@@ -1294,7 +1363,7 @@ async function installPackageToProject(projectDir, spec, versionOverride = null)
       // Re-download if the cache metadata exists but extracted files are missing.
     }
   } else if (existing?.namespace === normalized.namespace && existing?.name === normalized.name && existing?.version === normalized.version) {
-    console.log(`  refreshing cached package ${normalized.namespace}/${normalized.name}@${normalized.version}`);
+    console.log(`  ${yellow('refreshing')} cached package ${normalized.namespace}/${normalized.name}@${normalized.version}`);
   }
 
   const bytes = Buffer.from(await request(`/packages/${normalized.namespace}/${normalized.name}/versions/${normalized.version}/download`));
@@ -1302,8 +1371,8 @@ async function installPackageToProject(projectDir, spec, versionOverride = null)
   if (registrySha && archiveHash !== registrySha) {
     throw new Error(`Package checksum mismatch for ${normalized.namespace}/${normalized.name}@${normalized.version}`);
   }
-  console.log(`  downloaded package archive (${formatBytes(bytes.length)})`);
-  console.log(`  verified sha256 ${archiveHash.slice(0, 24)}...`);
+  console.log(`  ${green('downloaded')} package archive (${formatBytes(bytes.length)})`);
+  console.log(`  ${green('verified')} sha256 ${dim(`${archiveHash.slice(0, 24)}...`)}`);
   await fs.rm(path.join(packageDir, 'files'), { recursive: true, force: true });
   await fs.mkdir(packageDir, { recursive: true });
   await fs.writeFile(path.join(packageDir, `${normalized.name}-${normalized.version}.navpkg`), bytes);
@@ -1347,23 +1416,23 @@ async function installToolchain(toolchain) {
   const archivePath = path.join(installDir, `archive.${archiveFormat}`);
   const cached = await readToolchainInstall(installDir, toolchain);
   if (cached) {
-    console.log(`  using cached ${toolchain.name}@${toolchain.version} (${installDir})`);
+    console.log(`  ${green('cached')} ${toolchain.name}@${toolchain.version} ${formatPath(`(${installDir})`)}`);
     return cached;
   }
 
   await fs.mkdir(path.join(installDir, 'bin'), { recursive: true });
   let bytes = await readCachedArchive(archivePath, toolchain.sha256);
   if (bytes) {
-    console.log(`  repairing ${toolchain.name}@${toolchain.version} from cached archive`);
+    console.log(`  ${yellow('repairing')} ${toolchain.name}@${toolchain.version} from cached archive`);
   } else {
-    console.log(`  downloading ${toolchain.name}@${toolchain.version} from registry blob`);
+    console.log(`  ${cyan('downloading')} ${toolchain.name}@${toolchain.version} from registry blob`);
     bytes = Buffer.from(await request(`/toolchains/${toolchain.name}/versions/${toolchain.version}/${toolchain.os}/${toolchain.arch}/download`));
   }
   const archiveHash = hash(bytes);
   if (toolchain.sha256 && toolchain.sha256 !== archiveHash) {
     throw new Error(`Toolchain checksum mismatch for ${toolchain.name}@${toolchain.version}`);
   }
-  console.log(`  verified sha256 ${archiveHash.slice(0, 24)}...`);
+  console.log(`  ${green('verified')} sha256 ${dim(`${archiveHash.slice(0, 24)}...`)}`);
   await fs.writeFile(archivePath, bytes);
   if (toolchain.provenance?.real_artifact) {
     await extractToolchainArchive(archivePath, archiveFormat, installDir);
@@ -1387,7 +1456,7 @@ async function installToolchain(toolchain) {
     ? `@echo off\r\necho ${toolchain.name} ${toolchain.version} from Nav test cache\r\n`
     : `#!/usr/bin/env sh\necho "${toolchain.name} ${toolchain.version} from Nav test cache"\n`;
   await fs.writeFile(shimPath, shimBody);
-  console.log(`  installed into ${installDir}`);
+  console.log(`  ${green('installed')} into ${formatPath(installDir)}`);
   return {
     name: toolchain.name,
     version: toolchain.version,
@@ -1467,15 +1536,15 @@ async function extractToolchainArchive(archivePath, archiveFormat, installDir) {
 async function ensureArduinoEsp32(manifest, lock) {
   const arduino = await getArduinoContext(lock);
   await writeArduinoConfig(arduino.config, manifest);
-  console.log('checking Arduino package index');
+  printStep('checking Arduino package index');
   await runCommand(arduino.cli, ['--config-file', arduino.config, 'core', 'update-index'], process.cwd());
   const core = manifest.arduino_core || 'esp32:esp32';
   const installed = await runCapture(arduino.cli, ['--config-file', arduino.config, 'core', 'list']);
   if (installed.includes(core)) {
-    console.log(`Arduino core already installed: ${core}`);
+    printSuccess(`Arduino core already installed: ${core}`);
     return;
   }
-  console.log(`installing Arduino core ${core}`);
+  printStep(`installing Arduino core ${core}`);
   await runCommand(arduino.cli, ['--config-file', arduino.config, 'core', 'install', core], process.cwd());
 }
 
@@ -1485,9 +1554,9 @@ async function buildArduino(projectDir, manifest, lock, outputPath) {
   const fqbn = manifest.fqbn || 'esp32:esp32:esp32';
   const outputDir = outputPath;
   await fs.mkdir(outputDir, { recursive: true });
-  console.log('build system: arduino-cli');
-  console.log(`fqbn: ${fqbn}`);
-  console.log(`output: ${outputDir}`);
+  console.log(`${bold('build system:')} arduino-cli`);
+  console.log(`${bold('fqbn:')} ${fqbn}`);
+  console.log(`${bold('output:')} ${formatPath(outputDir)}`);
   await runCommand(arduino.cli, ['--config-file', arduino.config, 'compile', '--fqbn', fqbn, '--output-dir', outputDir, projectDir], projectDir);
 }
 
@@ -1655,10 +1724,10 @@ async function buildNativeCpp(projectDir, manifest, lock, outputPath) {
     ])
   ]);
 
-  console.log(`build system: native-cpp`);
-  console.log(`compiler: ${compiler}`);
-  console.log(`sources: ${sources.length}`);
-  console.log(`output: ${outputPath}`);
+  console.log(`${bold('build system:')} native-cpp`);
+  console.log(`${bold('compiler:')} ${formatPath(compiler)}`);
+  console.log(`${bold('sources:')} ${sources.length}`);
+  console.log(`${bold('output:')} ${formatPath(outputPath)}`);
 
   const args = [
     '-std=c++17',
@@ -1707,13 +1776,13 @@ async function buildCmake(projectDir, manifest, lock, outputPath) {
     `-DSAMPLE=${manifest.cmake_sample || 'hal_blink'}`
   ];
 
-  console.log('build system: cmake');
-  console.log(`cmake: ${cmake}`);
-  console.log(`generator: ${generator}`);
-  if (toolchainBin) console.log(`toolchain bin: ${toolchainBin}`);
-  console.log(`sample: ${manifest.cmake_sample || 'hal_blink'}`);
-  console.log(`build dir: ${buildDir}`);
-  console.log(`output: ${output}`);
+  console.log(`${bold('build system:')} cmake`);
+  console.log(`${bold('cmake:')} ${formatPath(cmake)}`);
+  console.log(`${bold('generator:')} ${generator}`);
+  if (toolchainBin) console.log(`${bold('toolchain bin:')} ${formatPath(toolchainBin)}`);
+  console.log(`${bold('sample:')} ${manifest.cmake_sample || 'hal_blink'}`);
+  console.log(`${bold('build dir:')} ${formatPath(buildDir)}`);
+  console.log(`${bold('output:')} ${formatPath(output)}`);
 
   await runCommand(cmake, configureArgs, projectDir, { env });
   await runCommand(cmake, ['--build', buildDir], projectDir, { env });
@@ -1765,12 +1834,12 @@ async function buildStm32Gcc(projectDir, manifest, lock, outputPath) {
   ];
   const elfPath = outputPath.endsWith('.elf') ? outputPath : `${outputPath}.elf`;
   const binPath = outputPath.endsWith('.bin') ? outputPath : `${outputPath}.bin`;
-  console.log('build system: stm32-gcc');
-  console.log(`compiler: ${gcc}`);
-  console.log(`linker: ${linkerScript}`);
-  console.log(`sources: ${filteredSources.length}`);
-  console.log(`elf: ${elfPath}`);
-  console.log(`bin: ${binPath}`);
+  console.log(`${bold('build system:')} stm32-gcc`);
+  console.log(`${bold('compiler:')} ${formatPath(gcc)}`);
+  console.log(`${bold('linker:')} ${formatPath(linkerScript)}`);
+  console.log(`${bold('sources:')} ${filteredSources.length}`);
+  console.log(`${bold('elf:')} ${formatPath(elfPath)}`);
+  console.log(`${bold('bin:')} ${formatPath(binPath)}`);
   await runCommand(gcc, [
     ...cflags,
     ...filteredSources,
@@ -1795,9 +1864,9 @@ async function uploadStm32(projectDir, manifest, lock) {
     throw new Error(`Build output not found: ${binPath}. Run nav build first.`);
   });
   const address = manifest.flash_address || '0x08000000';
-  console.log(`flasher: ${stFlash}`);
-  console.log(`binary: ${binPath}`);
-  console.log(`flash address: ${address}`);
+  console.log(`${bold('flasher:')} ${formatPath(stFlash)}`);
+  console.log(`${bold('binary:')} ${formatPath(binPath)}`);
+  console.log(`${bold('flash address:')} ${address}`);
   await runCommand(stFlash, ['write', binPath, address], projectDir);
 }
 
@@ -1814,9 +1883,9 @@ async function uploadCmake(projectDir, manifest, lock) {
       throw new Error(`Build output not found: ${binPath}. Run nav build first.`);
     });
     const address = manifest.flash_address || '0x08000000';
-    console.log(`flasher: ${stFlash}`);
-    console.log(`binary: ${binPath}`);
-    console.log(`flash address: ${address}`);
+    console.log(`${bold('flasher:')} ${formatPath(stFlash)}`);
+    console.log(`${bold('binary:')} ${formatPath(binPath)}`);
+    console.log(`${bold('flash address:')} ${address}`);
     await runCommand(stFlash, ['write', binPath, address], projectDir);
     return;
   }
@@ -1852,7 +1921,7 @@ async function prepareStlinkConfig(stlink) {
   } catch {
     // Continue below.
   }
-  console.log(`preparing ST-Link chip database: ${expectedConfig}`);
+  printStep(`preparing ST-Link chip database: ${formatPath(expectedConfig)}`);
   try {
     await copyDirectory(sourceConfig, expectedConfig);
   } catch (error) {
@@ -1952,7 +2021,7 @@ async function findFile(dir, pattern) {
 }
 
 async function runCommand(command, args, cwd, options = {}) {
-  console.log(`running: ${quoteCommand([command, ...args])}`);
+  console.log(`${dim('running:')} ${formatCommand(quoteCommand([command, ...args]))}`);
   await new Promise((resolve, reject) => {
     const child = spawn(command, args, { cwd, stdio: 'inherit', shell: false, env: options.env || process.env });
     child.on('error', reject);
@@ -2336,6 +2405,6 @@ function toPosixPath(value) {
 }
 
 main().catch(error => {
-  console.error(`nav: ${error.message}`);
+  console.error(red(`nav: ${error.message}`));
   process.exitCode = 1;
 });
