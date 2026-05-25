@@ -7,6 +7,7 @@ RUN npm ci
 
 COPY index.html ./index.html
 COPY vite.config.js ./vite.config.js
+COPY public ./public
 COPY src ./src
 
 EXPOSE 13000
