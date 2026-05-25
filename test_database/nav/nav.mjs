@@ -405,7 +405,11 @@ async function waitForBrowserLogin(state) {
 
       if (returnedState !== state) {
         res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end('<h1>Nav login failed</h1><p>State mismatch. Close this tab and run nav login again.</p>');
+        res.end(cliLoginPage({
+          title: 'Login failed',
+          message: 'State mismatch. Close this tab and run nav login again.',
+          tone: 'error'
+        }));
         if (!settled) {
           settled = true;
           reject(new Error('login state mismatch'));
@@ -415,7 +419,11 @@ async function waitForBrowserLogin(state) {
 
       if (error || !token) {
         res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end(`<h1>Nav login failed</h1><p>${escapeHtml(error || 'Missing token')}</p>`);
+        res.end(cliLoginPage({
+          title: 'Login failed',
+          message: error || 'Missing token',
+          tone: 'error'
+        }));
         if (!settled) {
           settled = true;
           reject(new Error(error || 'login did not return a token'));
@@ -424,7 +432,11 @@ async function waitForBrowserLogin(state) {
       }
 
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-      res.end('<h1>Nav login complete</h1><p>You can close this browser tab and return to your terminal.</p>');
+      res.end(cliLoginPage({
+        title: 'Nav login complete',
+        message: 'You can close this browser tab and return to your terminal.',
+        tone: 'success'
+      }));
       if (!settled) {
         settled = true;
         resolve({ token });
@@ -464,7 +476,7 @@ function openBrowser(url) {
   const options = { detached: true, stdio: 'ignore' };
   let child;
   if (process.platform === 'win32') {
-    child = spawn('powershell', ['-NoProfile', '-Command', 'Start-Process', '-FilePath', url], options);
+    child = spawn('rundll32', ['url.dll,FileProtocolHandler', url], options);
   } else if (process.platform === 'darwin') {
     child = spawn('open', [url], options);
   } else {
@@ -472,6 +484,113 @@ function openBrowser(url) {
   }
   child.on('error', () => {});
   child.unref();
+}
+
+function cliLoginPage({ title, message, tone }) {
+  const isSuccess = tone === 'success';
+  const accent = isSuccess ? '#22c55e' : '#ef4444';
+  const badgeText = isSuccess ? 'Authenticated' : 'Action needed';
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${escapeHtml(title)}</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #08090b;
+      color: #f8fafc;
+    }
+    * { box-sizing: border-box; }
+    body {
+      min-height: 100vh;
+      margin: 0;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      background:
+        radial-gradient(circle at 50% 0%, rgba(255,255,255,0.08), transparent 34rem),
+        #08090b;
+    }
+    .card {
+      width: min(460px, 100%);
+      border: 1px solid #27272a;
+      border-radius: 14px;
+      background: #0d0f12;
+      box-shadow: 0 24px 80px rgba(0,0,0,0.45);
+      padding: 28px;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 28px;
+      font-weight: 700;
+    }
+    .mark {
+      width: 34px;
+      height: 34px;
+      border-radius: 10px;
+      display: grid;
+      place-items: center;
+      background: #f8fafc;
+      color: #09090b;
+      font-weight: 800;
+    }
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid #27272a;
+      border-radius: 999px;
+      padding: 6px 10px;
+      color: #d4d4d8;
+      font-size: 13px;
+      margin-bottom: 14px;
+    }
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: ${accent};
+      box-shadow: 0 0 0 4px color-mix(in srgb, ${accent} 18%, transparent);
+    }
+    h1 {
+      margin: 0 0 10px;
+      font-size: 28px;
+      line-height: 1.15;
+      letter-spacing: 0;
+    }
+    p {
+      margin: 0;
+      color: #a1a1aa;
+      font-size: 16px;
+      line-height: 1.6;
+    }
+    .footer {
+      margin-top: 24px;
+      padding-top: 18px;
+      border-top: 1px solid #27272a;
+      color: #71717a;
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <div class="brand">
+      <div class="mark">N</div>
+      <div>Nav</div>
+    </div>
+    <div class="status"><span class="dot"></span>${badgeText}</div>
+    <h1>${escapeHtml(title)}</h1>
+    <p>${escapeHtml(message)}</p>
+    <div class="footer">This local callback was opened by the Nav CLI.</div>
+  </main>
+</body>
+</html>`;
 }
 
 function yellow(value) {
