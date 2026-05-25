@@ -10,7 +10,7 @@ COPY vite.config.js ./vite.config.js
 COPY public ./public
 COPY src ./src
 
-ARG VITE_API_BASE=https://nav.navrobotec.online/api
+ARG VITE_API_BASE=https://navdev.navrobotec.com/api
 ENV VITE_API_BASE=$VITE_API_BASE
 RUN npm run build
 

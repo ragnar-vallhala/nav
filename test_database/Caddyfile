@@ -1,4 +1,4 @@
-nav.navrobotec.online {
+navdev.navrobotec.com {
 	handle_path /api/* {
 		reverse_proxy backend:14000
 	}

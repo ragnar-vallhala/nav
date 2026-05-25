@@ -11,7 +11,7 @@ Run the source CLI locally:
 Override the registry explicitly:
 
 ```powershell
-$env:NAV_REGISTRY_URL="https://nav.navrobotec.online/api"
+$env:NAV_REGISTRY_URL="https://navdev.navrobotec.com/api"
 .\test_database\nav\nav.ps1 check
 ```
 

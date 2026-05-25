@@ -213,9 +213,9 @@ spec:
             - name: PORT
               value: "14000"
             - name: FRONTEND_URL
-              value: https://nav.navrobotec.online
+              value: https://navdev.navrobotec.com
             - name: BACKEND_URL
-              value: https://nav.navrobotec.online/api
+              value: https://navdev.navrobotec.com/api
             - name: AUTH_COOKIE_NAME
               value: nav_token
             - name: DB_HOST
@@ -290,7 +290,7 @@ spec:
                   key: GOOGLE_CLIENT_SECRET
                   optional: true
             - name: GOOGLE_CALLBACK_URL
-              value: https://nav.navrobotec.online/api/auth/google/callback
+              value: https://navdev.navrobotec.com/api/auth/google/callback
             - name: GITHUB_CLIENT_ID
               valueFrom:
                 secretKeyRef:
@@ -304,7 +304,7 @@ spec:
                   key: GITHUB_CLIENT_SECRET
                   optional: true
             - name: GITHUB_CALLBACK_URL
-              value: https://nav.navrobotec.online/api/auth/github/callback
+              value: https://navdev.navrobotec.com/api/auth/github/callback
             - name: FACEBOOK_CLIENT_ID
               valueFrom:
                 secretKeyRef:
@@ -318,7 +318,7 @@ spec:
                   key: FACEBOOK_CLIENT_SECRET
                   optional: true
             - name: FACEBOOK_CALLBACK_URL
-              value: https://nav.navrobotec.online/api/auth/facebook/callback
+              value: https://navdev.navrobotec.com/api/auth/facebook/callback
             - name: SMTP_HOST
               valueFrom:
                 secretKeyRef:
@@ -489,7 +489,7 @@ metadata:
 spec:
   ingressClassName: nginx
   rules:
-    - host: nav.navrobotec.online
+    - host: navdev.navrobotec.com
       http:
         paths:
           - path: /api(/|$)(.*)
@@ -511,10 +511,10 @@ spec:
   ingressClassName: nginx
   tls:
     - hosts:
-        - nav.navrobotec.online
-      secretName: nav-registry-prod-tls
+        - navdev.navrobotec.com
+      secretName: nav-registry-dev-tls
   rules:
-    - host: nav.navrobotec.online
+    - host: navdev.navrobotec.com
       http:
         paths:
           - path: /

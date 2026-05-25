@@ -5,7 +5,7 @@
 The public production URL is intended to be:
 
 ```text
-https://nav.navrobotec.online
+https://navdev.navrobotec.com
 ```
 
 ## Components
@@ -69,11 +69,11 @@ nav check
 On production these become:
 
 ```powershell
-irm https://nav.navrobotec.online/api/downloads/nav/install.ps1 | iex
+irm https://navdev.navrobotec.com/api/downloads/nav/install.ps1 | iex
 ```
 
 ```bash
-curl -fsSL https://nav.navrobotec.online/api/downloads/nav/install.sh | sh
+curl -fsSL https://navdev.navrobotec.com/api/downloads/nav/install.sh | sh
 ```
 
 The installer pins the CLI to the registry URL and adds `nav` to the user's shell PATH. Toolchains downloaded later by `nav setup` or `nav build` are kept in the user's Nav cache, not installed globally.
@@ -105,13 +105,13 @@ nav monitor --port COM8 --baud 9600
 
 `nav setup` in an empty folder installs the first-party `nav/navhal` base project from the registry. For an existing project, its `nav.toml` or `nav.json` determines the packages, board and toolchains that Nav resolves.
 
-## Deploy To `nav.navrobotec.online`
+## Deploy To `navdev.navrobotec.com`
 
 For a standalone server, production can use [docker-compose.production.yml](./docker-compose.production.yml) and [Caddyfile](./Caddyfile). Caddy terminates HTTPS and routes `/api/*` to the backend. Postgres and MinIO remain on the private Docker network.
 
-The current Nav hosting server already has a shared Kubernetes `ingress-nginx` edge and cert-manager Let's Encrypt issuer serving other applications. On that server, use [deploy/kubernetes/nav-registry.yaml](./deploy/kubernetes/nav-registry.yaml) instead of starting another Caddy listener. This preserves the existing ports and registers `nav.navrobotec.online` with the established multi-application HTTPS ingress.
+The current Nav hosting server already has a shared Kubernetes `ingress-nginx` edge and cert-manager Let's Encrypt issuer serving other applications. On that server, use [deploy/kubernetes/nav-registry.yaml](./deploy/kubernetes/nav-registry.yaml) instead of starting another Caddy listener. This preserves the existing ports and registers `navdev.navrobotec.com` with the established multi-application HTTPS ingress.
 
-1. Point the DNS record for `nav.navrobotec.online` to the server IP.
+1. Point the DNS record for `navdev.navrobotec.com` to the server IP.
 2. Install Docker Engine with the Compose plugin on the server.
 3. Copy this folder to the server.
 4. Create the production environment file:
@@ -132,8 +132,9 @@ NAV_ROOT_PASSWORD=use-a-strong-unique-password
 6. Configure OAuth callback URLs:
 
 ```text
-https://nav.navrobotec.online/api/auth/google/callback
-https://nav.navrobotec.online/api/auth/github/callback
+https://navdev.navrobotec.com/api/auth/google/callback
+https://navdev.navrobotec.com/api/auth/github/callback
+https://navdev.navrobotec.com/api/auth/facebook/callback
 ```
 
 7. Start the registry:
@@ -145,8 +146,8 @@ docker compose -f docker-compose.production.yml --env-file .env up -d --build
 8. Verify:
 
 ```bash
-curl https://nav.navrobotec.online/api/health
-curl -fsSL https://nav.navrobotec.online/api/downloads/nav/install.sh | head
+curl https://navdev.navrobotec.com/api/health
+curl -fsSL https://navdev.navrobotec.com/api/downloads/nav/install.sh | head
 ```
 
 Production settings deliberately enforce:
