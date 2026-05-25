@@ -995,7 +995,7 @@ async function initializeFromRegistryPackage(projectDir, spec) {
     uploader: installed.manifest?.uploader || null,
     run: installed.manifest?.run || 'none',
     flash_address: installed.manifest?.flash_address || null,
-    toolchains: installed.manifest?.toolchains || ['arm-none-eabi']
+    toolchains: installed.manifest?.toolchains || ['cmake', 'ninja', 'arm-none-eabi']
   };
   await writeProjectManifest(projectDir, baseManifest);
   console.log(`${bold('base project:')} ${normalized.namespace}/${normalized.name}@${normalized.version}`);
@@ -1636,7 +1636,11 @@ async function extractToolchainArchive(archivePath, archiveFormat, installDir) {
     if (process.platform === 'win32') {
       await runCommand('powershell', ['-NoProfile', '-Command', `Expand-Archive -LiteralPath '${archivePath.replace(/'/g, "''")}' -DestinationPath '${extractDir.replace(/'/g, "''")}' -Force`], process.cwd());
     } else {
-      await runCommand('unzip', ['-q', archivePath, '-d', extractDir], process.cwd());
+      try {
+        await runCommand('unzip', ['-q', archivePath, '-d', extractDir], process.cwd());
+      } catch {
+        await runCommand('python3', ['-m', 'zipfile', '-e', archivePath, extractDir], process.cwd());
+      }
     }
     return;
   }
@@ -1869,27 +1873,36 @@ async function buildNativeCpp(projectDir, manifest, lock, outputPath) {
 }
 
 async function buildCmake(projectDir, manifest, lock, outputPath) {
-  const cmake = await findExecutable(process.platform === 'win32' ? ['cmake.exe'] : ['cmake']);
+  const cmakeToolchain = lock.toolchains.find(item => item.name === 'cmake');
+  const ninjaToolchain = lock.toolchains.find(item => item.name === 'ninja');
+  const systemCmake = await findExecutable(process.platform === 'win32' ? ['cmake.exe'] : ['cmake']);
+  const cmake = systemCmake || (cmakeToolchain ? await findRegistryTool(cmakeToolchain, process.platform === 'win32' ? /^cmake\.exe$/i : /^cmake$/) : null);
   if (!cmake) {
-    throw new Error('CMake is required to build this registry base project. Install CMake or publish a Nav-managed cmake toolchain.');
+    throw new Error('CMake is required to build this registry base project. Run nav setup to install the registry-managed cmake toolchain.');
   }
   const generator = manifest.cmake_generator || 'Ninja';
-  const generatorExe = generator.toLowerCase() === 'ninja'
+  const systemNinja = generator.toLowerCase() === 'ninja'
     ? await findExecutable(process.platform === 'win32' ? ['ninja.exe'] : ['ninja'])
     : null;
+  const generatorExe = generator.toLowerCase() === 'ninja'
+    ? systemNinja || (ninjaToolchain ? await findRegistryTool(ninjaToolchain, process.platform === 'win32' ? /^ninja\.exe$/i : /^ninja$/) : null)
+    : null;
   if (generator.toLowerCase() === 'ninja' && !generatorExe) {
-    throw new Error('Ninja is required for this CMake project. Install Ninja or change cmake_generator in nav.toml.');
+    throw new Error('Ninja is required for this CMake project. Run nav setup to install the registry-managed ninja toolchain.');
   }
 
   const armToolchain = lock.toolchains.find(item => item.name === 'arm-none-eabi');
   const gcc = armToolchain ? await findRegistryTool(armToolchain, process.platform === 'win32' ? /^arm-none-eabi-gcc\.exe$/i : /^arm-none-eabi-gcc$/) : null;
   const objcopy = armToolchain ? await findRegistryTool(armToolchain, process.platform === 'win32' ? /^arm-none-eabi-objcopy\.exe$/i : /^arm-none-eabi-objcopy$/) : null;
   const toolchainBin = gcc ? path.dirname(gcc) : null;
+  const cmakeBin = cmake ? path.dirname(cmake) : null;
+  const ninjaBin = generatorExe ? path.dirname(generatorExe) : null;
   const buildDir = path.resolve(projectDir, manifest.cmake_build_dir || 'build/navhal');
   const output = path.resolve(projectDir, outputPath);
+  const pathParts = [toolchainBin, cmakeBin, ninjaBin].filter(Boolean);
   const env = {
     ...process.env,
-    PATH: toolchainBin ? `${toolchainBin}${path.delimiter}${process.env.PATH || ''}` : process.env.PATH
+    PATH: pathParts.length ? `${pathParts.join(path.delimiter)}${path.delimiter}${process.env.PATH || ''}` : process.env.PATH
   };
   const configureArgs = [
     '-S',
@@ -2367,8 +2380,9 @@ function enhanceProjectManifest(manifest, projectDir) {
     manifest.flash_address ||= null;
     if (Array.isArray(manifest.toolchains)) {
       manifest.toolchains = manifest.toolchains.filter(item => !['nav-packager', 'stlink'].includes(item));
+      manifest.toolchains = unique(['cmake', 'ninja', 'arm-none-eabi', ...manifest.toolchains]);
     } else {
-      manifest.toolchains = ['arm-none-eabi'];
+      manifest.toolchains = ['cmake', 'ninja', 'arm-none-eabi'];
     }
   }
   return manifest;
