@@ -230,16 +230,18 @@ code {
 
 .install-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-  width: min(100%, 1100px);
+  grid-template-columns: 1fr;
+  gap: 14px;
+  width: min(100%, 960px);
   margin-top: 16px;
 }
 
 .install-card {
   display: grid;
+  grid-template-columns: 156px minmax(0, 1fr);
+  align-items: center;
   gap: 16px;
-  padding: 20px;
+  padding: 24px;
   min-width: 0;
 }
 
@@ -285,12 +287,15 @@ code {
   border-radius: var(--radius);
   background: var(--secondary);
   min-width: 0;
-  overflow-x: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .install-card .command-line code {
   min-height: 42px;
+  padding-block: 12px;
+  font-size: 13px;
 }
 
 .copy-button {
@@ -585,6 +590,83 @@ code {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--muted);
+}
+
+.select-trigger {
+  display: flex;
+  width: 100%;
+  min-height: 40px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border: 1px solid var(--input);
+  border-radius: calc(var(--radius) - 2px);
+  padding: 8px 12px;
+  outline: none;
+  background: var(--background);
+  color: var(--foreground);
+}
+
+.select-trigger:focus {
+  border-color: var(--ring);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ring) 20%, transparent);
+}
+
+.select-icon {
+  display: flex;
+  color: var(--muted-foreground);
+}
+
+.select-content {
+  z-index: 50;
+  min-width: var(--radix-select-trigger-width);
+  max-height: var(--radix-select-content-available-height);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) - 2px);
+  background: var(--popover);
+  color: var(--popover-foreground);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
+}
+
+.select-viewport {
+  padding: 4px;
+}
+
+.select-item {
+  position: relative;
+  display: flex;
+  min-height: 36px;
+  align-items: center;
+  border-radius: calc(var(--radius) - 3px);
+  padding: 6px 30px 6px 10px;
+  outline: none;
+  font-size: 14px;
+  font-weight: 400;
+}
+
+.select-item[data-highlighted] {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+
+.select-item[data-disabled] {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.select-indicator {
+  position: absolute;
+  right: 8px;
+  display: grid;
+  place-items: center;
+}
+
+.select-scroll-button {
+  display: grid;
+  height: 28px;
+  place-items: center;
+  color: var(--muted-foreground);
 }
 
 .package-list {
@@ -998,5 +1080,15 @@ code {
   .filter-panel,
   .oauth-row {
     grid-template-columns: 1fr;
+  }
+
+  .install-card {
+    grid-template-columns: 1fr;
+  }
+
+  .install-card .command-line code {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    text-overflow: clip;
   }
 }
