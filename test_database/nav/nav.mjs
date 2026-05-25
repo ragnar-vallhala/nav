@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import fs from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { existsSync, statSync as fsSyncStat } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
@@ -302,10 +302,10 @@ async function smoke() {
 
 async function check(projectArg) {
   await smoke();
-  const projectDir = projectArg ? path.resolve(projectArg) : process.cwd();
+  const projectDir = resolveExistingProjectDir(projectArg);
   const manifest = await readProjectManifest(projectDir).catch(() => null);
   if (!manifest) {
-    console.log('project: no nav.toml/nav.json in current folder');
+    console.log('project: no nav.toml/nav.json found from current folder upward');
     return;
   }
   const lockPath = path.join(projectDir, '.nav', 'lock.json');
@@ -783,7 +783,7 @@ function parseSetupArgs(values = [], defaultBoard = 'stm32f401') {
 
 async function setupProject(projectInput) {
   const { projectArg } = parseSetupArgs(projectInput);
-  const projectDir = projectArg ? path.resolve(projectArg) : process.cwd();
+  const projectDir = resolveSetupProjectDir(projectArg);
   let manifest = await readProjectManifest(projectDir).catch(() => null);
   if (!manifest) {
     console.log(`no nav.toml/nav.json found; initializing from registry package nav/navhal@0.1.0`);
@@ -854,7 +854,7 @@ async function initializeFromRegistryPackage(projectDir, spec) {
 
 async function addPackage(spec) {
   if (!spec) throw new Error('add requires <namespace/package[@version]>');
-  const projectDir = process.cwd();
+  const projectDir = requireProjectDir();
   const manifest = await readProjectManifest(projectDir);
   const normalized = await resolvePackageSpec(spec);
   const versionData = await getPackageVersion(normalized.namespace, normalized.name, normalized.version);
@@ -868,7 +868,7 @@ async function addPackage(spec) {
 }
 
 async function buildProject(projectArg) {
-  const projectDir = projectArg ? path.resolve(projectArg) : process.cwd();
+  const projectDir = requireProjectDir(projectArg);
   const manifest = await readProjectManifest(projectDir);
   const lockPath = path.join(projectDir, '.nav', 'lock.json');
   let lock = await readJson(lockPath).catch(() => null);
@@ -919,7 +919,7 @@ async function buildProject(projectArg) {
 }
 
 async function cleanProject(projectArg) {
-  const projectDir = projectArg ? path.resolve(projectArg) : process.cwd();
+  const projectDir = requireProjectDir(projectArg);
   await fs.rm(path.join(projectDir, 'build'), { recursive: true, force: true });
   await fs.rm(path.join(projectDir, '.nav', 'lock.json'), { force: true });
   console.log('cleaned build outputs and lockfile');
@@ -1990,7 +1990,7 @@ async function detectSerialPorts() {
 function parseProjectOptions(rawArgs = []) {
   const args = [...rawArgs].filter(Boolean);
   const options = {};
-  let projectDir = process.cwd();
+  let projectDir = null;
   for (let index = 0; index < args.length; index += 1) {
     const item = args[index];
     if (item === '--port') {
@@ -2003,7 +2003,7 @@ function parseProjectOptions(rawArgs = []) {
       projectDir = path.resolve(item);
     }
   }
-  return { projectDir, options };
+  return { projectDir: requireProjectDir(projectDir), options };
 }
 
 function choosePort(ports) {
@@ -2011,14 +2011,63 @@ function choosePort(ports) {
   return ports.find(port => /^COM\d+$/i.test(port)) || ports[0];
 }
 
+function findProjectRoot(startDir = process.cwd()) {
+  let current = path.resolve(startDir || process.cwd());
+  try {
+    const stat = existsSync(current) ? requireStatSync(current) : null;
+    if (stat?.isFile()) current = path.dirname(current);
+  } catch {}
+
+  for (;;) {
+    if (
+      existsSync(path.join(current, 'nav.toml')) ||
+      existsSync(path.join(current, 'nav.json')) ||
+      existsSync(path.join(current, '.nav'))
+    ) {
+      return current;
+    }
+    const parent = path.dirname(current);
+    if (parent === current) return null;
+    current = parent;
+  }
+}
+
+function requireStatSync(target) {
+  try {
+    return fsSyncStat(target);
+  } catch {
+    return null;
+  }
+}
+
+function resolveExistingProjectDir(projectArg = null) {
+  const start = projectArg ? path.resolve(projectArg) : process.cwd();
+  return findProjectRoot(start) || start;
+}
+
+function requireProjectDir(projectArg = null) {
+  const start = projectArg ? path.resolve(projectArg) : process.cwd();
+  const root = findProjectRoot(start);
+  if (!root) {
+    throw new Error(`No Nav project found from ${start} upward. Run "nav setup" in a project folder first.`);
+  }
+  return root;
+}
+
+function resolveSetupProjectDir(projectArg = null) {
+  const start = projectArg ? path.resolve(projectArg) : process.cwd();
+  return findProjectRoot(start) || start;
+}
+
 async function readProjectManifest(projectDir) {
-  const tomlPath = path.join(projectDir, 'nav.toml');
-  const jsonPath = path.join(projectDir, 'nav.json');
+  const root = findProjectRoot(projectDir) || path.resolve(projectDir || process.cwd());
+  const tomlPath = path.join(root, 'nav.toml');
+  const jsonPath = path.join(root, 'nav.json');
   const tomlExists = await exists(tomlPath);
   const jsonExists = await exists(jsonPath);
-  if (tomlExists) return enhanceProjectManifest(parseToml(await fs.readFile(tomlPath, 'utf8')), projectDir);
-  if (jsonExists) return enhanceProjectManifest(JSON.parse(await fs.readFile(jsonPath, 'utf8')), projectDir);
-  throw new Error(`No Nav project manifest found in ${projectDir}. Run "nav create <name> --board <board>" first, or add nav.toml to this folder.`);
+  if (tomlExists) return enhanceProjectManifest(parseToml(await fs.readFile(tomlPath, 'utf8')), root);
+  if (jsonExists) return enhanceProjectManifest(JSON.parse(await fs.readFile(jsonPath, 'utf8')), root);
+  throw new Error(`No Nav project manifest found from ${path.resolve(projectDir || process.cwd())} upward. Run "nav setup" in an empty folder, or add nav.toml to the project root.`);
 }
 
 function enhanceProjectManifest(manifest, projectDir) {
