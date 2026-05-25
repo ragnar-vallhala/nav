@@ -106,6 +106,35 @@ function authRequired(req, res, next) {
   }
 }
 
+function isAllowedCliRedirectUri(value) {
+  try {
+    const url = new URL(String(value || ''));
+    return url.protocol === 'http:'
+      && ['127.0.0.1', 'localhost'].includes(url.hostname)
+      && url.pathname === '/callback'
+      && Number(url.port) > 0;
+  } catch {
+    return false;
+  }
+}
+
+function cliRedirectParams(req) {
+  const redirectUri = req.session?.cliRedirect || req.query.cli_redirect;
+  if (!isAllowedCliRedirectUri(redirectUri)) return {};
+  return {
+    cli_redirect: redirectUri,
+    state: String(req.session?.cliState || req.query.state || '')
+  };
+}
+
+function frontendAuthUrl(pathname, params = {}) {
+  const url = new URL(pathname, config.frontendUrl);
+  Object.entries(params).forEach(([key, value]) => {
+    if (value) url.searchParams.set(key, value);
+  });
+  return url.toString();
+}
+
 function loadGoogleSecret() {
   if (process.env.GOOGLE_CLIENT_SECRET) {
     return {
@@ -1288,7 +1317,12 @@ function configurePassport() {
 
 function oauthSuccessRedirect(req, res) {
   const token = signToken(req.user);
-  res.redirect(`${config.frontendUrl}/auth/callback?token=${encodeURIComponent(token)}`);
+  const params = cliRedirectParams(req);
+  if (req.session) {
+    delete req.session.cliRedirect;
+    delete req.session.cliState;
+  }
+  res.redirect(frontendAuthUrl('/auth/callback', { token, ...params }));
 }
 
 async function main() {
@@ -1411,6 +1445,15 @@ echo "Nav installed. Open a new terminal, or run: . \\"$profile_file\\"; nav che
         github: `${config.backendUrl}/auth/github/callback`
       }
     });
+  });
+
+  app.get('/auth/cli/start', (req, res) => {
+    const redirectUri = req.query.redirect_uri;
+    const state = String(req.query.state || '');
+    if (!isAllowedCliRedirectUri(redirectUri) || !state) {
+      return res.status(400).json({ error: 'Invalid CLI redirect request' });
+    }
+    res.redirect(frontendAuthUrl('/login', { cli_redirect: redirectUri, state }));
   });
 
   app.post('/auth/register', async (req, res) => {
@@ -1536,7 +1579,12 @@ echo "Nav installed. Open a new terminal, or run: . \\"$profile_file\\"; nav che
     if (!passport._strategy('google')) {
       return res.status(503).json({ error: 'Google OAuth is not configured' });
     }
-    passport.authenticate('google', { scope: ['profile', 'email'], session: false })(req, res, next);
+    if (isAllowedCliRedirectUri(req.query.cli_redirect)) {
+      req.session.cliRedirect = req.query.cli_redirect;
+      req.session.cliState = String(req.query.state || '');
+      return req.session.save(() => passport.authenticate('google', { scope: ['profile', 'email'], session: false })(req, res, next));
+    }
+    return passport.authenticate('google', { scope: ['profile', 'email'], session: false })(req, res, next);
   });
 
   app.get('/auth/google/callback',
@@ -1548,7 +1596,12 @@ echo "Nav installed. Open a new terminal, or run: . \\"$profile_file\\"; nav che
     if (!passport._strategy('github')) {
       return res.status(503).json({ error: 'GitHub OAuth is not configured' });
     }
-    passport.authenticate('github', { session: false })(req, res, next);
+    if (isAllowedCliRedirectUri(req.query.cli_redirect)) {
+      req.session.cliRedirect = req.query.cli_redirect;
+      req.session.cliState = String(req.query.state || '');
+      return req.session.save(() => passport.authenticate('github', { session: false })(req, res, next));
+    }
+    return passport.authenticate('github', { session: false })(req, res, next);
   });
 
   app.get('/auth/github/callback',
