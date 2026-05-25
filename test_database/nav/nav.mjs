@@ -1051,7 +1051,32 @@ async function publish(namespace, rest) {
       changelog
     })
   });
-  console.log(`published ${namespace}/${name}@${complete.version.version}`);
+  if (complete.version?.version) {
+    console.log(`published ${namespace}/${name}@${complete.version.version}`);
+    return;
+  }
+  console.log(`queued security scan for ${namespace}/${name}@${version}`);
+  const final = await waitForPublish(init.session.id);
+  if (final.session.status === 'published') {
+    console.log(`published ${namespace}/${name}@${version}`);
+    return;
+  }
+  const reason = final.session.scan_error || 'security scan rejected the archive';
+  throw new Error(`publish rejected: ${reason}`);
+}
+
+async function waitForPublish(sessionId) {
+  const deadline = Date.now() + 120000;
+  const pending = new Set(['queued', 'running', 'uploaded']);
+  while (Date.now() < deadline) {
+    const status = await request(`/publish/${sessionId}/status`);
+    const state = status.session.scan_status || status.session.status;
+    if (!pending.has(state) && !pending.has(status.session.status)) return status;
+    process.stdout.write('.');
+    await new Promise(resolve => setTimeout(resolve, 1500));
+  }
+  process.stdout.write('\n');
+  throw new Error('publish scan timed out; check the registry worker status');
 }
 
 async function resolveChangelog(options, archivePath, manifest) {
