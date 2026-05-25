@@ -83,7 +83,6 @@ p {
 code {
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", ui-monospace, monospace;
   font-size: 12px;
-  word-break: break-all;
 }
 
 .app {
@@ -241,12 +240,30 @@ code {
   display: grid;
   gap: 16px;
   padding: 20px;
+  min-width: 0;
 }
 
 .install-header {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
+}
+
+.os-logo-frame {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) - 2px);
+  background: #ffffff;
+  flex: none;
+}
+
+.os-logo {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
 }
 
 .install-header h2 {
@@ -265,12 +282,13 @@ code {
   padding: 10px 12px;
   border-radius: var(--radius);
   background: var(--secondary);
-  overflow-wrap: anywhere;
+  min-width: 0;
+  overflow-x: auto;
+  white-space: nowrap;
 }
 
 .install-card .command-line code {
-  display: block;
-  min-height: 58px;
+  min-height: 42px;
 }
 
 .copy-button {
@@ -755,8 +773,7 @@ code {
 }
 
 .toolchain-summary {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  max-width: 680px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
 .stat-card {

@@ -13,7 +13,6 @@ import {
   Github,
   Globe2,
   KeyRound,
-  LaptopMinimal,
   LockKeyhole,
   Mail,
   Monitor,
@@ -21,10 +20,10 @@ import {
   RefreshCcw,
   Search,
   ShieldCheck,
-  TerminalSquare,
   UploadCloud,
   UserPlus,
-  Wrench
+  Wrench,
+  X
 } from 'lucide-react';
 import './styles.css';
 
@@ -890,17 +889,17 @@ function HomePage() {
   const installers = [
     {
       name: 'Windows',
-      icon: Monitor,
+      logo: '/windows-applications-svgrepo-com.svg',
       command: `irm ${API}/downloads/nav/install.ps1 | iex`
     },
     {
       name: 'Linux',
-      icon: TerminalSquare,
+      logo: '/linux-svgrepo-com.svg',
       command: `curl -fsSL ${API}/downloads/nav/install.sh | sh`
     },
     {
       name: 'macOS',
-      icon: LaptopMinimal,
+      logo: '/apple-logo-svgrepo-com.svg',
       command: `curl -fsSL ${API}/downloads/nav/install.sh | sh`
     }
   ];
@@ -913,7 +912,9 @@ function HomePage() {
           {installers.map(installer => (
             <Card className="install-card" key={installer.name}>
               <div className="install-header">
-                <installer.icon size={20} />
+                <span className="os-logo-frame">
+                  <img className="os-logo" src={installer.logo} alt="" />
+                </span>
                 <h2>{installer.name}</h2>
               </div>
               <CommandLine command={installer.command} />
@@ -1203,6 +1204,8 @@ function ToolchainsPage({
   const pageCount = Math.max(1, Math.ceil(filteredToolchainGroups.length / pageSize));
   const visibleToolchains = filteredToolchainGroups.slice((page - 1) * pageSize, page * pageSize);
   const compilerCount = filteredToolchainGroups.filter(toolchain => /gcc|clang|compiler|xtensa|riscv|arm-none-eabi/i.test(`${toolchain.name} ${toolchain.description}`)).length;
+  const platformCount = new Set(filteredToolchainGroups.flatMap(toolchain => toolchain.artifacts.map(artifact => `${artifact.os}/${artifact.arch}`))).size;
+  const vendorCount = new Set(filteredToolchainGroups.map(toolchain => toolchain.vendor)).size;
   useEffect(() => setPage(1), [activeVendor, toolchainFilters.os, toolchainFilters.arch, toolchainFilters.board]);
   useEffect(() => setPage(current => Math.min(current, pageCount)), [pageCount]);
   return (
@@ -1223,6 +1226,16 @@ function ToolchainsPage({
           <span>Compilers</span>
           <strong>{compilerCount}</strong>
         </Card>
+        <Card className="stat-card">
+          <Monitor size={18} />
+          <span>Platforms</span>
+          <strong>{platformCount}</strong>
+        </Card>
+        <Card className="stat-card">
+          <Globe2 size={18} />
+          <span>Vendors</span>
+          <strong>{vendorCount}</strong>
+        </Card>
       </section>
       <Card className="section-card">
         <div className="section-heading">
@@ -1239,7 +1252,8 @@ function ToolchainsPage({
               ))}
             </div>
             <Button variant="outline" size="sm" onClick={() => setShowToolchainFilters(!showToolchainFilters)}>
-              Filters
+              {showToolchainFilters ? <X size={16} /> : null}
+              {showToolchainFilters ? 'Close filters' : 'Filters'}
             </Button>
           </div>
         </div>
