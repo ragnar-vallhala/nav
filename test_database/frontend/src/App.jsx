@@ -1,11 +1,15 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import { Select as SelectPrimitive } from 'radix-ui';
 import {
   Activity,
   Archive,
   Boxes,
+  Check,
   CheckCircle2,
+  ChevronDown,
   ChevronRight,
+  ChevronUp,
   CircuitBoard,
   Copy,
   Database,
@@ -64,6 +68,39 @@ function Textarea(props) {
 
 function Label({ children, className = '' }) {
   return <label className={cn('label', className)}>{children}</label>;
+}
+
+function SelectField({ value, onValueChange, options }) {
+  return (
+    <SelectPrimitive.Root value={value} onValueChange={onValueChange}>
+      <SelectPrimitive.Trigger className="select-trigger">
+        <SelectPrimitive.Value />
+        <SelectPrimitive.Icon className="select-icon">
+          <ChevronDown size={16} />
+        </SelectPrimitive.Icon>
+      </SelectPrimitive.Trigger>
+      <SelectPrimitive.Portal>
+        <SelectPrimitive.Content className="select-content" position="popper" sideOffset={4}>
+          <SelectPrimitive.ScrollUpButton className="select-scroll-button">
+            <ChevronUp size={16} />
+          </SelectPrimitive.ScrollUpButton>
+          <SelectPrimitive.Viewport className="select-viewport">
+            {options.map(option => (
+              <SelectPrimitive.Item className="select-item" key={option.value} value={option.value}>
+                <SelectPrimitive.ItemText>{option.label}</SelectPrimitive.ItemText>
+                <SelectPrimitive.ItemIndicator className="select-indicator">
+                  <Check size={16} />
+                </SelectPrimitive.ItemIndicator>
+              </SelectPrimitive.Item>
+            ))}
+          </SelectPrimitive.Viewport>
+          <SelectPrimitive.ScrollDownButton className="select-scroll-button">
+            <ChevronDown size={16} />
+          </SelectPrimitive.ScrollDownButton>
+        </SelectPrimitive.Content>
+      </SelectPrimitive.Portal>
+    </SelectPrimitive.Root>
+  );
 }
 
 function Alert({ children, variant = 'default' }) {
@@ -1263,24 +1300,36 @@ function ToolchainsPage({
           <div className="filter-panel">
             <Label>
               Operating system
-              <select className="input" value={toolchainFilters.os} onChange={event => setToolchainFilters({ ...toolchainFilters, os: event.target.value })}>
-                <option value="all">All OS</option>
-                {toolchainFilterOptions.os.map(os => <option value={os} key={os}>{os}</option>)}
-              </select>
+              <SelectField
+                value={toolchainFilters.os}
+                onValueChange={os => setToolchainFilters({ ...toolchainFilters, os })}
+                options={[
+                  { value: 'all', label: 'All OS' },
+                  ...toolchainFilterOptions.os.map(os => ({ value: os, label: os }))
+                ]}
+              />
             </Label>
             <Label>
               Architecture
-              <select className="input" value={toolchainFilters.arch} onChange={event => setToolchainFilters({ ...toolchainFilters, arch: event.target.value })}>
-                <option value="all">All architectures</option>
-                {toolchainFilterOptions.arch.map(arch => <option value={arch} key={arch}>{arch}</option>)}
-              </select>
+              <SelectField
+                value={toolchainFilters.arch}
+                onValueChange={arch => setToolchainFilters({ ...toolchainFilters, arch })}
+                options={[
+                  { value: 'all', label: 'All architectures' },
+                  ...toolchainFilterOptions.arch.map(arch => ({ value: arch, label: arch }))
+                ]}
+              />
             </Label>
             <Label>
               Board family
-              <select className="input" value={toolchainFilters.board} onChange={event => setToolchainFilters({ ...toolchainFilters, board: event.target.value })}>
-                <option value="all">All boards</option>
-                {toolchainFilterOptions.boards.map(board => <option value={board} key={board}>{board}</option>)}
-              </select>
+              <SelectField
+                value={toolchainFilters.board}
+                onValueChange={board => setToolchainFilters({ ...toolchainFilters, board })}
+                options={[
+                  { value: 'all', label: 'All boards' },
+                  ...toolchainFilterOptions.boards.map(board => ({ value: board, label: board }))
+                ]}
+              />
             </Label>
           </div>
         )}
