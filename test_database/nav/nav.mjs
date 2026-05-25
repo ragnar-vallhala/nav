@@ -247,19 +247,19 @@ function blue(value) {
 }
 
 function printInfo(message) {
-  console.log(`${blue('i')} ${message}`);
+  console.log(blue(message));
 }
 
 function printSuccess(message) {
-  console.log(`${green('ok')} ${message}`);
+  console.log(green(message));
 }
 
 function printWarn(message) {
-  console.log(`${yellow('warn')} ${message}`);
+  console.log(yellow(message));
 }
 
 function printStep(message) {
-  console.log(`${cyan('=>')} ${message}`);
+  console.log(cyan(message));
 }
 
 function formatPath(value) {
