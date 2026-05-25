@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import fs from 'node:fs/promises';
-import { existsSync, statSync as fsSyncStat } from 'node:fs';
+import { existsSync, readdirSync, statSync as fsSyncStat } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
@@ -16,6 +16,24 @@ const CONFIG = path.join(HOME, 'config.json');
 const CACHE = path.join(HOME, 'cache');
 const TOOLCHAIN_HOME = path.join(HOME, 'toolchains');
 const API = process.env.NAV_REGISTRY_URL || process.env.NAV_TEST_REGISTRY || 'http://localhost:14000';
+const PROJECT_SEARCH_MAX_DEPTH = Number(process.env.NAV_PROJECT_SEARCH_MAX_DEPTH || 8);
+const PROJECT_SEARCH_MAX_DIRS = Number(process.env.NAV_PROJECT_SEARCH_MAX_DIRS || 4000);
+const PROJECT_SEARCH_SKIP_DIRS = new Set([
+  '.git',
+  '.hg',
+  '.svn',
+  '.nav',
+  '.next',
+  '.turbo',
+  '.cache',
+  '.venv',
+  'node_modules',
+  'build',
+  'dist',
+  'out',
+  'target',
+  'CMakeFiles'
+]);
 
 const args = process.argv.slice(2);
 
@@ -315,7 +333,7 @@ async function check(projectArg) {
   const projectDir = resolveExistingProjectDir(projectArg);
   const manifest = await readProjectManifest(projectDir).catch(() => null);
   if (!manifest) {
-    console.log('project: no nav.toml/nav.json found from current folder upward');
+    console.log('project: no nav.toml/nav.json found from current folder upward or below');
     return;
   }
   const lockPath = path.join(projectDir, '.nav', 'lock.json');
@@ -2049,6 +2067,12 @@ function choosePort(ports) {
 }
 
 function findProjectRoot(startDir = process.cwd()) {
+  const upward = findProjectRootUpward(startDir);
+  if (upward) return upward;
+  return findProjectRootDownward(startDir);
+}
+
+function findProjectRootUpward(startDir = process.cwd()) {
   let current = path.resolve(startDir || process.cwd());
   try {
     const stat = existsSync(current) ? requireStatSync(current) : null;
@@ -2056,17 +2080,47 @@ function findProjectRoot(startDir = process.cwd()) {
   } catch {}
 
   for (;;) {
-    if (
-      existsSync(path.join(current, 'nav.toml')) ||
-      existsSync(path.join(current, 'nav.json')) ||
-      existsSync(path.join(current, '.nav'))
-    ) {
+    if (isNavProjectDirectory(current, { allowLockOnly: true })) {
       return current;
     }
     const parent = path.dirname(current);
     if (parent === current) return null;
     current = parent;
   }
+}
+
+function findProjectRootDownward(startDir = process.cwd()) {
+  const root = path.resolve(startDir || process.cwd());
+  const rootStat = requireStatSync(root);
+  if (!rootStat?.isDirectory()) return null;
+  const queue = [{ dir: root, depth: 0 }];
+  let visited = 0;
+  while (queue.length > 0 && visited < PROJECT_SEARCH_MAX_DIRS) {
+    const { dir, depth } = queue.shift();
+    visited += 1;
+    if (isNavProjectDirectory(dir, { allowLockOnly: false })) {
+      return dir;
+    }
+    if (depth >= PROJECT_SEARCH_MAX_DEPTH) continue;
+    let entries = [];
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      if (PROJECT_SEARCH_SKIP_DIRS.has(entry.name)) continue;
+      if (entry.name.startsWith('.') && !['.config'].includes(entry.name)) continue;
+      queue.push({ dir: path.join(dir, entry.name), depth: depth + 1 });
+    }
+  }
+  return null;
+}
+
+function isNavProjectDirectory(dir, { allowLockOnly = false } = {}) {
+  if (existsSync(path.join(dir, 'nav.toml')) || existsSync(path.join(dir, 'nav.json'))) return true;
+  return allowLockOnly && existsSync(path.join(dir, '.nav', 'lock.json'));
 }
 
 function requireStatSync(target) {
@@ -2086,7 +2140,7 @@ function requireProjectDir(projectArg = null) {
   const start = projectArg ? path.resolve(projectArg) : process.cwd();
   const root = findProjectRoot(start);
   if (!root) {
-    throw new Error(`No Nav project found from ${start} upward. Run "nav setup" in a project folder first.`);
+    throw new Error(`No Nav project found from ${start} upward or below. Run "nav setup" in a project folder first.`);
   }
   return root;
 }
@@ -2104,7 +2158,7 @@ async function readProjectManifest(projectDir) {
   const jsonExists = await exists(jsonPath);
   if (tomlExists) return enhanceProjectManifest(parseToml(await fs.readFile(tomlPath, 'utf8')), root);
   if (jsonExists) return enhanceProjectManifest(JSON.parse(await fs.readFile(jsonPath, 'utf8')), root);
-  throw new Error(`No Nav project manifest found from ${path.resolve(projectDir || process.cwd())} upward. Run "nav setup" in an empty folder, or add nav.toml to the project root.`);
+  throw new Error(`No Nav project manifest found from ${path.resolve(projectDir || process.cwd())} upward or below. Run "nav setup" in an empty folder, or add nav.toml to the project root.`);
 }
 
 function enhanceProjectManifest(manifest, projectDir) {
