@@ -124,7 +124,6 @@ Usage:
   nav help
   nav check
   nav signup <name...> <email> <password>
-  nav verify <email> <otp>
   nav login
   nav logout
   nav update-cli
@@ -231,7 +230,6 @@ async function main() {
     if (!command || command === 'help' || command === '--help') return usage();
     if (command === 'check') return check(subcommand);
     if (command === 'signup') return signup([subcommand, ...rest].filter(Boolean));
-    if (command === 'verify') return verifyEmail(subcommand, rest[0]);
     if (command === 'login') return login([subcommand, ...rest].filter(Boolean));
     if (command === 'logout') return logout();
     if (command === 'update-cli' || command === 'self-update') return updateCli();
@@ -350,16 +348,13 @@ async function signup(values = []) {
     method: 'POST',
     body: JSON.stringify({ name, email, password })
   });
-  console.log(`verification required for ${data.email}`);
-  console.log('Check your email for the 5-minute OTP.');
+  console.log(`OTP sent to ${data.email}.`);
   if (!process.stdin.isTTY) {
-    console.log(`Then run: nav verify ${data.email} <otp>`);
-    return;
+    throw new Error('signup verification needs an interactive terminal so you can enter the OTP');
   }
-  const otp = await promptHiddenOrPlain('Paste OTP here, or press Enter to verify later: ', { hidden: false });
+  const otp = await promptHiddenOrPlain('Enter OTP: ');
   if (!otp.trim()) {
-    console.log(`Then run: nav verify ${data.email} <otp>`);
-    return;
+    throw new Error('OTP is required to finish signup');
   }
   await verifyEmail(data.email, otp.trim());
 }
@@ -371,7 +366,7 @@ async function verifyEmail(email, otp) {
     body: JSON.stringify({ email, otp })
   });
   await writeConfig({ token: result.token, user: result.user, registry: API });
-  console.log(`verified and logged in as ${result.user.email}`);
+  console.log(`account created successfully and logged in as ${result.user.email}`);
 }
 
 async function login(rawArgs = []) {
