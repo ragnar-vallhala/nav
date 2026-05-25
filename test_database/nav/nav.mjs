@@ -7,6 +7,7 @@ import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
 import http from 'node:http';
+import readline from 'node:readline/promises';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const LEGACY_HOME = path.join(ROOT, '.nav-home');
@@ -122,7 +123,8 @@ function usage() {
 Usage:
   nav help
   nav check
-  nav signup <name> <email> <password>
+  nav signup <name...> <email> <password>
+  nav verify <email> <otp>
   nav login
   nav logout
   nav update-cli
@@ -228,7 +230,8 @@ async function main() {
   try {
     if (!command || command === 'help' || command === '--help') return usage();
     if (command === 'check') return check(subcommand);
-    if (command === 'signup') return signup(subcommand, rest[0], rest[1]);
+    if (command === 'signup') return signup([subcommand, ...rest].filter(Boolean));
+    if (command === 'verify') return verifyEmail(subcommand, rest[0]);
     if (command === 'login') return login([subcommand, ...rest].filter(Boolean));
     if (command === 'logout') return logout();
     if (command === 'update-cli' || command === 'self-update') return updateCli();
@@ -268,6 +271,15 @@ async function readConfig() {
 
 async function writeConfig(config) {
   await fs.writeFile(CONFIG, JSON.stringify(config, null, 2));
+}
+
+async function promptHiddenOrPlain(prompt) {
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    return await rl.question(prompt);
+  } finally {
+    rl.close();
+  }
 }
 
 async function request(route, options = {}) {
@@ -322,14 +334,44 @@ async function check(projectArg) {
   console.log(`lock: ${lock ? `${lock.toolchains.length} toolchains, ${lock.packages.length} packages` : 'missing, run nav setup'}`);
 }
 
-async function signup(name, email, password) {
+function parseSignupArgs(values = []) {
+  const args = [...values].filter(Boolean);
+  if (args.length < 3) throw new Error('signup requires <name...> <email> <password>');
+  const password = args.at(-1);
+  const email = args.at(-2);
+  const name = args.slice(0, -2).join(' ').trim();
+  return { name, email, password };
+}
+
+async function signup(values = []) {
+  const { name, email, password } = parseSignupArgs(values);
   if (!name || !email || !password) throw new Error('signup requires <name> <email> <password>');
   const data = await request('/auth/register', {
     method: 'POST',
     body: JSON.stringify({ name, email, password })
   });
   console.log(`verification required for ${data.email}`);
-  console.log('Check your email for the 5-minute OTP, then verify in the web dashboard.');
+  console.log('Check your email for the 5-minute OTP.');
+  if (!process.stdin.isTTY) {
+    console.log(`Then run: nav verify ${data.email} <otp>`);
+    return;
+  }
+  const otp = await promptHiddenOrPlain('Paste OTP here, or press Enter to verify later: ', { hidden: false });
+  if (!otp.trim()) {
+    console.log(`Then run: nav verify ${data.email} <otp>`);
+    return;
+  }
+  await verifyEmail(data.email, otp.trim());
+}
+
+async function verifyEmail(email, otp) {
+  if (!email || !otp) throw new Error('verify requires <email> <otp>');
+  const result = await request('/auth/verify-email', {
+    method: 'POST',
+    body: JSON.stringify({ email, otp })
+  });
+  await writeConfig({ token: result.token, user: result.user, registry: API });
+  console.log(`verified and logged in as ${result.user.email}`);
 }
 
 async function login(rawArgs = []) {
