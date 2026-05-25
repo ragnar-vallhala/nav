@@ -702,10 +702,7 @@ async function seedEmbeddedCatalog(maintainer, namespaceId) {
       version: '5.3.2',
       sourceKind: 'hardware',
       manifest: { targets: ['esp32', 'esp32s3', 'esp32c3'], executables: ['idf.py'], env: { IDF_TOOLS_PATH: ['tools'] } },
-      platforms: ['linux/x64'],
-      platformDownloads: {
-        'linux/x64': 'https://github.com/espressif/esp-idf/releases/download/v5.3.2/esp-idf-v5.3.2.zip'
-      }
+      platforms: []
     },
     {
       vendorSlug: 'espressif',
@@ -714,13 +711,7 @@ async function seedEmbeddedCatalog(maintainer, namespaceId) {
       version: 'esp-14.2.0-20241119',
       sourceKind: 'hardware',
       manifest: { targets: ['esp32'], executables: ['xtensa-esp32-elf-gcc', 'xtensa-esp32-elf-g++'] },
-      platforms: ['windows/x64', 'linux/x64', 'darwin/arm64', 'darwin/x64'],
-      platformDownloads: {
-        'windows/x64': 'https://github.com/espressif/crosstool-NG/releases/download/esp-14.2.0_20241119/xtensa-esp-elf-14.2.0_20241119-x86_64-w64-mingw32.zip',
-        'linux/x64': 'https://github.com/espressif/crosstool-NG/releases/download/esp-14.2.0_20241119/xtensa-esp-elf-14.2.0_20241119-x86_64-linux-gnu.tar.xz',
-        'darwin/arm64': 'https://github.com/espressif/crosstool-NG/releases/download/esp-14.2.0_20241119/xtensa-esp-elf-14.2.0_20241119-aarch64-apple-darwin.tar.xz',
-        'darwin/x64': 'https://github.com/espressif/crosstool-NG/releases/download/esp-14.2.0_20241119/xtensa-esp-elf-14.2.0_20241119-x86_64-apple-darwin.tar.xz'
-      }
+      platforms: []
     },
     {
       vendorSlug: 'espressif',
@@ -2206,7 +2197,7 @@ echo "Nav installed. Open a new terminal, or run: . \\"$profile_file\\"; nav che
       LEFT JOIN LATERAL (
         SELECT * FROM toolchain_versions WHERE toolchain_id = t.id ORDER BY created_at DESC LIMIT 1
       ) tver ON true
-      LEFT JOIN toolchain_artifacts ta ON ta.toolchain_version_id = tver.id
+      JOIN toolchain_artifacts ta ON ta.toolchain_version_id = tver.id
       ORDER BY tv.kind, t.name
     `);
     res.json({ toolchains: result.rows });
