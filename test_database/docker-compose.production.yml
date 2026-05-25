@@ -37,8 +37,8 @@ services:
     environment:
       NODE_ENV: production
       PORT: 14000
-      FRONTEND_URL: https://nav.navrobotec.online
-      BACKEND_URL: https://nav.navrobotec.online/api
+      FRONTEND_URL: https://navdev.navrobotec.com
+      BACKEND_URL: https://navdev.navrobotec.com/api
       JWT_SECRET: ${JWT_SECRET}
       AUTH_COOKIE_NAME: nav_token
       DB_HOST: postgres
@@ -53,10 +53,13 @@ services:
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
-      GOOGLE_CALLBACK_URL: https://nav.navrobotec.online/api/auth/google/callback
+      GOOGLE_CALLBACK_URL: https://navdev.navrobotec.com/api/auth/google/callback
       GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID}
       GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET}
-      GITHUB_CALLBACK_URL: https://nav.navrobotec.online/api/auth/github/callback
+      GITHUB_CALLBACK_URL: https://navdev.navrobotec.com/api/auth/github/callback
+      FACEBOOK_CLIENT_ID: ${FACEBOOK_CLIENT_ID}
+      FACEBOOK_CLIENT_SECRET: ${FACEBOOK_CLIENT_SECRET}
+      FACEBOOK_CALLBACK_URL: https://navdev.navrobotec.com/api/auth/facebook/callback
       SMTP_HOST: ${SMTP_HOST}
       SMTP_PORT: ${SMTP_PORT}
       SMTP_USER: ${SMTP_USER}
@@ -110,7 +113,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile.production
       args:
-        VITE_API_BASE: https://nav.navrobotec.online/api
+        VITE_API_BASE: https://navdev.navrobotec.com/api
     restart: unless-stopped
     networks: [nav-internal]
 

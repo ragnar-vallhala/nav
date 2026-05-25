@@ -3,7 +3,7 @@
 This manifest deploys Nav Registry into the existing Kubernetes cluster without
 claiming host ports `80` or `443`. The installed ingress-nginx controller and
 cert-manager `letsencrypt-prod` issuer terminate HTTPS for
-`nav.navrobotec.online`.
+`navdev.navrobotec.com`.
 
 The manifest deliberately does not contain secrets. Create the secret from a
 server-local `.env` file before applying the workloads:
@@ -22,7 +22,7 @@ On this server the application images are built locally and imported into k3s:
 ```bash
 docker build -f backend/Dockerfile -t nav-registry-backend:dev .
 docker build -f frontend/Dockerfile.production \
-  --build-arg VITE_API_BASE=https://nav.navrobotec.online/api \
+  --build-arg VITE_API_BASE=https://navdev.navrobotec.com/api \
   -t nav-registry-frontend:dev frontend
 docker save nav-registry-backend:dev | k3s ctr images import -
 docker save nav-registry-frontend:dev | k3s ctr images import -
