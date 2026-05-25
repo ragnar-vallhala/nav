@@ -125,6 +125,7 @@ Usage:
   nav signup <name> <email> <password>
   nav login
   nav logout
+  nav update-cli
   nav whoami
 
   nav search [query]
@@ -230,6 +231,7 @@ async function main() {
     if (command === 'signup') return signup(subcommand, rest[0], rest[1]);
     if (command === 'login') return login([subcommand, ...rest].filter(Boolean));
     if (command === 'logout') return logout();
+    if (command === 'update-cli' || command === 'self-update') return updateCli();
     if (command === 'whoami') return whoami();
     if (command === 'search') return packageList([subcommand, ...rest].filter(Boolean).join(' '));
     if (command === 'namespace') return namespaceCommand(subcommand, rest);
@@ -353,6 +355,34 @@ async function logout() {
   delete config.user;
   await writeConfig(config);
   console.log('logged out');
+}
+
+async function updateCli() {
+  const currentPath = fileURLToPath(import.meta.url);
+  const tempPath = path.join(os.tmpdir(), `nav-cli-${Date.now()}-${crypto.randomBytes(4).toString('hex')}.mjs`);
+  const backupPath = `${currentPath}.bak`;
+
+  console.log(`checking latest CLI from ${API}`);
+  const bytes = Buffer.from(await request('/downloads/nav/nav.mjs'));
+  await fs.writeFile(tempPath, bytes);
+
+  await runCapture(process.execPath, ['--check', tempPath]);
+
+  const currentHash = await sha256File(currentPath).catch(() => null);
+  const nextHash = await sha256File(tempPath);
+  if (currentHash === nextHash) {
+    await fs.rm(tempPath, { force: true });
+    console.log('Nav CLI is already up to date.');
+    return;
+  }
+
+  await fs.copyFile(currentPath, backupPath).catch(() => null);
+  await fs.copyFile(tempPath, currentPath);
+  if (process.platform !== 'win32') await fs.chmod(currentPath, 0o755).catch(() => null);
+  await fs.rm(tempPath, { force: true });
+
+  console.log('Nav CLI updated successfully.');
+  console.log(`backup: ${backupPath}`);
 }
 
 async function waitForBrowserLogin(state) {
@@ -2000,6 +2030,10 @@ function slug(value) {
 
 function hash(buffer) {
   return crypto.createHash('sha256').update(buffer).digest('hex');
+}
+
+async function sha256File(file) {
+  return hash(await fs.readFile(file));
 }
 
 function quoteCommand(parts) {
