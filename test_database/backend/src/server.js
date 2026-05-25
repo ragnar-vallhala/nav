@@ -8,6 +8,7 @@ import connectPgSimple from 'connect-pg-simple';
 import passport from 'passport';
 import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import { Strategy as GitHubStrategy } from 'passport-github2';
+import { Strategy as FacebookStrategy } from 'passport-facebook';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import nodemailer from 'nodemailer';
@@ -1313,6 +1314,33 @@ function configurePassport() {
       }
     ));
   }
+
+  if (process.env.FACEBOOK_CLIENT_ID && process.env.FACEBOOK_CLIENT_SECRET) {
+    passport.use(new FacebookStrategy(
+      {
+        clientID: process.env.FACEBOOK_CLIENT_ID,
+        clientSecret: process.env.FACEBOOK_CLIENT_SECRET,
+        callbackURL: process.env.FACEBOOK_CALLBACK_URL || `${config.backendUrl}/auth/facebook/callback`,
+        profileFields: ['id', 'displayName', 'photos', 'email']
+      },
+      async (_accessToken, _refreshToken, profile, done) => {
+        try {
+          const email = profile.emails?.[0]?.value || `${profile.id}@facebook.local`;
+          const user = await findOrCreateOAuthUser({
+            provider: 'facebook',
+            providerUserId: profile.id,
+            email,
+            name: profile.displayName || email,
+            avatarUrl: profile.photos?.[0]?.value,
+            profile
+          });
+          done(null, user);
+        } catch (error) {
+          done(error);
+        }
+      }
+    ));
+  }
 }
 
 function oauthSuccessRedirect(req, res) {
@@ -1440,9 +1468,11 @@ echo "Nav installed. Open a new terminal, or run: . \\"$profile_file\\"; nav che
       email_password: true,
       google: Boolean(passport._strategy('google')),
       github: Boolean(passport._strategy('github')),
+      facebook: Boolean(passport._strategy('facebook')),
       callbacks: {
         google: `${config.backendUrl}/auth/google/callback`,
-        github: `${config.backendUrl}/auth/github/callback`
+        github: `${config.backendUrl}/auth/github/callback`,
+        facebook: `${config.backendUrl}/auth/facebook/callback`
       }
     });
   });
@@ -1606,6 +1636,23 @@ echo "Nav installed. Open a new terminal, or run: . \\"$profile_file\\"; nav che
 
   app.get('/auth/github/callback',
     passport.authenticate('github', { session: false, failureRedirect: `${config.frontendUrl}/?oauth=github_failed` }),
+    oauthSuccessRedirect
+  );
+
+  app.get('/auth/facebook', (req, res, next) => {
+    if (!passport._strategy('facebook')) {
+      return res.status(503).json({ error: 'Facebook OAuth is not configured' });
+    }
+    if (isAllowedCliRedirectUri(req.query.cli_redirect)) {
+      req.session.cliRedirect = req.query.cli_redirect;
+      req.session.cliState = String(req.query.state || '');
+      return req.session.save(() => passport.authenticate('facebook', { scope: ['email'], session: false })(req, res, next));
+    }
+    return passport.authenticate('facebook', { scope: ['email'], session: false })(req, res, next);
+  });
+
+  app.get('/auth/facebook/callback',
+    passport.authenticate('facebook', { session: false, failureRedirect: `${config.frontendUrl}/?oauth=facebook_failed` }),
     oauthSuccessRedirect
   );
 
