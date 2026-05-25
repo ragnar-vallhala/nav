@@ -1204,7 +1204,9 @@ function ToolchainsPage({
   const pageCount = Math.max(1, Math.ceil(filteredToolchainGroups.length / pageSize));
   const visibleToolchains = filteredToolchainGroups.slice((page - 1) * pageSize, page * pageSize);
   const compilerCount = filteredToolchainGroups.filter(toolchain => /gcc|clang|compiler|xtensa|riscv|arm-none-eabi/i.test(`${toolchain.name} ${toolchain.description}`)).length;
-  const platformCount = new Set(filteredToolchainGroups.flatMap(toolchain => toolchain.artifacts.map(artifact => `${artifact.os}/${artifact.arch}`))).size;
+  const platformCount = new Set(filteredToolchainGroups.flatMap(toolchain => toolchain.artifacts
+    .filter(artifact => artifact.os && artifact.arch)
+    .map(artifact => `${artifact.os}/${artifact.arch}`))).size;
   const vendorCount = new Set(filteredToolchainGroups.map(toolchain => toolchain.vendor)).size;
   useEffect(() => setPage(1), [activeVendor, toolchainFilters.os, toolchainFilters.arch, toolchainFilters.board]);
   useEffect(() => setPage(current => Math.min(current, pageCount)), [pageCount]);
@@ -1853,6 +1855,9 @@ function Pagination({ page, pageCount, onPageChange }) {
 }
 
 function ToolchainCard({ toolchain }) {
+  const platforms = toolchain.artifacts
+    .filter(artifact => artifact.os && artifact.arch)
+    .map(artifact => `${artifact.os}/${artifact.arch}`);
   return (
     <article className="toolchain-card">
       <div className="toolchain-head">
@@ -1871,7 +1876,7 @@ function ToolchainCard({ toolchain }) {
       </div>
       <div className="metadata-list compact">
         <div><span>Version</span><strong>{toolchain.version}</strong></div>
-        <div><span>Platforms</span><strong>{toolchain.artifacts.map(artifact => `${artifact.os}/${artifact.arch}`).join(', ')}</strong></div>
+        <div><span>Platforms</span><strong>{platforms.length ? platforms.join(', ') : 'Not mirrored yet'}</strong></div>
       </div>
       <div className="button-row">
         {toolchain.official_url && (
