@@ -4,6 +4,7 @@ import { Select as SelectPrimitive } from 'radix-ui';
 import {
   Activity,
   Archive,
+  ArrowLeft,
   Boxes,
   Check,
   CheckCircle2,
@@ -14,8 +15,11 @@ import {
   Copy,
   Database,
   Download,
+  Eye,
+  EyeOff,
   Github,
   Globe2,
+  House,
   KeyRound,
   LockKeyhole,
   Mail,
@@ -62,6 +66,27 @@ function Input(props) {
   return <input className="input" {...props} />;
 }
 
+function PasswordInput(props) {
+  const [visible, setVisible] = useState(false);
+
+  return (
+    <div className="password-field">
+      <Input {...props} type={visible ? 'text' : 'password'} />
+      <Button
+        className="password-toggle"
+        variant="ghost"
+        size="sm"
+        type="button"
+        aria-label={visible ? 'Hide password' : 'Show password'}
+        title={visible ? 'Hide password' : 'Show password'}
+        onClick={() => setVisible(!visible)}
+      >
+        {visible ? <EyeOff size={17} /> : <Eye size={17} />}
+      </Button>
+    </div>
+  );
+}
+
 function Textarea(props) {
   return <textarea className="input textarea" {...props} />;
 }
@@ -100,6 +125,48 @@ function SelectField({ value, onValueChange, options }) {
         </SelectPrimitive.Content>
       </SelectPrimitive.Portal>
     </SelectPrimitive.Root>
+  );
+}
+
+function FileField({ accept, file, label = 'Choose file', onChange }) {
+  return (
+    <div className="file-field">
+      <input className="file-input" type="file" accept={accept} aria-label={label} onChange={onChange} />
+      <span className="file-action">
+        <UploadCloud size={16} />
+        Choose file
+      </span>
+      <span className={cn('file-name', file && 'selected')} title={file?.name || ''}>
+        {file?.name || 'No file selected'}
+      </span>
+    </div>
+  );
+}
+
+function BrandMark() {
+  return <img className="brand-logo" src="/navrobotec.svg" alt="Navrobotec" />;
+}
+
+function AuthNavigation({ navigate }) {
+  function goBack() {
+    if (window.history.length > 1) {
+      window.history.back();
+    } else {
+      navigate('home');
+    }
+  }
+
+  return (
+    <div className="auth-navigation">
+      <Button variant="outline" size="sm" type="button" onClick={goBack}>
+        <ArrowLeft size={16} />
+        Back
+      </Button>
+      <Button variant="outline" size="sm" type="button" onClick={() => navigate('home')}>
+        <House size={16} />
+        Home
+      </Button>
+    </div>
   );
 }
 
@@ -720,7 +787,7 @@ function Header({ route, navigate, isAuthed, user, logout, theme, setTheme }) {
   return (
     <header className="site-header">
       <button className="brand-button" onClick={() => navigate('home')}>
-        <span className="brand-mark">N</span>
+        <BrandMark />
         <span>
           <strong>Nav</strong>
         </span>
@@ -760,9 +827,10 @@ function AuthPage({ mode, form, setForm, providers, error, notice, submitAuth, n
 
   return (
     <main className="auth-page">
+      <AuthNavigation navigate={navigate} />
       <Card className="auth-card">
         <button className="brand-button auth-brand" onClick={() => navigate('home')}>
-          <span className="brand-mark">N</span>
+          <BrandMark />
           <span><strong>Nav</strong></span>
         </button>
         <div className="auth-card-head">
@@ -786,7 +854,7 @@ function AuthPage({ mode, form, setForm, providers, error, notice, submitAuth, n
           </Label>
           <Label>
             Password
-            <Input type="password" value={form.password} onChange={event => setForm({ ...form, password: event.target.value })} />
+            <PasswordInput value={form.password} onChange={event => setForm({ ...form, password: event.target.value })} />
           </Label>
           <Button type="submit" className="full-button">
             {isSignup ? 'Create account' : 'Log in'}
@@ -827,9 +895,10 @@ function AuthPage({ mode, form, setForm, providers, error, notice, submitAuth, n
 function VerifyEmailPage({ otpForm, setOtpForm, error, notice, verifyEmail, navigate }) {
   return (
     <main className="auth-page">
+      <AuthNavigation navigate={navigate} />
       <Card className="auth-card">
         <button className="brand-button auth-brand" onClick={() => navigate('home')}>
-          <span className="brand-mark">N</span>
+          <BrandMark />
           <span><strong>Nav</strong></span>
         </button>
         <div className="auth-card-head">
@@ -861,9 +930,10 @@ function PasswordResetPage({ mode, resetForm, setResetForm, error, notice, reque
   const isReset = mode === 'reset-password';
   return (
     <main className="auth-page">
+      <AuthNavigation navigate={navigate} />
       <Card className="auth-card">
         <button className="brand-button auth-brand" onClick={() => navigate('home')}>
-          <span className="brand-mark">N</span>
+          <BrandMark />
           <span><strong>Nav</strong></span>
         </button>
         <h2>{isReset ? 'Set a new password' : 'Reset password'}</h2>
@@ -882,7 +952,7 @@ function PasswordResetPage({ mode, resetForm, setResetForm, error, notice, reque
               </Label>
               <Label>
                 New password
-                <Input type="password" value={resetForm.password} onChange={event => setResetForm({ ...resetForm, password: event.target.value })} />
+                <PasswordInput value={resetForm.password} onChange={event => setResetForm({ ...resetForm, password: event.target.value })} />
               </Label>
             </>
           )}
@@ -1166,11 +1236,15 @@ function NamespaceSettingsPage({
               </Label>
               <Label>
                 Role
-                <select className="input" value={memberForm.role} onChange={event => setMemberForm({ ...memberForm, role: event.target.value })}>
-                  <option value="maintainer">maintainer</option>
-                  <option value="admin">admin</option>
-                  <option value="viewer">viewer</option>
-                </select>
+                <SelectField
+                  value={memberForm.role}
+                  onValueChange={role => setMemberForm({ ...memberForm, role })}
+                  options={[
+                    { value: 'maintainer', label: 'Maintainer' },
+                    { value: 'admin', label: 'Admin' },
+                    { value: 'viewer', label: 'Viewer' }
+                  ]}
+                />
               </Label>
               <Button type="submit">Add member</Button>
             </form>
@@ -1521,10 +1595,10 @@ function PackageUploadPage({
                 Version
                 <Input value={publishForm.version} onChange={event => setPublishForm({ ...publishForm, version: event.target.value })} />
               </Label>
-              <Label>
-                Archive blob
-                <Input type="file" onChange={event => setPublishForm({ ...publishForm, file: event.target.files?.[0] || null })} />
-              </Label>
+              <div className="label">
+                <span>Archive blob</span>
+                <FileField label="Archive blob" file={publishForm.file} onChange={event => setPublishForm({ ...publishForm, file: event.target.files?.[0] || null })} />
+              </div>
               <Label>
                 Changelog
                 <Textarea
@@ -1534,10 +1608,15 @@ function PackageUploadPage({
                   onChange={event => setPublishForm({ ...publishForm, changelogText: event.target.value })}
                 />
               </Label>
-              <Label>
-                Changelog file
-                <Input type="file" accept=".md,.txt,text/markdown,text/plain" onChange={event => setPublishForm({ ...publishForm, changelogFile: event.target.files?.[0] || null })} />
-              </Label>
+              <div className="label">
+                <span>Changelog file</span>
+                <FileField
+                  accept=".md,.txt,text/markdown,text/plain"
+                  label="Changelog file"
+                  file={publishForm.changelogFile}
+                  onChange={event => setPublishForm({ ...publishForm, changelogFile: event.target.files?.[0] || null })}
+                />
+              </div>
               <Button type="submit">Upload and publish</Button>
             </form>
           </Card>
@@ -1607,11 +1686,15 @@ function AdminPage({
         <form className="admin-form" onSubmit={publishToolchain}>
           <Label>
             Vendor type
-            <select className="input" value={toolchainPublishForm.vendor_kind} onChange={event => setToolchainPublishForm({ ...toolchainPublishForm, vendor_kind: event.target.value })}>
-              <option value="nav">Nav</option>
-              <option value="official">Official compiler</option>
-              <option value="hardware">Hardware vendor</option>
-            </select>
+            <SelectField
+              value={toolchainPublishForm.vendor_kind}
+              onValueChange={vendor_kind => setToolchainPublishForm({ ...toolchainPublishForm, vendor_kind })}
+              options={[
+                { value: 'nav', label: 'Nav' },
+                { value: 'official', label: 'Official compiler' },
+                { value: 'hardware', label: 'Hardware vendor' }
+              ]}
+            />
           </Label>
           <Label>
             Vendor name
@@ -1627,18 +1710,26 @@ function AdminPage({
           </Label>
           <Label>
             Operating system
-            <select className="input" value={toolchainPublishForm.os} onChange={event => setToolchainPublishForm({ ...toolchainPublishForm, os: event.target.value })}>
-              <option value="windows">Windows</option>
-              <option value="linux">Linux</option>
-              <option value="darwin">macOS</option>
-            </select>
+            <SelectField
+              value={toolchainPublishForm.os}
+              onValueChange={os => setToolchainPublishForm({ ...toolchainPublishForm, os })}
+              options={[
+                { value: 'windows', label: 'Windows' },
+                { value: 'linux', label: 'Linux' },
+                { value: 'darwin', label: 'macOS' }
+              ]}
+            />
           </Label>
           <Label>
             Architecture
-            <select className="input" value={toolchainPublishForm.arch} onChange={event => setToolchainPublishForm({ ...toolchainPublishForm, arch: event.target.value })}>
-              <option value="x64">x64</option>
-              <option value="arm64">arm64</option>
-            </select>
+            <SelectField
+              value={toolchainPublishForm.arch}
+              onValueChange={arch => setToolchainPublishForm({ ...toolchainPublishForm, arch })}
+              options={[
+                { value: 'x64', label: 'x64' },
+                { value: 'arm64', label: 'arm64' }
+              ]}
+            />
           </Label>
           <Label className="admin-span">
             Description
@@ -1656,10 +1747,10 @@ function AdminPage({
             Signature
             <Input value={toolchainPublishForm.signature} onChange={event => setToolchainPublishForm({ ...toolchainPublishForm, signature: event.target.value })} />
           </Label>
-          <Label>
-            Archive
-            <Input type="file" onChange={event => setToolchainPublishForm({ ...toolchainPublishForm, file: event.target.files?.[0] || null })} />
-          </Label>
+          <div className="label">
+            <span>Archive</span>
+            <FileField label="Archive" file={toolchainPublishForm.file} onChange={event => setToolchainPublishForm({ ...toolchainPublishForm, file: event.target.files?.[0] || null })} />
+          </div>
           <Button type="submit">Publish toolchain</Button>
         </form>
       </Card>
@@ -1756,11 +1847,15 @@ function MaintainerConsole({
           </Label>
           <Label>
             Role
-            <select className="input" value={memberForm.role} onChange={event => setMemberForm({ ...memberForm, role: event.target.value })}>
-              <option value="maintainer">maintainer</option>
-              <option value="admin">admin</option>
-              <option value="viewer">viewer</option>
-            </select>
+            <SelectField
+              value={memberForm.role}
+              onValueChange={role => setMemberForm({ ...memberForm, role })}
+              options={[
+                { value: 'maintainer', label: 'Maintainer' },
+                { value: 'admin', label: 'Admin' },
+                { value: 'viewer', label: 'Viewer' }
+              ]}
+            />
           </Label>
           <Button type="submit">Add member</Button>
         </form>
@@ -1796,10 +1891,10 @@ function MaintainerConsole({
             Version
             <Input value={publishForm.version} onChange={event => setPublishForm({ ...publishForm, version: event.target.value })} />
           </Label>
-          <Label>
-            Archive blob
-            <Input type="file" onChange={event => setPublishForm({ ...publishForm, file: event.target.files?.[0] || null })} />
-          </Label>
+          <div className="label">
+            <span>Archive blob</span>
+            <FileField label="Archive blob" file={publishForm.file} onChange={event => setPublishForm({ ...publishForm, file: event.target.files?.[0] || null })} />
+          </div>
           <Label>
             Changelog
             <Textarea
@@ -1809,10 +1904,15 @@ function MaintainerConsole({
               onChange={event => setPublishForm({ ...publishForm, changelogText: event.target.value })}
             />
           </Label>
-          <Label>
-            Changelog file
-            <Input type="file" accept=".md,.txt,text/markdown,text/plain" onChange={event => setPublishForm({ ...publishForm, changelogFile: event.target.files?.[0] || null })} />
-          </Label>
+          <div className="label">
+            <span>Changelog file</span>
+            <FileField
+              accept=".md,.txt,text/markdown,text/plain"
+              label="Changelog file"
+              file={publishForm.changelogFile}
+              onChange={event => setPublishForm({ ...publishForm, changelogFile: event.target.files?.[0] || null })}
+            />
+          </div>
           <Button type="submit">Upload and publish</Button>
         </form>
       </div>
