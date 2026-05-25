@@ -992,7 +992,8 @@ async function initializeFromRegistryPackage(projectDir, spec) {
     build_output: installed.manifest?.build_output || 'build/navhal/samples/portable/01_hal_blink/hal_blink',
     board: installed.manifest?.board || null,
     target: installed.manifest?.target || 'host',
-    uploader: installed.manifest?.uploader || 'local',
+    uploader: installed.manifest?.uploader || null,
+    run: installed.manifest?.run || 'none',
     flash_address: installed.manifest?.flash_address || null,
     toolchains: installed.manifest?.toolchains || ['arm-none-eabi']
   };
@@ -1079,8 +1080,8 @@ async function runProject(rawArgs = []) {
   const manifest = await readProjectManifest(projectDir);
   const lock = await readJson(path.join(projectDir, '.nav', 'lock.json')).catch(() => null);
   const buildSystem = lock ? resolveBuildSystem(manifest, lock, projectDir) : manifest.build_system;
-  const localRun = manifest.uploader === 'local' || manifest.run === 'local' || ['cmake', 'native-cpp'].includes(buildSystem);
-  if (localRun && manifest.uploader !== 'stlink') {
+  const localRun = manifest.run === 'local' || buildSystem === 'native-cpp';
+  if (localRun) {
     await runLocalBuildOutput(projectDir, manifest);
     return;
   }
@@ -2351,7 +2352,7 @@ function enhanceProjectManifest(manifest, projectDir) {
     manifest.build_output ||= 'build/navhal/samples/portable/01_hal_blink/hal_blink';
     manifest.board ||= null;
     manifest.target ||= 'host';
-    manifest.uploader ||= 'local';
+    manifest.run ||= 'none';
     manifest.flash_address ||= null;
     if (Array.isArray(manifest.toolchains)) {
       manifest.toolchains = manifest.toolchains.filter(item => !['nav-packager', 'stlink'].includes(item));
