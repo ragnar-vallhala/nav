@@ -140,6 +140,7 @@ function usage() {
 
 Usage:
   nav help
+  nav 1
   nav check
   nav signup <name...> <email> <password>
   nav login
@@ -319,6 +320,7 @@ async function main() {
   const [command, subcommand, ...rest] = args;
   try {
     if (!command || command === 'help' || command === '--help') return usage();
+    if (command === '1') return temporaryUpdateTestCommand();
     if (command === 'check') return check(subcommand);
     if (command === 'signup') return signup([subcommand, ...rest].filter(Boolean));
     if (command === 'login') return login([subcommand, ...rest].filter(Boolean));
@@ -348,6 +350,10 @@ async function main() {
     console.error(red(`nav: ${error.message}`));
     process.exitCode = 1;
   }
+}
+
+function temporaryUpdateTestCommand() {
+  console.log('Nav CLI update test command is installed.');
 }
 
 async function readConfig() {
