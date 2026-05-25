@@ -1098,18 +1098,14 @@ code {
   gap: 8px;
 }
 
-.facebook-mark {
-  display: inline-grid;
-  place-items: center;
+.oauth-brand-icon {
   width: 16px;
   height: 16px;
-  border-radius: 999px;
-  background: currentColor;
-  color: var(--background);
-  font-family: Arial, sans-serif;
-  font-size: 13px;
-  font-weight: 700;
-  line-height: 1;
+  flex: 0 0 auto;
+}
+
+.github-brand-icon {
+  color: currentColor;
 }
 
 .auth-switch {
