@@ -254,7 +254,7 @@ function Table({ columns, rows, renderRow, empty }) {
 function App() {
   const [token, setToken] = useState(() => localStorage.getItem(TOKEN_KEY) || '');
   const [user, setUser] = useState(null);
-  const [providers, setProviders] = useState({ email_password: true, google: false, github: false });
+  const [providers, setProviders] = useState({ email_password: true, google: false, github: false, facebook: false });
   const [stats, setStats] = useState(null);
   const [packages, setPackages] = useState([]);
   const [toolchains, setToolchains] = useState([]);
@@ -912,6 +912,10 @@ function AuthPage({ mode, form, setForm, providers, error, notice, submitAuth, n
           <a className={cn('btn btn-outline btn-default', !providers.github && 'disabled')} href={providers.github ? withCliParams(`${API}/auth/github`, cliLogin) : undefined}>
             <Github size={16} />
             GitHub
+          </a>
+          <a className={cn('btn btn-outline btn-default', !providers.facebook && 'disabled')} href={providers.facebook ? withCliParams(`${API}/auth/facebook`, cliLogin) : undefined}>
+            <span className="facebook-mark" aria-hidden="true">f</span>
+            Facebook
           </a>
         </div>
 

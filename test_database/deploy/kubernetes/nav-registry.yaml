@@ -305,6 +305,20 @@ spec:
                   optional: true
             - name: GITHUB_CALLBACK_URL
               value: https://nav.navrobotec.online/api/auth/github/callback
+            - name: FACEBOOK_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: nav-registry-secrets
+                  key: FACEBOOK_CLIENT_ID
+                  optional: true
+            - name: FACEBOOK_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: nav-registry-secrets
+                  key: FACEBOOK_CLIENT_SECRET
+                  optional: true
+            - name: FACEBOOK_CALLBACK_URL
+              value: https://nav.navrobotec.online/api/auth/facebook/callback
             - name: SMTP_HOST
               valueFrom:
                 secretKeyRef:
