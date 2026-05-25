@@ -1633,7 +1633,11 @@ async function extractToolchainArchive(archivePath, archiveFormat, installDir) {
   await fs.rm(extractDir, { recursive: true, force: true });
   await fs.mkdir(extractDir, { recursive: true });
   if (archiveFormat === 'zip') {
-    await runCommand('powershell', ['-NoProfile', '-Command', `Expand-Archive -LiteralPath '${archivePath.replace(/'/g, "''")}' -DestinationPath '${extractDir.replace(/'/g, "''")}' -Force`], process.cwd());
+    if (process.platform === 'win32') {
+      await runCommand('powershell', ['-NoProfile', '-Command', `Expand-Archive -LiteralPath '${archivePath.replace(/'/g, "''")}' -DestinationPath '${extractDir.replace(/'/g, "''")}' -Force`], process.cwd());
+    } else {
+      await runCommand('unzip', ['-q', archivePath, '-d', extractDir], process.cwd());
+    }
     return;
   }
   if (archiveFormat === 'tar.gz') {
@@ -1642,6 +1646,13 @@ async function extractToolchainArchive(archivePath, archiveFormat, installDir) {
   }
   if (archiveFormat === 'tar.xz') {
     await runCommand('tar', ['-xJf', archivePath, '-C', extractDir], process.cwd());
+    return;
+  }
+  if (archiveFormat === 'deb') {
+    if (process.platform !== 'linux') {
+      throw new Error('Debian package extraction is only supported on Linux');
+    }
+    await runCommand('dpkg-deb', ['-x', archivePath, extractDir], process.cwd());
     return;
   }
   throw new Error(`Unsupported toolchain archive format: ${archiveFormat}`);
