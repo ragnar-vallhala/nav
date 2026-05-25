@@ -15,7 +15,7 @@ const HOME = process.env.NAV_HOME || (existsSync(LEGACY_HOME) ? LEGACY_HOME : pa
 const CONFIG = path.join(HOME, 'config.json');
 const CACHE = path.join(HOME, 'cache');
 const TOOLCHAIN_HOME = path.join(HOME, 'toolchains');
-const API = process.env.NAV_REGISTRY_URL || process.env.NAV_TEST_REGISTRY || 'http://localhost:14000';
+const API = normalizeRegistryUrl(process.env.NAV_REGISTRY_URL || process.env.NAV_TEST_REGISTRY || 'https://navdev.navrobotec.com/api');
 const PROJECT_SEARCH_MAX_DEPTH = Number(process.env.NAV_PROJECT_SEARCH_MAX_DEPTH || 8);
 const PROJECT_SEARCH_MAX_DIRS = Number(process.env.NAV_PROJECT_SEARCH_MAX_DIRS || 4000);
 const PROJECT_SEARCH_SKIP_DIRS = new Set([
@@ -354,6 +354,14 @@ async function main() {
 
 function temporaryUpdateTestCommand() {
   console.log('Nav CLI update test command is installed.');
+}
+
+function normalizeRegistryUrl(value) {
+  const raw = String(value || '').replace(/\/+$/, '');
+  if (raw === 'https://nav.navrobotec.online/api' || raw === 'https://nav.navrobotec.online') {
+    return 'https://navdev.navrobotec.com/api';
+  }
+  return raw;
 }
 
 async function readConfig() {
@@ -933,6 +941,16 @@ async function setupProject(projectInput) {
   await materializeProjectRuntime(projectDir, manifest, installedPackages);
 
   for (const toolchain of resolution.toolchains) {
+    if (toolchain.source === 'system') {
+      printStep(`using system ${toolchain.name} (${toolchain.executables?.[0] || toolchain.path})`);
+      installedToolchains.push(toolchain);
+      continue;
+    }
+    if (toolchain.source === 'metadata-only') {
+      printStep(`using registry metadata for ${toolchain.name}@${toolchain.version}`);
+      installedToolchains.push(toolchain);
+      continue;
+    }
     printStep(`resolving ${toolchain.os}/${toolchain.arch} toolchain ${toolchain.name}@${toolchain.version}`);
     const installed = await installToolchain(toolchain);
     installedToolchains.push(installed);
@@ -972,11 +990,11 @@ async function initializeFromRegistryPackage(projectDir, spec) {
     cmake_generator: installed.manifest?.cmake_generator || 'Ninja',
     cmake_sample: installed.manifest?.cmake_sample || 'hal_blink',
     build_output: installed.manifest?.build_output || 'build/navhal/samples/portable/01_hal_blink/hal_blink',
-    board: installed.manifest?.board || 'nucleo_f401re',
-    target: installed.manifest?.target || 'stm32f401',
-    uploader: installed.manifest?.uploader || 'stlink',
-    flash_address: installed.manifest?.flash_address || '0x08000000',
-    toolchains: installed.manifest?.toolchains || ['nav-packager', 'arm-none-eabi', 'stlink']
+    board: installed.manifest?.board || null,
+    target: installed.manifest?.target || 'host',
+    uploader: installed.manifest?.uploader || 'local',
+    flash_address: installed.manifest?.flash_address || null,
+    toolchains: installed.manifest?.toolchains || []
   };
   await writeProjectManifest(projectDir, baseManifest);
   console.log(`${bold('base project:')} ${normalized.namespace}/${normalized.name}@${normalized.version}`);
@@ -1058,7 +1076,28 @@ async function cleanProject(projectArg) {
 async function runProject(rawArgs = []) {
   const { projectDir, options } = parseProjectOptions(rawArgs);
   await buildProject(projectDir);
+  const manifest = await readProjectManifest(projectDir);
+  const lock = await readJson(path.join(projectDir, '.nav', 'lock.json')).catch(() => null);
+  const buildSystem = lock ? resolveBuildSystem(manifest, lock, projectDir) : manifest.build_system;
+  const localRun = manifest.uploader === 'local' || manifest.run === 'local' || ['cmake', 'native-cpp'].includes(buildSystem);
+  if (localRun && manifest.uploader !== 'stlink') {
+    await runLocalBuildOutput(projectDir, manifest);
+    return;
+  }
   await uploadProject(['--project', projectDir, ...(options.port ? ['--port', options.port] : [])]);
+}
+
+async function runLocalBuildOutput(projectDir, manifest) {
+  const outputPath = path.resolve(projectDir, manifest.build_output || path.join('build', `${manifest.name || path.basename(projectDir)}${process.platform === 'win32' ? '.exe' : ''}`));
+  const candidates = process.platform === 'win32' && !outputPath.endsWith('.exe')
+    ? [outputPath, `${outputPath}.exe`]
+    : [outputPath];
+  const executable = candidates.find(candidate => existsSync(candidate));
+  if (!executable) {
+    throw new Error(`Build output not found: ${outputPath}. Run nav build and check build_output in nav.toml.`);
+  }
+  console.log(`${bold('run:')} ${formatPath(executable)}`);
+  await runCommand(executable, [], projectDir);
 }
 
 async function uploadProject(rawArgs = []) {
@@ -1312,16 +1351,80 @@ async function resolveProject(manifest) {
   const resolvedToolchains = [];
   for (const name of toolchainSet) {
     const match = allToolchains.find(tc => tc.name === name && tc.os === platform.os && tc.arch === platform.arch)
-      || allToolchains.find(tc => tc.name === name && tc.os === platform.os)
-      || allToolchains.find(tc => tc.name === name);
-    if (!match) throw new Error(`No registry toolchain found for ${name}`);
-    resolvedToolchains.push(match);
+      || allToolchains.find(tc => tc.name === name && tc.os === platform.os && tc.arch);
+    if (match) {
+      resolvedToolchains.push(match);
+      continue;
+    }
+
+    const systemToolchain = await resolveSystemToolchain(name);
+    if (systemToolchain) {
+      resolvedToolchains.push(systemToolchain);
+      continue;
+    }
+
+    const metadataOnly = allToolchains.find(tc => tc.name === name);
+    if (metadataOnly && !metadataOnly.os && !metadataOnly.arch) {
+      resolvedToolchains.push({
+        name,
+        version: metadataOnly.version || 'metadata',
+        vendor: metadataOnly.vendor,
+        vendor_kind: metadataOnly.vendor_kind,
+        os: platform.os,
+        arch: platform.arch,
+        path: HOME,
+        source: 'metadata-only',
+        sha256: null
+      });
+      continue;
+    }
+
+    throw new Error(`No ${platform.os}/${platform.arch} registry toolchain found for ${name}, and no compatible system tool was detected`);
   }
 
   return {
     packages: [...packageMap.values()],
     toolchains: resolvedToolchains
   };
+}
+
+async function resolveSystemToolchain(name) {
+  const tools = systemToolchainExecutables(name);
+  if (tools.length === 0) return null;
+  const found = [];
+  for (const candidates of tools) {
+    const executable = await findExecutable(candidates);
+    if (!executable) return null;
+    found.push(executable);
+  }
+  const platform = currentPlatform();
+  return {
+    name,
+    version: 'system',
+    vendor: 'system',
+    vendor_kind: 'system',
+    os: platform.os,
+    arch: platform.arch,
+    path: path.dirname(found[0]),
+    source: 'system',
+    executables: found,
+    sha256: null
+  };
+}
+
+function systemToolchainExecutables(name) {
+  const win = process.platform === 'win32';
+  const map = {
+    'arm-none-eabi': [
+      [win ? 'arm-none-eabi-gcc.exe' : 'arm-none-eabi-gcc'],
+      [win ? 'arm-none-eabi-objcopy.exe' : 'arm-none-eabi-objcopy']
+    ],
+    stlink: [[win ? 'st-flash.exe' : 'st-flash']],
+    'arduino-cli': [[win ? 'arduino-cli.exe' : 'arduino-cli']],
+    cmake: [[win ? 'cmake.exe' : 'cmake']],
+    ninja: [[win ? 'ninja.exe' : 'ninja']]
+  };
+  return map[name] || [];
 }
 
 async function resolvePackageSpec(spec) {

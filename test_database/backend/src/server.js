@@ -605,7 +605,7 @@ async function getNavHalPackageFiles() {
           kind: 'library',
           language: ['c', 'c++'],
           targets: ['esp32', 'stm32', 'rp2040', 'avr'],
-          toolchains: ['nav-packager']
+          toolchains: []
         }, null, 2)).toString('base64')
       });
     }
@@ -821,15 +821,15 @@ async function seedEmbeddedCatalog(maintainer, namespaceId) {
       kind: 'library',
       language: ['c', 'c++'],
       targets: ['esp32', 'stm32', 'rp2040', 'avr'],
-      toolchains: ['nav-packager', 'arm-none-eabi', 'stlink'],
+      toolchains: [],
       build_system: 'cmake',
       cmake_generator: 'Ninja',
       cmake_sample: 'hal_blink',
       build_output: 'build/navhal/samples/portable/01_hal_blink/hal_blink',
-      board: 'nucleo_f401re',
-      target: 'stm32f401',
-      uploader: 'stlink',
-      flash_address: '0x08000000',
+      board: null,
+      target: 'host',
+      uploader: 'local',
+      flash_address: null,
       auto_compile: false,
       include_paths: [
         'include',
