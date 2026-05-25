@@ -389,7 +389,13 @@ async function seedToolchain({ vendors, vendorSlug, name, description, version, 
   for (const platform of platforms) {
     const [os, arch] = platform.split('/');
     const downloadUrl = platformDownloads[platform];
-    const archiveFormat = downloadUrl?.endsWith('.tar.gz') ? 'tar.gz' : downloadUrl?.endsWith('.tar.xz') ? 'tar.xz' : 'zip';
+    const archiveFormat = downloadUrl?.endsWith('.tar.gz')
+      ? 'tar.gz'
+      : downloadUrl?.endsWith('.tar.xz')
+        ? 'tar.xz'
+        : downloadUrl?.endsWith('.deb')
+          ? 'deb'
+          : 'zip';
     const archiveKey = `${sourceKind}/${vendor.slug}/${name}/${version}/${os}/${arch}/${name}-${version}.${archiveFormat}`;
     let archive;
     const existing = await pool.query(
@@ -411,7 +417,7 @@ async function seedToolchain({ vendors, vendorSlug, name, description, version, 
       };
     } else if (downloadUrl) {
       console.log(`[seed] downloading real toolchain ${name}@${version} ${platform}`);
-      archive = await putRemoteObject('nav-toolchains', archiveKey, downloadUrl, archiveFormat === 'zip' ? 'application/zip' : archiveFormat === 'tar.xz' ? 'application/x-xz' : 'application/gzip');
+      archive = await putRemoteObject('nav-toolchains', archiveKey, downloadUrl, archiveFormat === 'zip' ? 'application/zip' : archiveFormat === 'tar.xz' ? 'application/x-xz' : archiveFormat === 'deb' ? 'application/vnd.debian.binary-package' : 'application/gzip');
     } else if (config.isProduction) {
       console.warn(`[seed] skipping ${name}@${version} ${platform}; no real upstream artifact has been configured`);
       continue;
@@ -696,7 +702,10 @@ async function seedEmbeddedCatalog(maintainer, namespaceId) {
       version: '5.3.2',
       sourceKind: 'hardware',
       manifest: { targets: ['esp32', 'esp32s3', 'esp32c3'], executables: ['idf.py'], env: { IDF_TOOLS_PATH: ['tools'] } },
-      platforms: commonPlatforms
+      platforms: ['linux/x64'],
+      platformDownloads: {
+        'linux/x64': 'https://github.com/espressif/esp-idf/releases/download/v5.3.2/esp-idf-v5.3.2.zip'
+      }
     },
     {
       vendorSlug: 'espressif',
@@ -705,7 +714,13 @@ async function seedEmbeddedCatalog(maintainer, namespaceId) {
       version: 'esp-14.2.0-20241119',
       sourceKind: 'hardware',
       manifest: { targets: ['esp32'], executables: ['xtensa-esp32-elf-gcc', 'xtensa-esp32-elf-g++'] },
-      platforms: commonPlatforms
+      platforms: ['windows/x64', 'linux/x64', 'darwin/arm64', 'darwin/x64'],
+      platformDownloads: {
+        'windows/x64': 'https://github.com/espressif/crosstool-NG/releases/download/esp-14.2.0_20241119/xtensa-esp-elf-14.2.0_20241119-x86_64-w64-mingw32.zip',
+        'linux/x64': 'https://github.com/espressif/crosstool-NG/releases/download/esp-14.2.0_20241119/xtensa-esp-elf-14.2.0_20241119-x86_64-linux-gnu.tar.xz',
+        'darwin/arm64': 'https://github.com/espressif/crosstool-NG/releases/download/esp-14.2.0_20241119/xtensa-esp-elf-14.2.0_20241119-aarch64-apple-darwin.tar.xz',
+        'darwin/x64': 'https://github.com/espressif/crosstool-NG/releases/download/esp-14.2.0_20241119/xtensa-esp-elf-14.2.0_20241119-x86_64-apple-darwin.tar.xz'
+      }
     },
     {
       vendorSlug: 'espressif',
@@ -714,7 +729,13 @@ async function seedEmbeddedCatalog(maintainer, namespaceId) {
       version: '4.8.1',
       sourceKind: 'hardware',
       manifest: { targets: ['esp32', 'esp32s3', 'esp32c3'], executables: ['esptool.py', 'esptool'] },
-      platforms: commonPlatforms
+      platforms: ['windows/x64', 'linux/x64', 'darwin/arm64', 'darwin/x64'],
+      platformDownloads: {
+        'windows/x64': 'https://github.com/espressif/esptool/releases/download/v4.8.1/esptool-v4.8.1-win64.zip',
+        'linux/x64': 'https://github.com/espressif/esptool/releases/download/v4.8.1/esptool-v4.8.1-linux-amd64.zip',
+        'darwin/arm64': 'https://github.com/espressif/esptool/releases/download/v4.8.1/esptool-v4.8.1-macos.zip',
+        'darwin/x64': 'https://github.com/espressif/esptool/releases/download/v4.8.1/esptool-v4.8.1-macos.zip'
+      }
     },
     {
       vendorSlug: 'arduino',
@@ -743,9 +764,10 @@ async function seedEmbeddedCatalog(maintainer, namespaceId) {
       version: '1.8.0',
       sourceKind: 'hardware',
       manifest: { targets: ['stm32'], executables: ['st-flash', 'st-info'] },
-      platforms: commonPlatforms,
+      platforms: ['windows/x64', 'linux/x64'],
       platformDownloads: {
-        'windows/x64': 'https://github.com/stlink-org/stlink/releases/download/v1.8.0/stlink-1.8.0-win32.zip'
+        'windows/x64': 'https://github.com/stlink-org/stlink/releases/download/v1.8.0/stlink-1.8.0-win32.zip',
+        'linux/x64': 'https://github.com/stlink-org/stlink/releases/download/v1.8.0/stlink_1.8.0-1_amd64.deb'
       }
     },
     {
@@ -755,7 +777,13 @@ async function seedEmbeddedCatalog(maintainer, namespaceId) {
       version: '0.12.0',
       sourceKind: 'official',
       manifest: { targets: ['stm32', 'rp2040', 'nrf52'], executables: ['openocd'] },
-      platforms: commonPlatforms
+      platforms: ['windows/x64', 'linux/x64', 'darwin/arm64', 'darwin/x64'],
+      platformDownloads: {
+        'windows/x64': 'https://github.com/xpack-dev-tools/openocd-xpack/releases/download/v0.12.0-6/xpack-openocd-0.12.0-6-win32-x64.zip',
+        'linux/x64': 'https://github.com/xpack-dev-tools/openocd-xpack/releases/download/v0.12.0-6/xpack-openocd-0.12.0-6-linux-x64.tar.gz',
+        'darwin/arm64': 'https://github.com/xpack-dev-tools/openocd-xpack/releases/download/v0.12.0-6/xpack-openocd-0.12.0-6-darwin-arm64.tar.gz',
+        'darwin/x64': 'https://github.com/xpack-dev-tools/openocd-xpack/releases/download/v0.12.0-6/xpack-openocd-0.12.0-6-darwin-x64.tar.gz'
+      }
     },
     {
       vendorSlug: 'raspberrypi',
@@ -764,7 +792,10 @@ async function seedEmbeddedCatalog(maintainer, namespaceId) {
       version: '2.1.1',
       sourceKind: 'hardware',
       manifest: { targets: ['rp2040', 'rp2350'], executables: ['pico-sdk'] },
-      platforms: commonPlatforms
+      platforms: ['linux/x64'],
+      platformDownloads: {
+        'linux/x64': 'https://github.com/raspberrypi/pico-sdk/releases/download/2.1.1/pico-sdk-2.1.1.tar.gz'
+      }
     },
     {
       vendorSlug: 'nordic',
@@ -773,7 +804,10 @@ async function seedEmbeddedCatalog(maintainer, namespaceId) {
       version: '10.24.2',
       sourceKind: 'hardware',
       manifest: { targets: ['nrf52', 'nrf53'], executables: ['nrfjprog', 'mergehex'] },
-      platforms: commonPlatforms
+      platforms: ['linux/x64'],
+      platformDownloads: {
+        'linux/x64': 'https://nsscprodmedia.blob.core.windows.net/prod/software-and-other-downloads/desktop-software/nrf-command-line-tools/sw/versions-10-x-x/10-24-2/nrf-command-line-tools-10.24.2_linux-amd64.tar.gz'
+      }
     },
     {
       vendorSlug: 'avrdude',
@@ -782,7 +816,12 @@ async function seedEmbeddedCatalog(maintainer, namespaceId) {
       version: '8.0',
       sourceKind: 'official',
       manifest: { targets: ['avr'], executables: ['avrdude'] },
-      platforms: commonPlatforms
+      platforms: ['windows/x64', 'linux/x64', 'darwin/x64'],
+      platformDownloads: {
+        'windows/x64': 'https://github.com/avrdudes/avrdude/releases/download/v8.0/avrdude-v8.0-windows-x64.zip',
+        'linux/x64': 'https://github.com/avrdudes/avrdude/releases/download/v8.0/avrdude_v8.0_Linux_64bit.tar.gz',
+        'darwin/x64': 'https://github.com/avrdudes/avrdude/releases/download/v8.0/avrdude_v8.0_macOS_64bit.tar.gz'
+      }
     },
     {
       vendorSlug: 'msys2',
