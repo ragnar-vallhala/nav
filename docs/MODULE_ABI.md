@@ -1,5 +1,9 @@
 # Nav Module ABI — v1 (draft)
 
+> Mirrored in the `NavHAL` repo at `docs/MODULE_ABI.md`. Keep both copies
+> byte-identical; contributors usually only check one and assume it's
+> authoritative.
+
 The contract that any library or application built by `nav` must satisfy. The
 goal is for `nav build`, `nav add`, and `nav publish` to operate on
 third-party code the same way they operate on first-party code — discoverable,
