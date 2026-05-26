@@ -1,0 +1,76 @@
+services:
+  # 1. Persistence Tier
+  database:
+    image: postgres:16-alpine
+    container_name: nav-db
+    restart: always
+    environment:
+      POSTGRES_USER: nav_admin
+      POSTGRES_PASSWORD: nav_secure_password_change_me
+      POSTGRES_DB: nav_registry
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - nav-mesh
+
+  # 2. Object Storage Tier
+  storage:
+    image: minio/minio:latest
+    container_name: nav-minio
+    restart: always
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: navroot
+      MINIO_ROOT_PASSWORD: navpassword123
+    ports:
+      - "9000:9000" # API
+      - "9001:9001" # Web UI
+    volumes:
+      - minio_data:/data
+    networks:
+      - nav-mesh
+
+  # 3. Application Tier
+  registry-api:
+    build:
+      context: ./registry-api
+      dockerfile: Dockerfile
+    container_name: nav-api
+    restart: always
+    depends_on:
+      - database
+      - storage
+    env_file:
+      - .env.local
+    ports:
+      - "8081:8081"
+    volumes:
+      - ./registry-api/web:/root/web
+    networks:
+      - nav-mesh
+
+  # 4. Presentation Tier (React/Next.js)
+  registry-ui:
+    build:
+      context: ./registry-ui
+      dockerfile: Dockerfile
+      network: host
+    container_name: nav-ui
+    restart: always
+    depends_on:
+      - registry-api
+    ports:
+      - "3000:3000"
+    networks:
+      - nav-mesh
+
+networks:
+  nav-mesh:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  minio_data:

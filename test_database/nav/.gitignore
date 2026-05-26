@@ -1,0 +1,11 @@
+build/
+.vscode/
+.cache/
+compile_commands.json
+*.deb
+# Go Build Artifacts
+registry-api/registry-server
+/registry-api/bin/
+.env
+.env.local
+.env.production

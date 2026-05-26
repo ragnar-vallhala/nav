@@ -1,0 +1,14 @@
+{
+  "name": "nav-registry-worker",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/worker.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "minio": "^8.0.5",
+    "pg": "^8.13.1"
+  }
+}

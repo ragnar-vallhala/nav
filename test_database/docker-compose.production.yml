@@ -1,0 +1,141 @@
+name: nav-registry
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    volumes:
+      - nav_postgres:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/001-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks: [nav-internal]
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
+    volumes:
+      - nav_minio:/data
+    networks: [nav-internal]
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 14000
+      FRONTEND_URL: https://navdev.navrobotec.com
+      BACKEND_URL: https://navdev.navrobotec.com/api
+      JWT_SECRET: ${JWT_SECRET}
+      AUTH_COOKIE_NAME: nav_token
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: 9000
+      MINIO_USE_SSL: "false"
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      GOOGLE_CALLBACK_URL: https://navdev.navrobotec.com/api/auth/google/callback
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET}
+      GITHUB_CALLBACK_URL: https://navdev.navrobotec.com/api/auth/github/callback
+      FACEBOOK_CLIENT_ID: ${FACEBOOK_CLIENT_ID}
+      FACEBOOK_CLIENT_SECRET: ${FACEBOOK_CLIENT_SECRET}
+      FACEBOOK_CALLBACK_URL: https://navdev.navrobotec.com/api/auth/facebook/callback
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      GOOGLE_APP_PASSWORD: ${GOOGLE_APP_PASSWORD:-}
+      EMAIL_FROM_NAME: ${EMAIL_FROM_NAME}
+      SEED_CATALOG: ${SEED_CATALOG:-true}
+      SEED_DEMO_DATA: "false"
+      NAV_ROOT_NAME: ${NAV_ROOT_NAME}
+      NAV_ROOT_EMAIL: ${NAV_ROOT_EMAIL}
+      NAV_ROOT_PASSWORD: ${NAV_ROOT_PASSWORD}
+    volumes:
+      - ./vendor/NavHAL:/app/vendor/NavHAL:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    networks: [nav-internal]
+
+  worker:
+    build:
+      context: .
+      dockerfile: worker/Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: 9000
+      MINIO_USE_SSL: "false"
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      NAV_SCAN_MAX_ARCHIVE_BYTES: ${NAV_SCAN_MAX_ARCHIVE_BYTES:-104857600}
+      NAV_SCAN_MAX_EXPANDED_BYTES: ${NAV_SCAN_MAX_EXPANDED_BYTES:-262144000}
+      NAV_SCAN_MAX_FILES: ${NAV_SCAN_MAX_FILES:-5000}
+      NAV_SCAN_MAX_COMPRESSION_RATIO: ${NAV_SCAN_MAX_COMPRESSION_RATIO:-100}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    networks: [nav-internal]
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.production
+      args:
+        VITE_API_BASE: https://navdev.navrobotec.com/api
+    restart: unless-stopped
+    networks: [nav-internal]
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - nav_caddy_data:/data
+      - nav_caddy_config:/config
+    depends_on: [backend, frontend]
+    networks: [nav-internal]
+
+networks:
+  nav-internal:
+
+volumes:
+  nav_postgres:
+  nav_minio:
+  nav_caddy_data:
+  nav_caddy_config:
