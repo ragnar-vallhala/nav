@@ -1,0 +1,24 @@
+[package]
+kind = "app"
+name = "hold-app"
+version = "0.1.0"
+license = "MIT"
+description = "ABI v1 sample STM32 app."
+
+[abi]
+abi_version = 1
+hal_api_version = 1
+
+[target]
+arch = "cortex-m4"
+vendor = "stm32"
+family = "nucleo_f401re"
+board = "nucleo_f401re"
+
+[requires]
+caps = ["GPIO", "TIMER"]
+
+[build]
+sources = ["src/**/*.c"]
+include_dirs = ["include"]
+entry = "src/main.c"

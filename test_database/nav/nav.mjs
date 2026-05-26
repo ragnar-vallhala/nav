@@ -35,6 +35,34 @@ const PROJECT_SEARCH_SKIP_DIRS = new Set([
   'CMakeFiles'
 ]);
 
+const ABI_VERSION = 1;
+const HAL_API_VERSION = 1;
+const KNOWN_HAL_CAPS = new Set([
+  'GPIO',
+  'I2C',
+  'I2C_DMA',
+  'SPI',
+  'UART',
+  'TIMER',
+  'PWM',
+  'ADC',
+  'DMA',
+  'INTERRUPT'
+]);
+const TARGET_CAPABILITIES = {
+  'cortex-m4/stm32/nucleo_f401re/nucleo_f401re': ['GPIO', 'I2C', 'I2C_DMA', 'SPI', 'UART', 'TIMER', 'PWM', 'ADC', 'DMA', 'INTERRUPT'],
+  'cortex-m4/stm32/nucleo_f401re': ['GPIO', 'I2C', 'I2C_DMA', 'SPI', 'UART', 'TIMER', 'PWM', 'ADC', 'DMA', 'INTERRUPT'],
+  'cortex-m4/stm32/stm32f401/stm32f401': ['GPIO', 'I2C', 'I2C_DMA', 'SPI', 'UART', 'TIMER', 'PWM', 'ADC', 'DMA', 'INTERRUPT'],
+  'cortex-m4/stm32/stm32f401': ['GPIO', 'I2C', 'I2C_DMA', 'SPI', 'UART', 'TIMER', 'PWM', 'ADC', 'DMA', 'INTERRUPT'],
+  'xtensa/espressif/esp32/esp32-devkit-v1': ['GPIO', 'I2C', 'SPI', 'UART', 'TIMER', 'PWM', 'ADC', 'INTERRUPT'],
+  'xtensa/espressif/esp32-devkit-v1': ['GPIO', 'I2C', 'SPI', 'UART', 'TIMER', 'PWM', 'ADC', 'INTERRUPT'],
+  'host/native/local/local': ['GPIO', 'I2C', 'SPI', 'UART', 'TIMER', 'PWM', 'ADC', 'INTERRUPT'],
+  'host/native/local': ['GPIO', 'I2C', 'SPI', 'UART', 'TIMER', 'PWM', 'ADC', 'INTERRUPT']
+};
+const SOURCE_ONLY_REJECT_EXTENSIONS = new Set([
+  '.a', '.o', '.obj', '.elf', '.bin', '.hex', '.exe', '.dll', '.so', '.dylib', '.lib', '.class', '.jar'
+]);
+
 const args = process.argv.slice(2);
 
 const STM32_LINKER_LD = `ENTRY(Reset_Handler)
@@ -163,6 +191,7 @@ Usage:
   nav setup [project-folder]
   nav add <namespace/package[@version]>
   nav build [project-folder]
+  nav validate [project-folder]
   nav run [project-folder] [--port COMx]
   nav clean [project-folder]
   nav upload [project-folder] [--port COMx]
@@ -336,6 +365,7 @@ async function main() {
     if (command === 'setup') return setupProject([subcommand, ...rest].filter(Boolean));
     if (command === 'add') return addPackage(subcommand);
     if (command === 'build') return buildProject(subcommand);
+    if (command === 'validate') return validateProjectCommand(subcommand);
     if (command === 'run') return runProject([subcommand, ...rest].filter(Boolean));
     if (command === 'clean') return cleanProject(subcommand);
     if (command === 'upload') return uploadProject([subcommand, ...rest].filter(Boolean));
@@ -915,7 +945,7 @@ function parseSetupArgs(values = [], defaultBoard = 'stm32f401') {
   const args = Array.isArray(values) ? values.filter(Boolean) : [values].filter(Boolean);
   const boardIndex = args.indexOf('--board');
   const board = boardIndex >= 0 ? args[boardIndex + 1] : defaultBoard;
-  const projectArg = args.find((value, index) => value !== '--board' && index !== boardIndex + 1);
+  const projectArg = args.find((value, index) => value !== '--board' && (boardIndex < 0 || index !== boardIndex + 1));
   return { projectArg, board };
 }
 
@@ -1007,18 +1037,43 @@ async function addPackage(spec) {
   const manifest = await readProjectManifest(projectDir);
   const normalized = await resolvePackageSpec(spec);
   const versionData = await getPackageVersion(normalized.namespace, normalized.name, normalized.version);
-  mergeProjectHints(manifest, versionData.manifest || {});
   const dependencySpec = `${normalized.namespace}/${normalized.name}@${normalized.version}`;
-  manifest.dependencies = unique([...(manifest.dependencies || []), dependencySpec]);
-  await writeProjectManifest(projectDir, manifest);
+  if (isAbiManifest(manifest)) {
+    await addDependencyToNavmod(projectDir, normalized, normalized.version);
+  } else {
+    mergeProjectHints(manifest, versionData.manifest || {});
+    manifest.dependencies = unique([...(manifest.dependencies || []), dependencySpec]);
+    await writeProjectManifest(projectDir, manifest);
+  }
   await installPackageToProject(projectDir, `${normalized.namespace}/${normalized.name}`, normalized.version);
   printSuccess(`added ${dependencySpec}`);
   await setupProject(projectDir);
 }
 
+async function addDependencyToNavmod(projectDir, normalized, version) {
+  const navmodPath = path.join(projectDir, 'navmod.toml');
+  let content = await fs.readFile(navmodPath, 'utf8');
+  const depName = normalized.namespace === 'nav' ? normalized.name : `${normalized.namespace}/${normalized.name}`;
+  const depKey = formatTomlKey(depName);
+  const line = `${depKey} = "${version}"`;
+  const depRegex = new RegExp(`^\\s*(?:${escapeRegExp(depName)}|${escapeRegExp(depKey)})\\s*=`, 'm');
+  if (depRegex.test(content)) {
+    content = content.replace(new RegExp(`^\\s*(?:${escapeRegExp(depName)}|${escapeRegExp(depKey)})\\s*=.*$`, 'm'), line);
+  } else if (/^\[dependencies\]\s*$/m.test(content)) {
+    content = content.replace(/^\[dependencies\]\s*$/m, `[dependencies]\n${line}`);
+  } else {
+    content = `${content.trimEnd()}\n\n[dependencies]\n${line}\n`;
+  }
+  await fs.writeFile(navmodPath, content);
+}
+
 async function buildProject(projectArg) {
   const projectDir = requireProjectDir(projectArg);
   const manifest = await readProjectManifest(projectDir);
+  if (isAbiManifest(manifest)) {
+    await buildAbiProject(projectDir, manifest);
+    return;
+  }
   const lockPath = path.join(projectDir, '.nav', 'lock.json');
   let lock = await readJson(lockPath).catch(() => null);
   if (!lock) {
@@ -1065,6 +1120,402 @@ async function buildProject(projectArg) {
   };
   await fs.writeFile(path.join(buildDir, 'nav-build-report.json'), JSON.stringify(report, null, 2));
   printSuccess(`build complete: ${formatPath(outputPath)}`);
+}
+
+async function validateProjectCommand(projectArg) {
+  const projectDir = requireProjectDir(projectArg);
+  const manifest = await readProjectManifest(projectDir);
+  if (!isAbiManifest(manifest)) {
+    printSuccess('legacy manifest parsed');
+    return;
+  }
+  await validateAbiProject(projectDir, manifest, { build: false });
+  printSuccess(`ABI v1 validation passed for ${manifest.package_kind} ${manifest.name}@${manifest.version}`);
+}
+
+async function buildAbiProject(projectDir, manifest) {
+  let lock = await readJson(path.join(projectDir, '.nav', 'lock.json')).catch(() => null);
+  if (!lock) {
+    printInfo('no lockfile found; running nav setup first');
+    await setupProject(projectDir);
+    lock = await readJson(path.join(projectDir, '.nav', 'lock.json'));
+  }
+
+  await validateAbiProject(projectDir, manifest, { build: true, lock });
+  const buildRoot = path.join(projectDir, 'build', 'abi-v1');
+  const generatedInclude = path.join(buildRoot, 'generated', 'include');
+  const objectRoot = path.join(buildRoot, 'obj');
+  const target = manifest.package_kind === 'app' ? manifest.target : { arch: 'cortex-m4', vendor: 'stm32', board: 'nucleo_f401re' };
+  await fs.rm(buildRoot, { recursive: true, force: true });
+  await fs.mkdir(generatedInclude, { recursive: true });
+  await fs.mkdir(objectRoot, { recursive: true });
+  await writeAbiGeneratedHeaders(generatedInclude, target);
+  await writeAbiGeneratedCmake(projectDir, manifest, lock, buildRoot);
+
+  const armToolchain = lock.toolchains.find(item => item.name === 'arm-none-eabi');
+  if (!armToolchain) throw new Error('ABI v1 build requires arm-none-eabi. Run nav setup.');
+  const gcc = await findRegistryTool(armToolchain, process.platform === 'win32' ? /^arm-none-eabi-gcc\.exe$/i : /^arm-none-eabi-gcc$/);
+  const ar = await findRegistryTool(armToolchain, process.platform === 'win32' ? /^arm-none-eabi-ar\.exe$/i : /^arm-none-eabi-ar$/);
+  const nm = await findFile(armToolchain.path, process.platform === 'win32' ? /^arm-none-eabi-nm\.exe$/i : /^arm-none-eabi-nm$/);
+  const objcopy = await findFile(armToolchain.path, process.platform === 'win32' ? /^arm-none-eabi-objcopy\.exe$/i : /^arm-none-eabi-objcopy$/);
+
+  const moduleBuilds = [];
+  const modulePackages = abiModulePackages(lock);
+  const allModuleIncludeDirs = modulePackages.flatMap(pkg => abiPublicIncludeDirs(path.join(pkg.path, 'files'), pkg.manifest));
+  for (const pkg of modulePackages) {
+    const moduleManifest = pkg.manifest;
+    await validateAbiProject(path.join(pkg.path, 'files'), moduleManifest, { build: true, lock, appTarget: target, dependencyOnly: true });
+    const archive = await buildAbiModuleArchive({
+      projectDir: path.join(pkg.path, 'files'),
+      manifest: moduleManifest,
+      buildRoot: path.join(buildRoot, 'deps', moduleManifest.name),
+      generatedInclude,
+      gcc,
+      ar,
+      nm,
+      target,
+      extraIncludeDirs: allModuleIncludeDirs
+    });
+    moduleBuilds.push({ manifest: moduleManifest, archive, includeDirs: abiPublicIncludeDirs(path.join(pkg.path, 'files'), moduleManifest) });
+  }
+
+  let outputPath;
+  if (manifest.package_kind === 'module') {
+    outputPath = await buildAbiModuleArchive({
+      projectDir,
+      manifest,
+      buildRoot: path.join(buildRoot, manifest.name),
+      generatedInclude,
+      gcc,
+      ar,
+      nm,
+      target,
+      extraIncludeDirs: moduleBuilds.flatMap(item => item.includeDirs)
+    });
+  } else {
+    outputPath = await buildAbiAppExecutable({
+      projectDir,
+      manifest,
+      buildRoot,
+      generatedInclude,
+      gcc,
+      objcopy,
+      target,
+      moduleBuilds
+    });
+  }
+
+  const report = {
+    schema_version: 1,
+    abi_version: ABI_VERSION,
+    package: `${manifest.name}@${manifest.version}`,
+    kind: manifest.package_kind,
+    target_triple: manifest.package_kind === 'app' ? targetTripleFromManifest(manifest.target) : targetTripleFromManifest(target),
+    output: outputPath,
+    modules: moduleBuilds.map(item => `${item.manifest.name}@${item.manifest.version}`),
+    built_at: new Date().toISOString()
+  };
+  await fs.writeFile(path.join(buildRoot, 'nav-abi-build-report.json'), JSON.stringify(report, null, 2));
+  printSuccess(`ABI v1 build complete: ${formatPath(outputPath)}`);
+}
+
+async function validateAbiProject(projectDir, manifest, { build = false, lock = null, appTarget = null, dependencyOnly = false } = {}) {
+  validateAbiManifest(manifest, projectDir, { phase: build ? 'build' : 'validate', appTarget });
+  const root = path.resolve(projectDir);
+  const sourceFiles = await resolveSourceGlobs(root, manifest.sources);
+  if (sourceFiles.length === 0) throw new Error(`ABI v1 validation failed for ${manifest.name}: no files match [build].sources`);
+  await validateSourceOnlyFiles(root);
+  await validateAbiSourceRules(root, manifest, sourceFiles);
+  if (manifest.kconfig) await validateAbiKconfig(path.join(root, manifest.kconfig), manifest);
+  if (manifest.cmake_extras) await validateAbiCmakeExtras(path.join(root, manifest.cmake_extras));
+  if (manifest.package_kind === 'app' && !dependencyOnly) {
+    const mainCount = await countMainDefinitions(sourceFiles);
+    if (mainCount !== 1) throw new Error(`ABI v1 apps must define exactly one main(); found ${mainCount}`);
+  }
+  if (manifest.package_kind === 'module') {
+    const mainCount = await countMainDefinitions(sourceFiles);
+    if (mainCount > 0) throw new Error(`ABI v1 modules must not define main(); found ${mainCount}`);
+  }
+  if (lock && manifest.package_kind === 'app') {
+    for (const pkg of abiModulePackages(lock)) {
+      validateAbiManifest(pkg.manifest, path.join(pkg.path, 'files'), { phase: 'build', appTarget: manifest.target });
+    }
+  }
+}
+
+async function buildAbiModuleArchive({ projectDir, manifest, buildRoot, generatedInclude, gcc, ar, nm, target, extraIncludeDirs = [] }) {
+  await fs.mkdir(buildRoot, { recursive: true });
+  const sourceFiles = await resolveSourceGlobs(projectDir, manifest.sources);
+  const includeDirs = unique([
+    generatedInclude,
+    ...abiPublicIncludeDirs(projectDir, manifest),
+    ...extraIncludeDirs
+  ]);
+  const objects = [];
+  for (const source of sourceFiles) {
+    const object = path.join(buildRoot, `${path.relative(projectDir, source).replace(/[\\/.:]/g, '_')}.o`);
+    await fs.mkdir(path.dirname(object), { recursive: true });
+    await runCommand(gcc, [
+      ...abiCompileFlags(target),
+      ...abiCapabilityDefines(target),
+      `-DNAV_MODULE_NAME="${manifest.name}"`,
+      `-DNAV_MODULE_VERSION="${manifest.version}"`,
+      ...includeDirs.map(dir => `-I${dir}`),
+      '-c',
+      source,
+      '-o',
+      object
+    ], projectDir);
+    objects.push(object);
+  }
+  const archive = path.join(buildRoot, `lib${manifest.name}.a`);
+  await runCommand(ar, ['rcs', archive, ...objects], projectDir);
+  if (nm) await validateAbiArchiveSymbols(nm, archive, manifest);
+  return archive;
+}
+
+async function buildAbiAppExecutable({ projectDir, manifest, buildRoot, generatedInclude, gcc, objcopy, target, moduleBuilds }) {
+  const sourceFiles = await resolveSourceGlobs(projectDir, manifest.sources);
+  const includeDirs = unique([
+    generatedInclude,
+    ...abiPublicIncludeDirs(projectDir, manifest),
+    ...moduleBuilds.flatMap(item => item.includeDirs)
+  ]);
+  const objects = [];
+  for (const source of sourceFiles) {
+    const object = path.join(buildRoot, 'app-obj', `${path.relative(projectDir, source).replace(/[\\/.:]/g, '_')}.o`);
+    await fs.mkdir(path.dirname(object), { recursive: true });
+    await runCommand(gcc, [
+      ...abiCompileFlags(target),
+      ...abiCapabilityDefines(target),
+      ...includeDirs.map(dir => `-I${dir}`),
+      '-c',
+      source,
+      '-o',
+      object
+    ], projectDir);
+    objects.push(object);
+  }
+  const startup = path.join(buildRoot, 'startup.c');
+  const linker = path.join(buildRoot, 'linker.ld');
+  await fs.writeFile(startup, STM32_STARTUP_C);
+  await fs.writeFile(linker, STM32_LINKER_LD);
+  const startupObject = path.join(buildRoot, 'startup.o');
+  await runCommand(gcc, [...abiCompileFlags(target), '-c', startup, '-o', startupObject], projectDir);
+  objects.push(startupObject);
+  const output = path.resolve(projectDir, manifest.build_output || path.join('build', 'abi-v1', manifest.name));
+  await fs.mkdir(path.dirname(output), { recursive: true });
+  const elf = output.endsWith('.elf') ? output : `${output}.elf`;
+  await runCommand(gcc, [
+    ...abiCompileFlags(target),
+    ...objects,
+    ...moduleBuilds.map(item => item.archive),
+    '-nostdlib',
+    '-Wl,--gc-sections',
+    `-Wl,-T,${linker}`,
+    '-o',
+    elf
+  ], projectDir);
+  if (objcopy) {
+    await runCommand(objcopy, ['-O', 'binary', elf, output.endsWith('.bin') ? output : `${output}.bin`], projectDir);
+  }
+  return elf;
+}
+
+function abiCompileFlags(target = {}) {
+  const cpu = target.arch && target.arch.startsWith('cortex-') ? target.arch : 'cortex-m4';
+  return [
+    `-mcpu=${cpu}`,
+    '-mthumb',
+    '-ffreestanding',
+    '-fdata-sections',
+    '-ffunction-sections',
+    '-Wall',
+    '-Wextra',
+    '-Os'
+  ];
+}
+
+function abiCapabilityDefines(target = {}) {
+  const caps = capsForTarget(target);
+  return [...KNOWN_HAL_CAPS].map(cap => `-DNAVHAL_HAS_${cap}=${caps.has(cap) ? 1 : 0}`);
+}
+
+function abiModulePackages(lock) {
+  return (lock?.packages || []).filter(pkg => pkg.manifest?.abi_v1 && pkg.manifest.package_kind === 'module');
+}
+
+function abiPublicIncludeDirs(root, manifest) {
+  return normalizeStringArray(manifest.include_dirs).map(item => path.resolve(root, item));
+}
+
+async function writeAbiGeneratedHeaders(includeDir, target) {
+  const caps = capsForTarget(target || { arch: 'cortex-m4', vendor: 'stm32', board: 'nucleo_f401re' });
+  const capLines = [...KNOWN_HAL_CAPS].sort().map(cap => `#define NAVHAL_HAS_${cap} ${caps.has(cap) ? 1 : 0}`).join('\n');
+  const header = `#pragma once
+#define HAL_API_VERSION ${HAL_API_VERSION}
+${capLines}
+
+typedef enum {
+    HAL_OK = 0,
+    HAL_ERROR = 1,
+    HAL_BUSY = 2,
+    HAL_TIMEOUT = 3
+} hal_status_t;
+`;
+  await fs.mkdir(includeDir, { recursive: true });
+  await fs.writeFile(path.join(includeDir, 'navhal.h'), header);
+  await fs.writeFile(path.join(includeDir, 'hal.h'), header);
+  await fs.writeFile(path.join(includeDir, 'navhal_abi.h'), header);
+}
+
+async function writeAbiGeneratedCmake(projectDir, manifest, lock, buildRoot) {
+  const moduleBlocks = [];
+  for (const pkg of abiModulePackages(lock || { packages: [] })) {
+    moduleBlocks.push(await abiCmakeTargetBlock(pkg.manifest, path.join(pkg.path, 'files'), 'STATIC'));
+  }
+  moduleBlocks.push(await abiCmakeTargetBlock(manifest, projectDir, manifest.package_kind === 'module' ? 'STATIC' : 'EXECUTABLE'));
+  const cmake = `cmake_minimum_required(VERSION 3.20)
+project(nav_abi_${manifest.name} C)
+
+add_library(navhal INTERFACE)
+target_include_directories(navhal INTERFACE "\${CMAKE_CURRENT_LIST_DIR}/generated/include")
+
+${moduleBlocks.join('\n\n')}
+`;
+  await fs.writeFile(path.join(buildRoot, 'CMakeLists.generated.txt'), cmake);
+}
+
+async function abiCmakeTargetBlock(manifest, root, type) {
+  const sourceFiles = await resolveSourceGlobs(root, manifest.sources);
+  const sourceList = sourceFiles.map(item => `"${path.resolve(item).replace(/\\/g, '/')}"`).join(' ');
+  const includeList = manifest.include_dirs.map(item => `"${path.resolve(root, item).replace(/\\/g, '/')}"`).join(' ');
+  const targetName = sanitizeCIdentifier(manifest.name);
+  if (type === 'EXECUTABLE') {
+    return `add_executable(${targetName} ${sourceList})
+target_include_directories(${targetName} PUBLIC ${includeList})
+target_link_libraries(${targetName} PUBLIC navhal)`;
+  }
+  return `add_library(${targetName} STATIC ${sourceList})
+target_include_directories(${targetName} PUBLIC ${includeList})
+target_link_libraries(${targetName} PUBLIC navhal)
+target_compile_definitions(${targetName} PRIVATE NAV_MODULE_NAME="${manifest.name}" NAV_MODULE_VERSION="${manifest.version}")`;
+}
+
+async function resolveSourceGlobs(root, patterns) {
+  const allFiles = await collectFiles(root);
+  const matched = new Set();
+  for (const pattern of patterns) {
+    const regex = globToRegExp(pattern);
+    for (const file of allFiles) {
+      const rel = path.relative(root, file).replace(/\\/g, '/');
+      if (regex.test(rel)) matched.add(file);
+    }
+  }
+  return [...matched].filter(file => /\.(c|cc|cpp|cxx|s|S)$/i.test(file)).sort();
+}
+
+function globToRegExp(pattern) {
+  const input = String(pattern).replace(/\\/g, '/');
+  const placeholder = '\0';
+  const normalized = input.replace(/\*\*\//g, placeholder).replace(/\*\*/g, placeholder);
+  let output = '';
+  for (const char of normalized) {
+    if (char === placeholder) output += '(?:.*/)?';
+    else if (char === '*') output += '[^/]*';
+    else output += char.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+  }
+  return new RegExp(`^${output}$`);
+}
+
+async function validateSourceOnlyFiles(root) {
+  const files = await collectFiles(root);
+  for (const file of files) {
+    const ext = path.extname(file).toLowerCase();
+    if (SOURCE_ONLY_REJECT_EXTENSIONS.has(ext)) {
+      throw new Error(`ABI v1 packages are source-only; rejected binary artifact ${path.relative(root, file)}`);
+    }
+  }
+}
+
+async function validateAbiSourceRules(root, manifest, sourceFiles) {
+  const modulePrefix = moduleSymbolPrefix(manifest.name);
+  if (manifest.package_kind === 'module') {
+    const publicHeaderRoot = path.join(root, 'include', modulePrefix);
+    if (!existsSync(publicHeaderRoot)) {
+      throw new Error(`ABI v1 module headers must live under include/${modulePrefix}/`);
+    }
+  }
+  for (const source of sourceFiles) {
+    const text = await fs.readFile(source, 'utf8');
+    if (/^\s*#\s*define\s+NAVHAL_/m.test(text)) {
+      throw new Error(`module/app must not redefine NAVHAL_* macros: ${path.relative(root, source)}`);
+    }
+    if (manifest.package_kind === 'module' && /\bhal_[A-Za-z0-9_]*\s*\(/.test(text.replace(/\bhal_status_t\b/g, ''))) {
+      // Modules may call hal_* symbols, but they must not define them. The archive symbol pass catches definitions.
+    }
+  }
+}
+
+async function validateAbiArchiveSymbols(nm, archive, manifest) {
+  const output = await runCapture(nm, ['-g', '--defined-only', archive]).catch(() => '');
+  const prefix = moduleSymbolPrefix(manifest.name);
+  const allowed = new Set([]);
+  const bad = [];
+  for (const line of output.split(/\r?\n/)) {
+    const match = line.trim().match(/(?:[0-9a-fA-F]+\s+)?[A-Z]\s+(.+)$/);
+    const symbol = match?.[1]?.trim();
+    if (!symbol || symbol.startsWith('_') || allowed.has(symbol)) continue;
+    if (symbol === 'main') bad.push(symbol);
+    else if (!symbol.startsWith(`${prefix}_`) && !symbol.startsWith(prefix.toUpperCase())) bad.push(symbol);
+    if (symbol.startsWith('hal_')) bad.push(symbol);
+  }
+  if (bad.length > 0) {
+    throw new Error(`ABI v1 module ${manifest.name} exports invalid symbols: ${unique(bad).join(', ')}`);
+  }
+}
+
+async function validateAbiKconfig(kconfigPath, manifest) {
+  const text = await fs.readFile(kconfigPath, 'utf8').catch(() => {
+    throw new Error(`Kconfig file not found: ${kconfigPath}`);
+  });
+  const prefix = moduleSymbolPrefix(manifest.name).toUpperCase();
+  if (/^\s*mainmenu\b/m.test(text)) throw new Error('module Kconfig must not contain mainmenu');
+  if (/^\s*source\s+["']?(?:\.\.|\/)/m.test(text)) throw new Error('module Kconfig must not source files outside the module tree');
+  if (/^\s*select\s+DRV_/m.test(text)) throw new Error('module Kconfig must not select NavHAL DRV_* caps; use [requires].caps');
+  for (const match of text.matchAll(/^\s*(?:config|menuconfig)\s+([A-Za-z0-9_]+)/gm)) {
+    if (!match[1].startsWith(`${prefix}_`)) {
+      throw new Error(`Kconfig symbol ${match[1]} must start with ${prefix}_`);
+    }
+  }
+}
+
+async function validateAbiCmakeExtras(filePath) {
+  const text = await fs.readFile(filePath, 'utf8').catch(() => {
+    throw new Error(`cmake_extras file not found: ${filePath}`);
+  });
+  const forbidden = [/\bPARENT_SCOPE\b/i, /^\s*project\s*\(/im, /^\s*add_executable\s*\(/im, /^\s*add_subdirectory\s*\(/im];
+  if (forbidden.some(pattern => pattern.test(text))) {
+    throw new Error('cmake/extras.cmake must not modify global build state');
+  }
+}
+
+async function countMainDefinitions(files) {
+  let count = 0;
+  for (const file of files) {
+    const text = await fs.readFile(file, 'utf8');
+    const withoutComments = text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+    if (/\b(?:int|void)\s+main\s*\(/.test(withoutComments)) count += 1;
+  }
+  return count;
+}
+
+function moduleSymbolPrefix(name) {
+  return String(name || '').replace(/-/g, '_');
+}
+
+function sanitizeCIdentifier(name) {
+  return moduleSymbolPrefix(name).replace(/[^A-Za-z0-9_]/g, '_');
 }
 
 async function cleanProject(projectArg) {
@@ -1128,6 +1579,14 @@ async function uploadProject(rawArgs = []) {
     await uploadCmake(projectDir, manifest, lock);
     return;
   }
+  if (buildSystem === 'abi-v1') {
+    if (manifest.package_kind !== 'app') throw new Error('ABI v1 modules are libraries and cannot be uploaded directly.');
+    if (manifest.target?.vendor === 'stm32') {
+      await uploadStm32(projectDir, manifest, lock);
+      return;
+    }
+    throw new Error(`ABI v1 upload is not implemented for target ${targetTripleFromManifest(manifest.target || {})}.`);
+  }
   throw new Error(`Upload is not implemented for build_system '${buildSystem}'.`);
 }
 
@@ -1137,7 +1596,7 @@ async function monitorProject(rawArgs = []) {
   const lock = await readJson(path.join(projectDir, '.nav', 'lock.json')).catch(() => null);
   if (!lock) throw new Error('run nav setup before monitor');
   console.log(`${bold('monitor plan:')} ${manifest.board || 'unknown board'}`);
-  if (manifest.build_system === 'stm32-gcc') {
+  if (manifest.build_system === 'stm32-gcc' || (manifest.build_system === 'abi-v1' && manifest.target?.vendor === 'stm32')) {
     const port = options.port;
     if (!port) throw new Error('STM32 monitor needs a serial VCP port. Pass --port COMx if your board exposes one.');
     await monitorSerialPort(port, Number(manifest.monitor_baud || 9600));
@@ -1157,13 +1616,21 @@ async function pack(folder, rest) {
   const out = outIndex >= 0 ? rest[outIndex + 1] : null;
   if (!out) throw new Error('pack requires --out <archive.navpkg>');
   const absoluteFolder = path.resolve(folder);
-  const files = await collectFiles(absoluteFolder);
+  const files = (await collectFiles(absoluteFolder)).sort((a, b) => path.relative(absoluteFolder, a).localeCompare(path.relative(absoluteFolder, b)));
   const { manifest, manifestFile } = await readPackageManifest(absoluteFolder);
+  if (isAbiManifest(manifest)) {
+    await validateAbiProject(absoluteFolder, manifest, { build: false });
+  }
+  const abiSourceHash = isAbiManifest(manifest) ? await sourceTreeHash(absoluteFolder, files) : null;
+  const bundledManifest = abiSourceHash
+    ? { ...manifest, abi: { ...(manifest.abi || {}), source_hash: `sha256:${abiSourceHash}` }, source_hash: `sha256:${abiSourceHash}` }
+    : manifest;
   const bundle = {
     schema_version: 1,
-    packed_at: new Date().toISOString(),
+    packed_at: abiSourceHash ? '1970-01-01T00:00:00.000Z' : new Date().toISOString(),
     manifest_file: manifestFile,
-    manifest,
+    manifest: bundledManifest,
+    ...(abiSourceHash ? { abi_version: ABI_VERSION, source_hash: `sha256:${abiSourceHash}` } : {}),
     files: []
   };
   for (const file of files) {
@@ -1178,6 +1645,7 @@ async function pack(folder, rest) {
   await fs.writeFile(out, bytes);
   printSuccess(`packed ${files.length} files ${cyan('->')} ${formatPath(out)}`);
   console.log(`${bold('manifest:')} ${manifestFile}`);
+  if (abiSourceHash) console.log(`${bold('source hash:')} ${dim(`sha256:${abiSourceHash}`)}`);
   console.log(`${bold('sha256:')} ${dim(hash(bytes))}`);
 }
 
@@ -1330,21 +1798,32 @@ async function toolchainCommand(subcommand, rest) {
 
 async function resolveProject(manifest) {
   const packageMap = new Map();
+  const resolvedByPackage = new Map();
   const toolchainSet = new Set(manifest.toolchains || []);
-  const queue = [...(manifest.dependencies || [])];
+  const queue = [...(manifest.dependencies || [])].map(spec => ({ spec, via: manifest.name || 'project' }));
   const seen = new Set();
 
   while (queue.length > 0) {
-    const rawSpec = queue.shift();
+    const { spec: rawSpec, via } = queue.shift();
+    const requested = parseSpec(rawSpec);
     const normalized = await resolvePackageSpec(rawSpec);
+    const packageKey = `${normalized.namespace}/${normalized.name}`;
+    const existingVersion = resolvedByPackage.get(packageKey);
+    if (existingVersion && existingVersion !== normalized.version) {
+      throw new Error(`Dependency conflict for ${packageKey}: ${existingVersion} already selected, but ${via} requested ${requested.version || '*'}`);
+    }
+    resolvedByPackage.set(packageKey, normalized.version);
     const key = `${normalized.namespace}/${normalized.name}@${normalized.version}`;
     if (seen.has(key)) continue;
     seen.add(key);
     packageMap.set(key, { ...normalized, spec: `${normalized.namespace}/${normalized.name}` });
     const versionData = await getPackageVersion(normalized.namespace, normalized.name, normalized.version);
     const pkgManifest = versionData.manifest || {};
+    if (pkgManifest.abi_v1 && pkgManifest.package_kind === 'app') {
+      throw new Error(`Apps cannot depend on app packages: ${key}`);
+    }
     for (const tc of pkgManifest.toolchains || []) toolchainSet.add(tc);
-    for (const dep of pkgManifest.dependencies || []) queue.push(dep);
+    for (const dep of pkgManifest.dependencies || []) queue.push({ spec: dep, via: key });
   }
 
   const allToolchains = (await request('/toolchains')).toolchains;
@@ -1430,10 +1909,16 @@ function systemToolchainExecutables(name) {
 
 async function resolvePackageSpec(spec) {
   const parsed = parseSpec(spec);
-  if (parsed.version) return parsed;
+  if (parsed.version && isExactSemver(parsed.version)) return parsed;
   const versions = await request(`/packages/${parsed.namespace}/${parsed.name}/versions`);
-  const version = versions.versions[0]?.version;
-  if (!version) throw new Error(`No package version found for ${parsed.namespace}/${parsed.name}`);
+  const range = parsed.version || '*';
+  const candidates = (versions.versions || [])
+    .map(item => item.version)
+    .filter(version => semverSatisfies(version, range))
+    .sort(compareSemver)
+    .reverse();
+  const version = candidates[0];
+  if (!version) throw new Error(`No package version found for ${parsed.namespace}/${parsed.name} satisfying ${range}`);
   return { ...parsed, version };
 }
 
@@ -1492,14 +1977,7 @@ async function installPackageToProject(projectDir, spec, versionOverride = null)
   } catch {
     // Non-navpkg archives are still cached and checksum-verified by the prototype.
   }
-  await fs.writeFile(installPath, JSON.stringify({
-    namespace: normalized.namespace,
-    name: normalized.name,
-    version: normalized.version,
-    sha256: archiveHash,
-    manifest: bundle?.manifest || registryVersion?.manifest || null,
-    installed_at: new Date().toISOString()
-  }, null, 2));
+  const installedManifest = bundle?.manifest || registryVersion?.manifest || null;
 
   if (Array.isArray(bundle?.files)) {
     const extractDir = path.join(packageDir, 'files');
@@ -1508,7 +1986,20 @@ async function installPackageToProject(projectDir, spec, versionOverride = null)
       await fs.mkdir(path.dirname(out), { recursive: true });
       await fs.writeFile(out, Buffer.from(file.content_base64, 'base64'));
     }
+    if (isAbiManifest(installedManifest)) {
+      validateAbiManifest(installedManifest, extractDir, { phase: 'add' });
+      await validateAbiProject(extractDir, installedManifest, { build: false, dependencyOnly: true });
+    }
   }
+
+  await fs.writeFile(installPath, JSON.stringify({
+    namespace: normalized.namespace,
+    name: normalized.name,
+    version: normalized.version,
+    sha256: archiveHash,
+    manifest: installedManifest,
+    installed_at: new Date().toISOString()
+  }, null, 2));
 
   return {
     namespace: normalized.namespace,
@@ -1516,7 +2007,7 @@ async function installPackageToProject(projectDir, spec, versionOverride = null)
     version: normalized.version,
     path: packageDir,
     sha256: archiveHash,
-    manifest: bundle?.manifest || registryVersion?.manifest || null
+    manifest: installedManifest
   };
 }
 
@@ -2041,6 +2532,7 @@ function resolveBuildSystem(manifest, lock, projectDir) {
 
 function resolveUploader(manifest, lock, buildSystem) {
   if (manifest.uploader) return manifest.uploader;
+  if (buildSystem === 'abi-v1' && manifest.target?.vendor === 'stm32') return 'stlink';
   if (buildSystem === 'arduino-cli') return 'arduino-cli upload';
   if (manifest.target === 'esp32') return 'esptool';
   if (String(manifest.target || '').startsWith('stm32')) return 'stlink';
@@ -2326,7 +2818,7 @@ function findProjectRootDownward(startDir = process.cwd()) {
 }
 
 function isNavProjectDirectory(dir, { allowLockOnly = false } = {}) {
-  if (existsSync(path.join(dir, 'nav.toml')) || existsSync(path.join(dir, 'nav.json'))) return true;
+  if (existsSync(path.join(dir, 'navmod.toml')) || existsSync(path.join(dir, 'nav.toml')) || existsSync(path.join(dir, 'nav.json'))) return true;
   return allowLockOnly && existsSync(path.join(dir, '.nav', 'lock.json'));
 }
 
@@ -2359,13 +2851,16 @@ function resolveSetupProjectDir(projectArg = null) {
 
 async function readProjectManifest(projectDir) {
   const root = findProjectRoot(projectDir) || path.resolve(projectDir || process.cwd());
+  const navmodPath = path.join(root, 'navmod.toml');
   const tomlPath = path.join(root, 'nav.toml');
   const jsonPath = path.join(root, 'nav.json');
+  const navmodExists = await exists(navmodPath);
   const tomlExists = await exists(tomlPath);
   const jsonExists = await exists(jsonPath);
+  if (navmodExists) return normalizeAbiManifest(parseToml(await fs.readFile(navmodPath, 'utf8')), root, 'navmod.toml');
   if (tomlExists) return enhanceProjectManifest(parseToml(await fs.readFile(tomlPath, 'utf8')), root);
   if (jsonExists) return enhanceProjectManifest(JSON.parse(await fs.readFile(jsonPath, 'utf8')), root);
-  throw new Error(`No Nav project manifest found from ${path.resolve(projectDir || process.cwd())} upward or below. Run "nav setup" in an empty folder, or add nav.toml to the project root.`);
+  throw new Error(`No Nav project manifest found from ${path.resolve(projectDir || process.cwd())} upward or below. Run "nav setup" in an empty folder, or add navmod.toml/nav.toml to the project root.`);
 }
 
 function enhanceProjectManifest(manifest, projectDir) {
@@ -2388,10 +2883,145 @@ function enhanceProjectManifest(manifest, projectDir) {
   return manifest;
 }
 
+function isAbiManifest(manifest) {
+  return Boolean(manifest?.abi_v1 || manifest?.package?.kind || manifest?.abi?.abi_version);
+}
+
+function normalizeAbiManifest(parsed, projectDir, manifestFile = 'navmod.toml') {
+  const packageInfo = parsed.package || {};
+  const abi = parsed.abi || {};
+  const target = parsed.target || {};
+  const build = parsed.build || {};
+  const requires = parsed.requires || {};
+  const optionalRequires = requires.optional || {};
+  const dependencies = normalizeDependencyMap(parsed.dependencies || {});
+  const packageName = packageInfo.name || parsed.name;
+  const kind = packageInfo.kind || parsed.kind;
+  const targetToolchains = kind === 'app' && target.vendor === 'stm32' ? ['stlink'] : [];
+  const targetTriple = kind === 'app' ? targetTripleFromManifest(target) : null;
+  return {
+    abi_v1: true,
+    manifest_file: manifestFile,
+    manifest_root: projectDir,
+    package_kind: kind,
+    name: packageName,
+    version: packageInfo.version || parsed.version,
+    license: packageInfo.license || parsed.license,
+    authors: packageInfo.authors || [],
+    description: packageInfo.description || parsed.description || '',
+    namespace: packageInfo.namespace || parsed.namespace || null,
+    abi,
+    abi_version: Number(abi.abi_version),
+    hal_api_version: Number(abi.hal_api_version),
+    target,
+    target_triple: targetTriple,
+    board: target.board || parsed.board || null,
+    build,
+    build_system: 'abi-v1',
+    build_output: build.output || (kind === 'module' ? path.join('build', 'abi-v1', `lib${packageName}.a`) : path.join('build', 'abi-v1', packageName || 'app')),
+    sources: normalizeStringArray(build.sources),
+    include_dirs: normalizeStringArray(build.include_dirs),
+    entry: build.entry || null,
+    kconfig: build.kconfig || null,
+    cmake_extras: build.cmake_extras || null,
+    requires_caps: normalizeStringArray(requires.caps),
+    optional_caps: normalizeStringArray(optionalRequires.caps),
+    dependencies: dependencies.required,
+    optional_dependencies: dependencies.optional,
+    toolchains: unique(['cmake', 'ninja', 'arm-none-eabi', ...targetToolchains, ...normalizeStringArray(parsed.toolchains)])
+  };
+}
+
+function normalizeDependencyMap(dependencies) {
+  const optional = dependencies.optional && typeof dependencies.optional === 'object' ? dependencies.optional : {};
+  const requiredEntries = Object.entries(dependencies)
+    .filter(([key]) => key !== 'optional')
+    .map(([name, range]) => dependencyEntryToSpec(name, range));
+  const optionalEntries = Object.entries(optional).map(([name, range]) => dependencyEntryToSpec(name, range));
+  return { required: requiredEntries, optional: optionalEntries };
+}
+
+function dependencyEntryToSpec(name, range) {
+  const packageName = String(name || '').trim();
+  const versionRange = String(range || '*').trim();
+  if (packageName.includes('/')) return `${packageName}@${versionRange}`;
+  return `nav/${packageName}@${versionRange}`;
+}
+
+function targetTripleFromManifest(target = {}) {
+  const arch = target.arch || 'host';
+  const vendor = target.vendor || 'native';
+  const family = target.family || target.board || 'local';
+  const board = target.board || family;
+  return `${arch}/${vendor}/${family}/${board}`;
+}
+
+function normalizeTargetCapabilityKey(target = {}) {
+  const arch = target.arch || 'host';
+  const vendor = target.vendor || 'native';
+  const board = target.board || 'local';
+  const family = target.family || board;
+  return `${arch}/${vendor}/${family}/${board}`;
+}
+
+function capsForTarget(target = {}) {
+  const key = normalizeTargetCapabilityKey(target);
+  return new Set(TARGET_CAPABILITIES[key] || TARGET_CAPABILITIES[`${target.arch}/${target.vendor}/${target.board}`] || []);
+}
+
+function normalizeStringArray(value) {
+  if (Array.isArray(value)) return value.map(item => String(item).trim()).filter(Boolean);
+  if (value === undefined || value === null || value === '') return [];
+  return [String(value).trim()].filter(Boolean);
+}
+
+function validateAbiManifest(manifest, projectDir, { phase = 'build', appTarget = null } = {}) {
+  const errors = [];
+  const pkg = `${manifest.name || '<unnamed>'}@${manifest.version || '<no-version>'}`;
+  if (!['module', 'app'].includes(manifest.package_kind)) errors.push('[package].kind must be "module" or "app"');
+  if (!/^[a-z][a-z0-9_-]{1,63}$/.test(String(manifest.name || ''))) errors.push('[package].name must match ^[a-z][a-z0-9_-]{1,63}$');
+  if (!isSemver(manifest.version)) errors.push('[package].version must be semver MAJOR.MINOR.PATCH');
+  if (!manifest.license) errors.push('[package].license is required');
+  if (manifest.abi_version !== ABI_VERSION) errors.push(`[abi].abi_version must be ${ABI_VERSION}`);
+  if (manifest.hal_api_version !== HAL_API_VERSION) errors.push(`[abi].hal_api_version must equal NavHAL HAL_API_VERSION ${HAL_API_VERSION}`);
+  if (manifest.package_kind === 'app' && (!manifest.target?.arch || !manifest.target?.vendor || !manifest.target?.board)) {
+    errors.push('apps must pin [target].arch, [target].vendor, and [target].board');
+  }
+  if (manifest.package_kind === 'module' && (manifest.target?.arch || manifest.target?.vendor || manifest.target?.board)) {
+    errors.push('modules must not pin a [target] block; they build against the consuming app target');
+  }
+  if (manifest.sources.length === 0) errors.push('[build].sources must include at least one source glob');
+  for (const cap of [...manifest.requires_caps, ...manifest.optional_caps]) {
+    if (!KNOWN_HAL_CAPS.has(cap)) errors.push(`unknown HAL capability ${cap}`);
+  }
+  if (phase === 'build') {
+    const targetCaps = capsForTarget(appTarget || manifest.target || {});
+    for (const cap of manifest.requires_caps) {
+      if (!targetCaps.has(cap)) errors.push(`target ${targetTripleFromManifest(appTarget || manifest.target || {})} does not provide required cap ${cap}`);
+    }
+  }
+  if (errors.length > 0) {
+    throw new Error(`ABI v1 validation failed for ${pkg}: ${errors.join('; ')}`);
+  }
+  return true;
+}
+
 
 async function readPackageManifest(projectDir) {
+  const navmodPath = path.join(projectDir, 'navmod.toml');
   const tomlPath = path.join(projectDir, 'nav.toml');
   const jsonPath = path.join(projectDir, 'nav.json');
+  try {
+    const parsed = parseToml(await fs.readFile(navmodPath, 'utf8'));
+    const manifest = normalizeAbiManifest(parsed, projectDir, 'navmod.toml');
+    validateAbiManifest(manifest, projectDir, { phase: 'pack' });
+    return {
+      manifest,
+      manifestFile: 'navmod.toml'
+    };
+  } catch (error) {
+    if (await exists(navmodPath)) throw error;
+  }
   try {
     return {
       manifest: parseToml(await fs.readFile(tomlPath, 'utf8')),
@@ -2404,7 +3034,7 @@ async function readPackageManifest(projectDir) {
       manifestFile: 'nav.json'
     };
   } catch {
-    throw new Error('pack requires the folder to contain nav.toml or nav.json');
+    throw new Error('pack requires the folder to contain navmod.toml, nav.toml, or nav.json');
   }
 }
 
@@ -2423,29 +3053,100 @@ async function exists(filePath) {
 
 function parseToml(source) {
   const result = {};
+  let current = result;
   for (const rawLine of source.split(/\r?\n/)) {
-    const line = rawLine.replace(/#.*$/, '').trim();
-    if (!line || line.startsWith('[')) continue;
-    const match = line.match(/^([A-Za-z0-9_-]+)\s*=\s*(.+)$/);
-    if (!match) continue;
-    const [, key, rawValue] = match;
-    result[key] = parseTomlValue(rawValue.trim());
+    const line = stripTomlComment(rawLine).trim();
+    if (!line) continue;
+    const section = line.match(/^\[([A-Za-z0-9_.-]+)\]$/);
+    if (section) {
+      current = result;
+      for (const part of section[1].split('.')) {
+        current[part] ||= {};
+        current = current[part];
+      }
+      continue;
+    }
+    const equalsIndex = line.indexOf('=');
+    if (equalsIndex < 0) continue;
+    const key = line.slice(0, equalsIndex).trim();
+    const rawValue = line.slice(equalsIndex + 1);
+    const parts = parseTomlKey(key);
+    let target = current;
+    for (const part of parts.slice(0, -1)) {
+      target[part] ||= {};
+      target = target[part];
+    }
+    target[parts.at(-1)] = parseTomlValue(rawValue.trim());
   }
   return result;
+}
+
+function parseTomlKey(rawKey) {
+  const parts = [];
+  let current = '';
+  let quote = null;
+  for (let index = 0; index < rawKey.length; index += 1) {
+    const char = rawKey[index];
+    if ((char === '"' || char === "'") && rawKey[index - 1] !== '\\') {
+      quote = quote === char ? null : quote || char;
+      continue;
+    }
+    if (char === '.' && !quote) {
+      parts.push(current.trim());
+      current = '';
+      continue;
+    }
+    current += char;
+  }
+  if (current.trim()) parts.push(current.trim());
+  return parts.map(part => part.replace(/\\"/g, '"').replace(/\\'/g, "'"));
+}
+
+function stripTomlComment(line) {
+  let quote = null;
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    if ((char === '"' || char === "'") && line[index - 1] !== '\\') {
+      quote = quote === char ? null : quote || char;
+    }
+    if (char === '#' && !quote) return line.slice(0, index);
+  }
+  return line;
 }
 
 function parseTomlValue(rawValue) {
   if (rawValue.startsWith('[')) {
     const inner = rawValue.replace(/^\[/, '').replace(/\]$/, '').trim();
     if (!inner) return [];
-    return inner.split(',').map(item => parseTomlValue(item.trim()));
+    return splitTomlArray(inner).map(item => parseTomlValue(item.trim()));
   }
   if ((rawValue.startsWith('"') && rawValue.endsWith('"')) || (rawValue.startsWith("'") && rawValue.endsWith("'"))) {
     return rawValue.slice(1, -1);
   }
   if (rawValue === 'true') return true;
   if (rawValue === 'false') return false;
+  if (/^-?\d+$/.test(rawValue)) return Number(rawValue);
   return rawValue;
+}
+
+function splitTomlArray(inner) {
+  const values = [];
+  let current = '';
+  let quote = null;
+  for (let index = 0; index < inner.length; index += 1) {
+    const char = inner[index];
+    if ((char === '"' || char === "'") && inner[index - 1] !== '\\') {
+      quote = quote === char ? null : quote || char;
+    }
+    if (char === ',' && !quote) {
+      values.push(current);
+      current = '';
+      continue;
+    }
+    current += char;
+  }
+  if (current.trim()) values.push(current);
+  return values;
 }
 
 function writeToml(manifest) {
@@ -2463,6 +3164,11 @@ function formatTomlValue(value) {
   return JSON.stringify(String(value));
 }
 
+function formatTomlKey(key) {
+  const value = String(key || '');
+  return /^[A-Za-z0-9_.-]+$/.test(value) ? value : JSON.stringify(value);
+}
+
 async function collectFiles(dir) {
   const entries = await fs.readdir(dir, { withFileTypes: true });
   const files = [];
@@ -2475,6 +3181,19 @@ async function collectFiles(dir) {
     if (entry.isFile()) files.push(full);
   }
   return files;
+}
+
+async function sourceTreeHash(root, files) {
+  const digest = crypto.createHash('sha256');
+  for (const file of files) {
+    const rel = path.relative(root, file).replace(/\\/g, '/');
+    const bytes = await fs.readFile(file);
+    digest.update(rel);
+    digest.update('\0');
+    digest.update(bytes);
+    digest.update('\0');
+  }
+  return digest.digest('hex');
 }
 
 async function readJson(file) {
@@ -2501,6 +3220,85 @@ function parseSpec(spec) {
   const [namespace, packageAndVersion] = spec.split('/');
   const [name, version] = packageAndVersion.split('@');
   return { namespace, name, version };
+}
+
+function isSemver(value) {
+  return /^\d+\.\d+\.\d+(?:-(?:alpha|rc)\.\d+)?$/.test(String(value || ''));
+}
+
+function isExactSemver(value) {
+  return isSemver(value) && !String(value).includes('x');
+}
+
+function parseSemver(value) {
+  const match = String(value || '').match(/^(\d+)\.(\d+)\.(\d+)(?:-([A-Za-z]+)\.(\d+))?$/);
+  if (!match) return null;
+  return {
+    major: Number(match[1]),
+    minor: Number(match[2]),
+    patch: Number(match[3]),
+    prerelease: match[4] ? `${match[4]}.${match[5]}` : ''
+  };
+}
+
+function compareSemver(a, b) {
+  const left = parseSemver(a);
+  const right = parseSemver(b);
+  if (!left || !right) return String(a).localeCompare(String(b));
+  for (const key of ['major', 'minor', 'patch']) {
+    if (left[key] !== right[key]) return left[key] - right[key];
+  }
+  if (left.prerelease && !right.prerelease) return -1;
+  if (!left.prerelease && right.prerelease) return 1;
+  return left.prerelease.localeCompare(right.prerelease);
+}
+
+function semverSatisfies(version, range = '*') {
+  const normalizedRange = String(range || '*').trim();
+  if (normalizedRange === '*' || normalizedRange === 'latest') return isSemver(version);
+  if (normalizedRange.startsWith('=')) return version === normalizedRange.slice(1);
+  if (normalizedRange.startsWith('>=')) return compareSemver(version, normalizedRange.slice(2)) >= 0;
+  if (normalizedRange.startsWith('^')) {
+    const base = coercePartialSemver(normalizedRange.slice(1));
+    const parsed = parseSemver(version);
+    if (!base || !parsed) return false;
+    return parsed.major === base.major && compareSemver(version, formatSemver(base)) >= 0;
+  }
+  if (normalizedRange.startsWith('~')) {
+    const base = coercePartialSemver(normalizedRange.slice(1));
+    const parsed = parseSemver(version);
+    if (!base || !parsed) return false;
+    return parsed.major === base.major && parsed.minor === base.minor && compareSemver(version, formatSemver(base)) >= 0;
+  }
+  if (/^\d+\.\d+\.x$/.test(normalizedRange)) {
+    const [major, minor] = normalizedRange.split('.').map(Number);
+    const parsed = parseSemver(version);
+    return parsed?.major === major && parsed?.minor === minor;
+  }
+  if (/^\d+\.\d+$/.test(normalizedRange)) {
+    const [major, minor] = normalizedRange.split('.').map(Number);
+    const parsed = parseSemver(version);
+    return parsed?.major === major && parsed?.minor === minor;
+  }
+  return version === normalizedRange;
+}
+
+function coercePartialSemver(value) {
+  const parts = String(value || '').split('.').map(part => Number(part.replace(/x/i, '0')));
+  if (!Number.isFinite(parts[0])) return null;
+  return {
+    major: parts[0],
+    minor: Number.isFinite(parts[1]) ? parts[1] : 0,
+    patch: Number.isFinite(parts[2]) ? parts[2] : 0
+  };
+}
+
+function formatSemver(value) {
+  return `${value.major}.${value.minor}.${value.patch}`;
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function currentPlatform() {
