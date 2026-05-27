@@ -67,8 +67,8 @@ These are decisions, not tradeoffs to revisit. Document them so future contribut
 
 ### Open
 
-- Real registry verbs (deferred to Phase 4).
-- Phase 2 — toolchain manager.
+- Phase 2 — registry (libraries **and** toolchains) + lockfile. Replaces the originally-planned standalone "toolchain manager" phase: we'll host toolchain binaries as packages on Nav's own registry rather than pulling tarballs from upstream Arm/AVR/etc. The earlier Phase 2/3 split is collapsed; sequencing summary updated.
+- Phase 3 — framework / flashing / monitor filters / debug / test / registry auth (the old long-tail Phase 4).
 
 ---
 
@@ -172,7 +172,7 @@ These are decisions, not tradeoffs to revisit. Document them so future contribut
 - **Resolved by:** CLI11 `set_version_flag("--version,-V", NAV_VERSION)` + `add_flag("--verbose,-v", ...)`. `-V` is version, `-v` is verbose.
 
 ### P2-3. Stub registry verbs still listed in main help
-- **Where:** `src/cli/main.cpp:25-28`. Keep the `(coming soon)` tag until each gets a real implementation. As each Phase 4 verb lands, drop the tag for that verb individually.
+- **Where:** `src/cli/main.cpp:25-28`. Keep the `(coming soon)` tag until each gets a real implementation. As each Phase 2 verb lands, drop the tag for that verb individually.
 
 ### P2-4. No tests anywhere in the repo
 - **Where:** no `tests/` directory exists.
@@ -186,7 +186,7 @@ These are decisions, not tradeoffs to revisit. Document them so future contribut
 
 # Part B — Roadmap to PlatformIO-parity
 
-The vision in `docs/plan.md` is "PlatformIO + Cargo + Docker + ROS for robotics." The current CLI implements a small fraction of that surface. This roadmap phases the gap into four milestones, each independently shippable.
+The vision in `docs/plan.md` is "PlatformIO + Cargo + Docker + ROS for robotics." The current CLI implements a small fraction of that surface. This roadmap phases the gap into three milestones, each independently shippable. (Originally four — Phase 2 absorbed the standalone toolchain manager; see the strategic note in Phase 2.)
 
 ## Phase 0 — Defect cleanup
 
@@ -238,86 +238,39 @@ The harder half: make `nav build` actually consume the catalog at build time ins
 
 **Dependencies:** Phase 1.1 (done).
 
-## Phase 2 — Toolchain manager
+## Phase 2 — Registry: libraries + toolchains + lockfile
 
-**Duration:** 4–8 weeks.
-**Goal:** stop depending on host `apt`/`dnf`/`pacman`/`brew`. Hermetic, per-version, per-project toolchains. The single biggest PlatformIO-parity move — without it, "hermetic builds" (`docs/plan.md:29-37`) is marketing only.
+**Duration:** 8–14 weeks.
+**Goal:** real `nav add`, `nav search`, `nav toolchain install`, `nav.lock`. Stand up Nav's own registry, then use it to distribute *both* libraries and toolchains as package types under a single mechanism.
 
-**Deliverables:**
+**Strategic note:** the previous version of this plan split package management (Phase 3) from a standalone toolchain manager (Phase 2) that downloaded tarballs from upstream Arm/AVR/etc. That split is collapsed. Toolchains are repackaged and hosted by Nav itself, so the registry, cache, lockfile, and download path are shared. Benefits: one HTTP/auth/signing pipeline instead of two; stable URLs we control; SHA256s we sign instead of depending on upstreams that move their CDNs.
 
-1. Layout per `docs/plan.md:349`:
-   ```
-   ~/.nav/
-     toolchains/
-       arm-none-eabi-gcc@13.2/
-         bin/
-         lib/
-         manifest.toml
-     cache/
-     downloads/
-   ```
+### Package model
 
-2. Toolchain manifest schema at `share/nav/toolchains/<name>@<version>.toml`:
-   ```toml
-   name    = "arm-none-eabi-gcc"
-   version = "13.2"
+Every registry entry is a *package* with one of two kinds:
 
-   [download.linux_x86_64]
-   url    = "https://developer.arm.com/.../arm-gnu-toolchain-13.2.tar.xz"
-   sha256 = "..."
+- `kind = "library"` — C/C++ sources/headers/static archives consumed by the build.
+- `kind = "toolchain"` — pre-built binaries (cross-compilers, flashers, assemblers) exposed as resolved binary paths.
 
-   [download.darwin_arm64]
-   url    = "https://..."
-   sha256 = "..."
+The cache layout, lockfile schema, and resolver are shared. The build wires each kind in differently: libraries become include + link inputs; toolchain binaries become the resolved `CMAKE_C_COMPILER` / objcopy / size paths flowing into `nav-board.cmake`.
 
-   binaries = ["arm-none-eabi-gcc", "arm-none-eabi-g++", "arm-none-eabi-objcopy",
-               "arm-none-eabi-size", "arm-none-eabi-as", "arm-none-eabi-ld"]
-   ```
+### Deliverables
 
-3. New verbs:
-   - `nav toolchain install <name>[@<version>]` — downloads, verifies SHA256, extracts atomically.
-   - `nav toolchain list` — what's installed.
-   - `nav toolchain remove <name>@<version>`.
-   - `nav toolchain which <name>` — print the resolved path.
-
-4. `[toolchain]` table in project `nav.toml`:
-   ```toml
-   [toolchain]
-   compiler = "arm-none-eabi-gcc@13.2"
-   ```
-
-5. `nav build` resolves the pinned toolchain path and writes it into a generated CMake toolchain file. No `$PATH` discovery for the build itself. The board catalog's `[toolchain] compiler` field provides the default if the project doesn't pin one.
-
-6. SHA256 verification is mandatory; atomic move from temp dir to final location (no partial installs visible).
-
-7. Rename today's `nav check` to `nav doctor` (it's an environment doctor, not analysis). `nav check` is reserved for Phase 4 static analysis. Make the rename visible in `--help` for one minor release before retiring the old name.
-
-**Exit criterion:** a fresh machine with only `nav` + `git` installed can build a Phase-1 example board end-to-end after `nav toolchain install …`. This is the watershed milestone.
-
-**Dependencies:** Phase 0 + Phase 1.
-
-**Open question (revisit at start):** should the toolchain index be in-tree (`share/nav/toolchains/*.toml`) or fetched from the registry index repo? Recommend in-tree for Phase 2, migrate to registry-served in Phase 3.
-
-## Phase 3 — Dependency manager + lockfile
-
-**Duration:** 6–10 weeks.
-**Goal:** real `nav add`, `nav search`, `nav.lock`. Replace the stubs in `src/core/commands/registry.cpp`.
-
-**Deliverables:**
-
-1. **Registry index** — phase-1 strategy from `docs/plan.md:303-315`. A GitHub repo `nav-index/` of JSON metadata:
+1. **Registry index** — phase-1 strategy from `docs/plan.md:303-315`. A GitHub repo `nav-index/` of JSON metadata, two-character prefix sharded:
    ```
    nav-index/
+     ar/arm-none-eabi-gcc.json
      im/imu-driver.json
      na/nav-hal.json
    ```
-   Each file lists versions, tarball URLs, SHA256s, and dependency specs. Two-character prefix sharding (like crates.io) prevents the directory from getting unwieldy.
+   Each entry lists versions, per-platform tarball URLs, SHA256s, kind, dependency specs.
 
-2. **Package manifest** (publisher side). Every published package's `nav.toml` adds:
+2. **Package manifest** (publisher side, library kind):
    ```toml
    [package]
    name        = "nav-hal"
    version     = "0.5.0"
+   kind        = "library"
    description = "..."
    license     = "MIT"
 
@@ -325,35 +278,90 @@ The harder half: make `nav build` actually consume the catalog at build time ins
    cmsis = "^6.0"
    ```
 
-3. **Resolver** — DFS-based version resolution. Detect cycles and conflicts; surface them with a useful error. A SAT-based resolver is Phase 4 territory.
+   And toolchain kind:
+   ```toml
+   [package]
+   name    = "arm-none-eabi-gcc"
+   version = "13.2"
+   kind    = "toolchain"
 
-4. **Lockfile** at `nav.lock`, per `docs/plan.md:471-481`:
+   [download.linux_x86_64]
+   url    = "https://registry.navrobotec.com/.../arm-none-eabi-gcc-13.2-linux-x86_64.tar.xz"
+   sha256 = "..."
+
+   [download.darwin_arm64]
+   url    = "https://..."
+   sha256 = "..."
+
+   [toolchain]
+   binaries = ["arm-none-eabi-gcc", "arm-none-eabi-g++", "arm-none-eabi-objcopy",
+               "arm-none-eabi-size", "arm-none-eabi-as", "arm-none-eabi-ld"]
+   ```
+
+3. **Resolver** — DFS-based with cycle + conflict detection. SAT solver deferred. Same code path resolves library and toolchain dependency graphs; toolchains typically have no transitive deps.
+
+4. **Lockfile** at `nav.lock`:
    ```toml
    [[package]]
    name         = "nav-hal"
    version      = "0.5.0"
+   kind         = "library"
    source       = "registry+https://github.com/ragnar-vallhala/nav-index"
    checksum     = "sha256:..."
    dependencies = ["cmsis@6.0.1"]
+
+   [[package]]
+   name     = "arm-none-eabi-gcc"
+   version  = "13.2"
+   kind     = "toolchain"
+   source   = "registry+https://github.com/ragnar-vallhala/nav-index"
+   checksum = "sha256:..."
    ```
 
-5. **Cache** at `~/.nav/packages/<name>-<version>-<sha>/`. Content-addressed; shared across projects.
+5. **Cache** at `~/.nav/packages/<name>-<version>-<sha>/`. Content-addressed; shared across projects. Toolchain packages put binaries under `bin/`; library packages put headers under `include/` and archives under `lib/`. The kind determines layout.
 
-6. **Build wiring** — dependencies referenced from the cache (or copied into `extern/`) and added to the generated CMake's include + link path.
+6. **Project manifest additions** in `nav.toml`:
+   ```toml
+   [dependencies]
+   nav-hal = "^0.5"
 
-7. **Verbs promoted from stubs**:
+   [toolchain]
+   compiler = "arm-none-eabi-gcc@13.2"
+   ```
+   Both blocks are optional. With no `[toolchain]`, nav falls back to the binary name from the board catalog resolved against `$PATH` — today's behaviour. With a pinned `[toolchain]`, nav resolves the binary path from the cache and feeds it into `nav-board.cmake`.
+
+7. **Build wiring**:
+   - Libraries: extracted under `~/.nav/packages/`; the generated CMake (Phase 1.2 already writes `nav-board.cmake`) gets a sibling `nav-deps.cmake` adding include and link directories.
+   - Toolchains: `nav build` resolves `[toolchain].compiler` from the lockfile to a concrete path and overwrites `NAV_BOARD_COMPILER` in `nav-board.cmake` with the resolved path.
+
+8. **Verbs promoted from stubs**:
    - `nav add <name>[@<spec>]` — edits `nav.toml`, resolves, locks, fetches.
    - `nav remove <name>`.
    - `nav search <query>` — queries the index.
-   - `nav update [<name>]` — re-resolves. **Naming clash:** today's `nav update` (toolchain refresh) needs renaming. Recommend renaming the existing verb to `nav doctor --fix` (combines with the Phase 2 doctor rename) before `nav update` takes its new dependency-resolver meaning.
-   - `nav publish` — gated on Phase 4 auth.
-   - `nav login` — gated on Phase 4 auth.
+   - `nav update [<name>]` — re-resolves. **Naming clash:** today's `nav update` (toolchain/system-package refresh) needs renaming first. Rename existing verb to `nav doctor --fix`; reuse `nav update` for re-resolving dependencies.
+   - `nav toolchain list` / `nav toolchain which <name>` — read-only views into resolved toolchain packages. (Install is just `nav add` with a toolchain-kind package; no separate install verb.)
+   - `nav publish` — gated on Phase 3 auth.
+   - `nav login` — gated on Phase 3 auth.
 
-**Exit criterion:** feature parity with `pio pkg install` for static C/C++ libs. Still no framework support; still no auth.
+9. **`nav check` → `nav doctor` rename**. Today's `check` is an environment doctor; rename it. `nav check` is reserved for Phase 3 static analysis. Make the rename visible in `--help` for one minor release before retiring the old name.
 
-**Dependencies:** Phase 0 + Phase 1. Phase 2 not strictly required but strongly recommended (resolving deps without resolved toolchains leads to surprising mismatches).
+### Exit criteria
 
-## Phase 4 — Framework, flashing, monitor filters, debug, test
+- A fresh machine with only `nav` + `git` installed can `nav add` a library and `nav add arm-none-eabi-gcc@13.2`, then build a Phase-1 example board end-to-end. No host package manager involvement.
+- `nav.lock` round-trips: deleting the cache and re-running `nav build` reproduces the exact same artifact set.
+- Feature parity with `pio pkg install` for static C/C++ libs.
+
+### Dependencies
+
+Phase 0 + Phase 1.
+
+### Open questions to settle before starting
+
+- **Registry hosting timeline.** Phase 1 GitHub-repo index is enough to bootstrap; the dedicated registry service (`docs/plan.md:323-335`) is a separate workstream. Toolchain tarballs are larger than library tarballs — fine on GitHub LFS or a CDN bucket for v1, but worth budgeting.
+- **Signing.** SHA256 is the floor; package signing (cosign / minisign / in-house key) before opening publish to third parties.
+- **Toolchain repackaging policy.** We host repackaged upstream tarballs (Arm GNU Toolchain, avr-gcc, xtensa-esp32-elf-gcc, etc.). Need a documented re-pack process: which upstream releases get mirrored, when, with what license attribution.
+
+## Phase 3 — Framework, flashing, monitor filters, debug, test
 
 **Duration:** long tail; each item is its own multi-week effort. Sequence by user demand, not by dependency.
 
@@ -369,7 +377,7 @@ The harder half: make `nav build` actually consume the catalog at build time ins
 
 5. **`nav test`** — Unity runner for embedded targets, GoogleTest for host targets. On-device asserts marshalled back over serial.
 
-6. **`nav check` (static analysis)** — `cppcheck`, `clang-tidy`. The Phase 2 rename of today's check to `nav doctor` clears the namespace.
+6. **`nav check` (static analysis)** — `cppcheck`, `clang-tidy`. Phase 2's rename of today's `check` to `nav doctor` clears the namespace.
 
 7. **Registry auth** — `nav login` writes `~/.nav/credentials` (chmod 600). `nav publish` uses it. TLS pinning to the registry host.
 
@@ -377,25 +385,24 @@ Exit criteria are per sub-item; no single phase-level criterion.
 
 ## Out of scope (deferred indefinitely)
 
-From `docs/plan.md`: ROS integration, fleet deployment, OTA, distributed build cache, GUI, AI model deployment, simulator integration. These are real differentiators *after* PIO-parity, not paths to it. Re-evaluate after Phase 4 completes its core sub-items.
+From `docs/plan.md`: ROS integration, fleet deployment, OTA, distributed build cache, GUI, AI model deployment, simulator integration. These are real differentiators *after* PIO-parity, not paths to it. Re-evaluate after Phase 3 completes its core sub-items.
 
 ---
 
 # Sequencing summary
 
-1. **Phase 0** (1–2 weeks): defect cleanup + test harness. Hard prerequisite.
-2. **Phase 1** (3–6 weeks): board catalog. Unlocks Phase 2.
-3. **Phase 2** (4–8 weeks): toolchain manager. The watershed.
-4. **Phase 3** (6–10 weeks): deps + lockfile. Closes the registry stubs.
-5. **Phase 4** (open-ended): framework / flash / monitor / debug / test / auth.
+1. **Phase 0** (1–2 weeks): defect cleanup + test harness. Hard prerequisite. **LANDED.**
+2. **Phase 1** (3–6 weeks): board catalog. **LANDED** across 1.1 / 1.2 / 1.3.
+3. **Phase 2** (8–14 weeks): registry — libraries + toolchains + lockfile. **The watershed.** Stand up `nav-index`, build the resolver, ship `nav add` / `nav.lock`, host repackaged toolchains as packages so the same machinery covers both. (Was previously two phases — a standalone toolchain manager and a separate dependency manager — collapsed because they share the cache, lockfile, HTTP, and signing pipeline.)
+4. **Phase 3** (open-ended): framework / flash / monitor filters / debug / test / registry auth.
 
-Floor estimate to PlatformIO-parity-equivalent: roughly 6–9 months of focused C++ work on the core, plus Phase 4 on top.
+Floor estimate to PlatformIO-parity-equivalent: roughly 8–14 weeks of focused C++ work on the core, plus Phase 3 on top. Phase 2 is the only phase that takes real calendar time before it ships meaningful UX, because standing up the registry index is most of the work; library / toolchain consumption follows quickly once the index exists.
 
 ## The Rust-rewrite question
 
-`docs/plan.md:113-126` recommends Rust for the core. The C++ implementation is past the point where a rewrite would be cheap (~1.1k LOC, plus templates, CPack, Debian packaging, CI). Revisit this decision **explicitly between Phase 2 and Phase 3**, not drifted into. The triggering signals would be:
+`docs/plan.md:113-126` recommends Rust for the core. The C++ implementation is past the point where a rewrite would be cheap (~1.5k LOC + 40 tests + templates + CPack + Debian packaging + CI). Revisit this decision **explicitly before starting Phase 2**, not drifted into. The triggering signals would be:
 
-- Async story for the registry HTTP client becomes load-bearing (Phase 3).
+- Async story for the registry HTTP client becomes load-bearing.
 - Cross-platform packaging pain (Windows support) becomes a blocker.
 - The team grows and onboarding cost favours Rust.
 
@@ -407,10 +414,9 @@ Until one of those is concretely true, stay in C++.
 
 Every defect fix above ships with a test. Every phase ships with golden-file or end-to-end tests for new schemas:
 
-- **Phase 0:** unit tests for each P0 fix. `MockExecutionContext` available from P2-4.
-- **Phase 1:** schema validation tests for `share/nav/boards/*.toml`; golden-file tests for generated `CMakeLists.txt` per board.
-- **Phase 2:** integration test that installs a tiny toolchain (or a fake one served from a local HTTP fixture via `python3 -m http.server`) and builds a hello-world.
-- **Phase 3:** resolver unit tests (cycles, conflicts, semver edge cases); lockfile round-trip tests; integration test against a fake index repo.
-- **Phase 4:** per sub-item. Debug and on-device test sub-items need real hardware in CI — defer until the rest of the phase is in users' hands.
+- **Phase 0:** unit tests for each P0 fix. `MockExecutionContext` available from P2-4. (Landed.)
+- **Phase 1:** schema validation tests for `share/nav/boards/*.toml`; golden-file tests for generated `nav-board.cmake`. (Landed.)
+- **Phase 2:** resolver unit tests (cycles, conflicts, semver edge cases); lockfile round-trip tests; integration test against a fake index repo served via `python3 -m http.server`; toolchain-kind package install + path resolution test.
+- **Phase 3:** per sub-item. Debug and on-device test sub-items need real hardware in CI — defer until the rest of the phase is in users' hands.
 
 The mockable `IExecutionContext` (`include/nav/core/execution_context.hpp:14-21`) is the keystone — every command takes one by reference, so almost any test can be written without spawning real processes.
