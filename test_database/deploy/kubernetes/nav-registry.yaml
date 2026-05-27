@@ -198,9 +198,39 @@ spec:
     metadata:
       labels:
         app: nav-backend
+        nav.navrobotec.com/workload: stateless
     spec:
-      nodeSelector:
-        kubernetes.io/hostname: node2
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: In
+                    values: [node2]
+            - weight: 40
+              preference:
+                matchExpressions:
+                  - key: phasicon.io/node-class
+                    operator: In
+                    values: [edge-worker]
+            - weight: 10
+              preference:
+                matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: In
+                    values: [srv1237670]
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 80
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: nav.navrobotec.com/workload
+                      operator: In
+                      values: [stateless]
+                topologyKey: kubernetes.io/hostname
       imagePullSecrets:
         - name: ghcr-pull-secret
       containers:
@@ -383,9 +413,39 @@ spec:
     metadata:
       labels:
         app: nav-worker
+        nav.navrobotec.com/workload: stateless
     spec:
-      nodeSelector:
-        kubernetes.io/hostname: srv1237670
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: In
+                    values: [node0]
+            - weight: 40
+              preference:
+                matchExpressions:
+                  - key: phasicon.io/node-class
+                    operator: In
+                    values: [edge-worker]
+            - weight: 10
+              preference:
+                matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: In
+                    values: [srv1237670]
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 80
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: nav.navrobotec.com/workload
+                      operator: In
+                      values: [stateless]
+                topologyKey: kubernetes.io/hostname
       imagePullSecrets:
         - name: ghcr-pull-secret
       containers:
@@ -466,9 +526,39 @@ spec:
     metadata:
       labels:
         app: nav-frontend
+        nav.navrobotec.com/workload: stateless
     spec:
-      nodeSelector:
-        kubernetes.io/hostname: node1
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: In
+                    values: [node1]
+            - weight: 40
+              preference:
+                matchExpressions:
+                  - key: phasicon.io/node-class
+                    operator: In
+                    values: [edge-worker]
+            - weight: 10
+              preference:
+                matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: In
+                    values: [srv1237670]
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 80
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: nav.navrobotec.com/workload
+                      operator: In
+                      values: [stateless]
+                topologyKey: kubernetes.io/hostname
       imagePullSecrets:
         - name: ghcr-pull-secret
       containers:

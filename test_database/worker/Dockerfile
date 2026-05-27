@@ -1,3 +1,10 @@
+FROM --platform=$BUILDPLATFORM node:20-bookworm-slim AS deps
+
+WORKDIR /app
+
+COPY worker/package.json worker/package-lock.json* ./
+RUN npm ci --omit=dev
+
 FROM node:20-bookworm-slim
 
 WORKDIR /app
@@ -9,9 +16,9 @@ RUN apt-get update \
     ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 
-COPY worker/package.json ./package.json
-RUN npm install --omit=dev
-
+COPY --from=deps /app/package.json ./package.json
+COPY --from=deps /app/package-lock.json* ./
+COPY --from=deps /app/node_modules ./node_modules
 COPY worker/src ./src
 
 CMD ["npm", "start"]
