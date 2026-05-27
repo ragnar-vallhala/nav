@@ -1,0 +1,119 @@
+name: Test Database Backend
+
+on:
+  push:
+    branches: [main, dev]
+    paths:
+      - ".github/workflows/test-database-backend.yml"
+      - "test_database/backend/**"
+      - "test_database/database/**"
+      - "test_database/nav/**"
+      - "test_database/vendor/**"
+      - "test_database/docker-compose.yml"
+  pull_request:
+    branches: [main, dev]
+    paths:
+      - ".github/workflows/test-database-backend.yml"
+      - "test_database/backend/**"
+      - "test_database/database/**"
+      - "test_database/nav/**"
+      - "test_database/vendor/**"
+      - "test_database/docker-compose.yml"
+  workflow_dispatch:
+
+jobs:
+  backend:
+    name: Backend install, smoke, and image build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: test_database/backend/package-lock.json
+
+      - name: Install backend dependencies
+        working-directory: test_database/backend
+        run: npm ci
+
+      - name: Check backend JavaScript syntax
+        working-directory: test_database/backend
+        run: find src -name '*.js' -print0 | xargs -0 -n1 node --check
+
+      - name: Start PostgreSQL and MinIO dependencies
+        working-directory: test_database
+        run: docker compose up -d postgres minio
+
+      - name: Wait for PostgreSQL and MinIO
+        working-directory: test_database
+        run: |
+          for i in {1..60}; do
+            if docker compose exec -T postgres pg_isready -U nav_sample -d nav_sample_registry >/dev/null 2>&1; then
+              break
+            fi
+            sleep 2
+          done
+          docker compose exec -T postgres pg_isready -U nav_sample -d nav_sample_registry
+
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:29000/minio/health/ready >/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:29000/minio/health/ready
+
+      - name: Run backend health smoke test
+        working-directory: test_database/backend
+        env:
+          NODE_ENV: development
+          PORT: "14000"
+          FRONTEND_URL: http://localhost:13000
+          BACKEND_URL: http://localhost:14000
+          JWT_SECRET: nav_ci_backend_secret_at_least_32_bytes
+          DB_HOST: 127.0.0.1
+          DB_PORT: "25432"
+          DB_USER: nav_sample
+          DB_PASSWORD: nav_sample_password
+          DB_NAME: nav_sample_registry
+          MINIO_ENDPOINT: 127.0.0.1
+          MINIO_PORT: "29000"
+          MINIO_USE_SSL: "false"
+          MINIO_ACCESS_KEY: navsample
+          MINIO_SECRET_KEY: navsamplepassword
+          SEED_CATALOG: "false"
+          SEED_DEMO_DATA: "false"
+        run: |
+          npm start > backend.log 2>&1 &
+          echo $! > backend.pid
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:14000/health; then
+              exit 0
+            fi
+            if ! kill -0 "$(cat backend.pid)" >/dev/null 2>&1; then
+              cat backend.log
+              exit 1
+            fi
+            sleep 2
+          done
+          cat backend.log
+          exit 1
+
+      - name: Build backend Docker image
+        working-directory: test_database
+        run: docker build -f backend/Dockerfile -t nav-registry-backend:ci .
+
+      - name: Cleanup services
+        if: always()
+        working-directory: test_database
+        run: docker compose down -v
