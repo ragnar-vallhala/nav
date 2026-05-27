@@ -385,7 +385,7 @@ spec:
         app: nav-worker
     spec:
       nodeSelector:
-        kubernetes.io/hostname: node0
+        kubernetes.io/hostname: srv1237670
       imagePullSecrets:
         - name: ghcr-pull-secret
       containers:
