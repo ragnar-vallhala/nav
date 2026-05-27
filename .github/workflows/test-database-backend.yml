@@ -3,22 +3,8 @@ name: Test Database Backend
 on:
   push:
     branches: [main, dev]
-    paths:
-      - ".github/workflows/test-database-backend.yml"
-      - "test_database/backend/**"
-      - "test_database/database/**"
-      - "test_database/nav/**"
-      - "test_database/vendor/**"
-      - "test_database/docker-compose.yml"
   pull_request:
     branches: [main, dev]
-    paths:
-      - ".github/workflows/test-database-backend.yml"
-      - "test_database/backend/**"
-      - "test_database/database/**"
-      - "test_database/nav/**"
-      - "test_database/vendor/**"
-      - "test_database/docker-compose.yml"
   workflow_dispatch:
 
 jobs:

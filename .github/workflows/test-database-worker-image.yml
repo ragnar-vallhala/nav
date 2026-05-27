@@ -3,14 +3,8 @@ name: Publish Test Database Worker Image
 on:
   push:
     branches: [main, dev]
-    paths:
-      - ".github/workflows/test-database-worker-image.yml"
-      - "test_database/worker/**"
   pull_request:
     branches: [main, dev]
-    paths:
-      - ".github/workflows/test-database-worker-image.yml"
-      - "test_database/worker/**"
   workflow_dispatch:
 
 permissions:

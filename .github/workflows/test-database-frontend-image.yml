@@ -3,14 +3,8 @@ name: Publish Test Database Frontend Image
 on:
   push:
     branches: [main, dev]
-    paths:
-      - ".github/workflows/test-database-frontend-image.yml"
-      - "test_database/frontend/**"
   pull_request:
     branches: [main, dev]
-    paths:
-      - ".github/workflows/test-database-frontend-image.yml"
-      - "test_database/frontend/**"
   workflow_dispatch:
 
 permissions:

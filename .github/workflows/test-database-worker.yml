@@ -3,18 +3,8 @@ name: Test Database Worker
 on:
   push:
     branches: [main, dev]
-    paths:
-      - ".github/workflows/test-database-worker.yml"
-      - "test_database/worker/**"
-      - "test_database/database/**"
-      - "test_database/docker-compose.yml"
   pull_request:
     branches: [main, dev]
-    paths:
-      - ".github/workflows/test-database-worker.yml"
-      - "test_database/worker/**"
-      - "test_database/database/**"
-      - "test_database/docker-compose.yml"
   workflow_dispatch:
 
 jobs:

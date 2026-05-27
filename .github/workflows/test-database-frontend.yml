@@ -3,14 +3,8 @@ name: Test Database Frontend
 on:
   push:
     branches: [main, dev]
-    paths:
-      - ".github/workflows/test-database-frontend.yml"
-      - "test_database/frontend/**"
   pull_request:
     branches: [main, dev]
-    paths:
-      - ".github/workflows/test-database-frontend.yml"
-      - "test_database/frontend/**"
   workflow_dispatch:
 
 jobs:

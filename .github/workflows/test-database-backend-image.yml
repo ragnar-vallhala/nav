@@ -3,18 +3,8 @@ name: Publish Test Database Backend Image
 on:
   push:
     branches: [main, dev]
-    paths:
-      - ".github/workflows/test-database-backend-image.yml"
-      - "test_database/backend/**"
-      - "test_database/nav/**"
-      - "test_database/vendor/**"
   pull_request:
     branches: [main, dev]
-    paths:
-      - ".github/workflows/test-database-backend-image.yml"
-      - "test_database/backend/**"
-      - "test_database/nav/**"
-      - "test_database/vendor/**"
   workflow_dispatch:
 
 permissions:
