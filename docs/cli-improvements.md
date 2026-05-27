@@ -58,6 +58,16 @@ These are decisions, not tradeoffs to revisit. Document them so future contribut
 - **Subcommand `--help` is automatic.** CLI11 generates `nav <verb> --help` for every registered subcommand. Override `ICommand::help_text()` for richer per-verb text.
 - **Flag aliases:** `-V`/`--version` for version, `-v`/`--verbose` for verbosity, `-q`/`--quiet`, `--no-color`, `--color={auto,always,never}`, `--cwd`.
 
+### Phase 2.1 — registry foundation: semver + index reader
+
+The pure-logic layer of Phase 2. No HTTP, no cache, no verbs hooked up yet. What the resolver and lockfile work in 2.2 will build on:
+
+- `include/nav/core/semver.hpp` + `src/core/semver.cpp` — `Version` (with full SemVer 2.0.0 precedence including prerelease identifier rules), `VersionReq` covering `^`, `~`, `=`, `>=`, `<=`, `>`, `<`, `*`, with `matches(req, v)`. Bare `1.2.3` parses as `^1.2.3` (Cargo/npm convention).
+- `include/nav/core/index.hpp` + `src/core/index.cpp` — `Download`, `IndexVersion` (with `PackageKind::Library` / `Toolchain`, multi-platform downloads keyed `<os>_<arch>`, dependency map, toolchain-binary list), `IndexPackage` (sorted versions ascending), `parse_index_file`, `IIndexClient` interface, `LocalIndexClient` with sharded `<root>/<2char>/<name>.toml` layout.
+- Index files are TOML, not JSON as the Phase 2 spec originally said. Reasons: consistency with the rest of Nav's config surface, no new parser dependency, easier authoring. The doc's Phase 2 examples have been updated accordingly.
+
+Tests: +30 (semver parse/compare/match across SemVer §11 examples, index TOML round-trip, sharded path computation, fetch-success / fetch-missing / wrong-shard).
+
 ### Phase 1.3 — small P1 sweep
 
 - P1-4 (`find_serial_ports` extracted to `nav::core::serial`; sorted; `nav monitor` errors and lists candidates when ≥2 are present).
@@ -256,14 +266,14 @@ The cache layout, lockfile schema, and resolver are shared. The build wires each
 
 ### Deliverables
 
-1. **Registry index** — phase-1 strategy from `docs/plan.md:303-315`. A GitHub repo `nav-index/` of JSON metadata, two-character prefix sharded:
+1. **Registry index** — phase-1 strategy from `docs/plan.md:303-315`. A GitHub repo `nav-index/` of TOML metadata files (TOML keeps the parser surface consistent across the codebase), two-character prefix sharded:
    ```
    nav-index/
-     ar/arm-none-eabi-gcc.json
-     im/imu-driver.json
-     na/nav-hal.json
+     ar/arm-none-eabi-gcc.toml
+     im/imu-driver.toml
+     na/nav-hal.toml
    ```
-   Each entry lists versions, per-platform tarball URLs, SHA256s, kind, dependency specs.
+   Each entry lists versions, per-platform tarball URLs, SHA256s, kind, dependency specs. Phase 2.1 reads this format via `LocalIndexClient`; Phase 2.3 adds the HTTP equivalent.
 
 2. **Package manifest** (publisher side, library kind):
    ```toml
