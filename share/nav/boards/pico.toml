@@ -1,0 +1,26 @@
+id     = "pico"
+name   = "Raspberry Pi Pico (RP2040)"
+arch   = "cortex-m0plus"
+vendor = "raspberrypi"
+mcu    = "rp2040"
+
+[cpu]
+compile_flags = [
+    "-mcpu=cortex-m0plus",
+    "-mthumb",
+]
+link_flags = [
+    "-mcpu=cortex-m0plus",
+    "-mthumb",
+]
+
+[toolchain]
+compiler = "arm-none-eabi-gcc"
+
+[flashing]
+tool    = "picotool"
+address = "0x10000000"
+
+[framework]
+default   = "navhal"
+supported = ["navhal", "pico-sdk"]

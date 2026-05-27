@@ -1,3 +1,4 @@
+#include "nav/core/board.hpp"
 #include "nav/core/command.hpp"
 #include "nav/core/config.hpp"
 #include "nav/core/toolchain.hpp"
@@ -53,8 +54,13 @@ int UpdateCommand::run(IExecutionContext& ctx, const std::vector<std::string>& /
     }
 
     if (!board_id.empty()) {
-        for (const auto& req : tm.get_project_requirements(board_id)) {
-            if (!tm.probe_tool(ctx, req).is_found) missing_bins.push_back(req.binary_name);
+        auto catalog = default_catalog(root);
+        if (auto board = catalog.find(board_id)) {
+            for (const auto& req : tm.get_project_requirements(*board)) {
+                if (!tm.probe_tool(ctx, req).is_found) missing_bins.push_back(req.binary_name);
+            }
+        } else {
+            ui::warning("Board id '" + board_id + "' not in catalog; project toolchain probes skipped.");
         }
     }
 

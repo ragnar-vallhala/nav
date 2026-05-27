@@ -116,18 +116,17 @@ std::vector<ToolRequirement> ToolchainManager::get_system_requirements() const {
     return system_tools;
 }
 
-std::vector<ToolRequirement> ToolchainManager::get_project_requirements(const std::string& board_id) const {
+std::vector<ToolRequirement> ToolchainManager::get_project_requirements(const Board& board) const {
     std::vector<ToolRequirement> reqs;
 
-    // Dynamic mapping based on targeted hardware family
-    if (board_id.find("nucleo") != std::string::npos || board_id.find("stm32") != std::string::npos) {
-        reqs.push_back({"Cross Compiler (Cortex)", "arm-none-eabi-gcc", true});
-        reqs.push_back({"ST Flasher Engine", "st-flash", false});
-    } else if (board_id.find("rp2040") != std::string::npos) {
-        reqs.push_back({"Cross Compiler (Cortex)", "arm-none-eabi-gcc", true});
+    if (!board.compiler.empty()) {
+        reqs.push_back({"Cross Compiler", board.compiler, true});
     }
-    
-    // Always helpful across all
+    if (!board.flash_tool.empty()) {
+        reqs.push_back({"Flasher", board.flash_tool, false});
+    }
+
+    // Helpful across all targets.
     reqs.push_back({"Config Helper", "python3", false});
 
     return reqs;

@@ -90,4 +90,10 @@ public:
     std::string help_text() const override { return "Broadcast local package artifacts upward to public/private registries."; }
 };
 
+class BoardCommand : public ICommand {
+public:
+    int run(IExecutionContext& ctx, const std::vector<std::string>& args) override;
+    std::string help_text() const override { return "Inspect the board catalog (list, info)."; }
+};
+
 } // namespace nav::core

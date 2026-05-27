@@ -31,7 +31,6 @@ int main(int argc, char* argv[]) {
     CLI::App app{"Nav — embedded development orchestrator"};
     app.set_version_flag("--version,-V", NAV_VERSION);
     app.require_subcommand(1);
-    app.fallthrough();
 
     std::string color_mode = "auto";
     bool verbose = false;
@@ -58,12 +57,15 @@ int main(int argc, char* argv[]) {
     commands["search"]  = std::make_unique<nav::core::SearchCommand>();
     commands["login"]   = std::make_unique<nav::core::LoginCommand>();
     commands["publish"] = std::make_unique<nav::core::PublishCommand>();
+    commands["board"]   = std::make_unique<nav::core::BoardCommand>();
 
-    // Each subcommand allows extras so verbs that still parse their own argv
-    // (monitor: --port/--baud; create: --force) keep working unchanged.
+    // Each subcommand uses prefix_command() so anything after the verb name
+    // is collected raw into remaining() — letting verbs that still parse their
+    // own argv (monitor: --port/--baud; create: --force; board: list/info)
+    // keep working unchanged. Global flags must come before the verb.
     for (auto& [name, cmd] : commands) {
         auto* sub = app.add_subcommand(name, cmd->help_text());
-        sub->allow_extras();
+        sub->prefix_command();
         cmd->register_flags(*sub);
     }
 

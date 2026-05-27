@@ -1,3 +1,4 @@
+#include "nav/core/board.hpp"
 #include "nav/core/command.hpp"
 #include "nav/core/config.hpp"
 #include "nav/core/toolchain.hpp"
@@ -49,7 +50,14 @@ int CheckCommand::run(IExecutionContext& ctx, const std::vector<std::string>& /*
             ui::warning("Resolved configuration is incomplete. Unable to extract target 'board' from toml.");
         } else {
             ui::info("Context resolved! Targeting hardware configuration: [" + board_id + "]");
-            auto project_reqs = tm.get_project_requirements(board_id);
+            auto catalog = default_catalog(root);
+            auto board = catalog.find(board_id);
+            if (!board) {
+                ui::warning("Board id '" + board_id + "' not in catalog. Run 'nav board list' to see available ids; project checks skipped.");
+                std::cout << std::endl;
+                return failed_critical > 0 ? 1 : 0;
+            }
+            auto project_reqs = tm.get_project_requirements(*board);
             for (const auto& req : project_reqs) {
                 auto res = tm.probe_tool(ctx, req);
                 if (res.is_found) {

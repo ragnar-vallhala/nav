@@ -3,6 +3,8 @@
 #include <optional>
 #include <string>
 #include <vector>
+
+#include "nav/core/board.hpp"
 #include "nav/core/execution_context.hpp"
 
 namespace nav::core {
@@ -46,8 +48,10 @@ public:
     // Returns base system tools (cmake, git, pkgmgr)
     std::vector<ToolRequirement> get_system_requirements() const;
 
-    // Returns list mapping dynamically to a target board ID
-    std::vector<ToolRequirement> get_project_requirements(const std::string& board_id) const;
+    // Returns toolchain requirements derived from the resolved board. The
+    // compiler binary becomes a critical requirement; the flash tool (if any)
+    // becomes optional. Python3 is appended as a generally-helpful optional.
+    std::vector<ToolRequirement> get_project_requirements(const Board& board) const;
 
     // Probes a specific binary tool via provided execution context
     ProbeResult probe_tool(IExecutionContext& ctx, const ToolRequirement& req);

@@ -1,0 +1,30 @@
+id     = "nucleo_f401re"
+name   = "STM32 Nucleo-F401RE"
+arch   = "cortex-m4"
+vendor = "stm32"
+mcu    = "stm32f401re"
+
+[cpu]
+compile_flags = [
+    "-mcpu=cortex-m4",
+    "-mthumb",
+    "-mfloat-abi=hard",
+    "-mfpu=fpv4-sp-d16",
+]
+link_flags = [
+    "-mcpu=cortex-m4",
+    "-mthumb",
+    "-mfloat-abi=hard",
+    "-mfpu=fpv4-sp-d16",
+]
+
+[toolchain]
+compiler = "arm-none-eabi-gcc"
+
+[flashing]
+tool    = "st-flash"
+address = "0x08000000"
+
+[framework]
+default   = "navhal"
+supported = ["navhal"]

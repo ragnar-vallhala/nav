@@ -40,6 +40,7 @@ add_library(nav_core STATIC
     src/core/toolchain.cpp
     src/core/config.cpp
     src/core/project_name.cpp
+    src/core/board.cpp
     src/core/commands/create.cpp
     src/core/commands/build.cpp
     src/core/commands/upload.cpp
@@ -48,6 +49,7 @@ add_library(nav_core STATIC
     src/core/commands/check.cpp
     src/core/commands/update.cpp
     src/core/commands/registry.cpp
+    src/core/commands/board.cpp
 )
 
 target_include_directories(nav_core PUBLIC
@@ -77,6 +79,9 @@ endif()
 
 # 1. System-Wide Path Installation Target
 install(TARGETS nav DESTINATION bin)
+
+# 1a. Bundled board catalog.
+install(DIRECTORY share/nav/boards/ DESTINATION share/nav/boards)
 
 # 2. CPack Generator Config (For Debian Package Support)
 set(CPACK_PACKAGE_NAME "nav")

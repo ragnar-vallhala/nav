@@ -156,50 +156,41 @@ The vision in `docs/plan.md` is "PlatformIO + Cargo + Docker + ROS for robotics.
 
 ## Phase 1 — Board catalog
 
-**Duration:** 3–6 weeks.
+**Duration:** 3–6 weeks. Split into 1.1 (in-progress) and 1.2 (deferred).
+
 **Goal:** replace substring-based board detection (`src/core/toolchain.cpp:121`) with a declarative catalog. Precondition for everything else.
+
+### Phase 1.1 — Catalog primitive (LANDED)
+
+The board catalog, the verbs that read it, and the toolchain integration. Does *not* yet touch the generated CMake template or the NavHAL-driven build flag flow.
+
+- `include/nav/core/board.hpp` + `src/core/board.cpp` — `Board` struct + `BoardCatalog` with first-add-wins merge across search paths.
+- 5 board files shipped under `share/nav/boards/`: `pico`, `nucleo_f401re`, `nucleo_h743zi`, `esp32_devkitc`, `arduino_uno`.
+- `default_catalog()` walks `$NAV_BOARD_PATH` → `<project>/.nav/boards` → exe-relative `<bindir>/../share/nav/boards` → `/usr/share/nav/boards`.
+- CMake install rule for the bundled catalog (`install(DIRECTORY share/nav/boards/ ...)`).
+- `nav board list`, `nav board info <id>` verbs (`src/core/commands/board.cpp`).
+- `ToolchainManager::get_project_requirements` now takes a resolved `Board` and derives `{compiler, flash_tool}` from it. `check` and `update` look up the catalog and warn cleanly when the board id isn't known.
+- 6 catalog tests (parse, missing-required-fields, first-add-wins, `NAV_BOARD_PATH` override).
+
+### Phase 1.2 — Catalog-driven CMake generation (DEFERRED)
+
+The harder half: make `nav build` actually consume the catalog at build time instead of inheriting NavHAL's per-board CMake. Touches the generated `templates/cmakelists.txt.in`. Tracked separately because it interacts with NavHAL's existing `.config` / `config.cmake` flow.
 
 **Deliverables:**
 
-1. Catalog schema at `share/nav/boards/<board_id>.toml`. Example:
-   ```toml
-   id = "nucleo_f401re"
-   name = "STM32 Nucleo-F401RE"
-   arch = "cortex-m4"
-   vendor = "stm32"
-   mcu = "stm32f401re"
+1. `nav build` generates `<project>/build/nav-board.cmake` from the catalog before invoking cmake. The file exposes `NAV_BOARD_*` cache variables (compile flags, link flags, flasher, flash address, board id, mcu).
 
-   [cpu]
-   compile_flags = ["-mcpu=cortex-m4", "-mthumb", "-mfloat-abi=hard", "-mfpu=fpv4-sp-d16"]
-   link_flags    = ["-mcpu=cortex-m4", "-mthumb", "-mfloat-abi=hard", "-mfpu=fpv4-sp-d16"]
+2. `templates/cmakelists.txt.in` rewritten to `include()` the generated file and consume the variables via `target_compile_options` / `target_link_options`. The current hard-coded `-mcpu=cortex-m4` / `-mfpu=fpv4-sp-d16` block (`templates/cmakelists.txt.in:38-58`) goes away.
 
-   [toolchain]
-   compiler = "arm-none-eabi-gcc"
+3. Decide the interaction with NavHAL: either (a) Nav fully replaces NavHAL's `config.cmake` for the board portion (preferred), or (b) Nav writes a higher-precedence file that NavHAL's CMake explicitly consults.
 
-   [flashing]
-   tool    = "st-flash"
-   address = "0x08000000"
+4. Consume `ProjectConfig::target_arch` and `target_vendor` (resolves P1-9) in the generated CMake or in board id validation.
 
-   [framework]
-   default   = "navhal"
-   supported = ["navhal"]
-   ```
+5. Golden-file tests: generated `nav-board.cmake` per board.
 
-2. Ship five real boards in v1: `pico`, `nucleo_f401re`, `nucleo_h743zi`, `esp32_devkitc`, `arduino_uno`. Five working boards beat fifty substring-matched ones.
+**Exit criterion:** changing a board's compile flags is a TOML edit, not a CMake edit. `nav create my-app --board pico` produces a project that builds out of the box for the Pico, not for the F401.
 
-3. Consume the catalog. `nav build` looks up `target.board` against the catalog and feeds the resolved entry into the generated CMake. The hard-coded `-mcpu` / `-mfpu` block in `templates/cmakelists.txt.in:38-58` becomes parameterised.
-
-4. New verbs: `nav board list`, `nav board info <id>`. Both read-only.
-
-5. Consume `ProjectConfig::target_arch` and `target_vendor` (resolves P1-9 partially).
-
-6. Replace `src/core/toolchain.cpp:117-132` substring matching with catalog lookups.
-
-7. Add a small board-catalog override mechanism so projects can ship their own boards under `<project>/.nav/boards/`.
-
-**Exit criterion:** adding a new board is a file under `share/nav/boards/`, not a code change. Schema-validated via tests.
-
-**Dependencies:** Phase 0 (specifically P1-3 flag parser + P2-4 tests).
+**Dependencies:** Phase 1.1 (done).
 
 ## Phase 2 — Toolchain manager
 

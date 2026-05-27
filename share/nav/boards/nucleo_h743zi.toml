@@ -1,0 +1,30 @@
+id     = "nucleo_h743zi"
+name   = "STM32 Nucleo-H743ZI"
+arch   = "cortex-m7"
+vendor = "stm32"
+mcu    = "stm32h743zi"
+
+[cpu]
+compile_flags = [
+    "-mcpu=cortex-m7",
+    "-mthumb",
+    "-mfloat-abi=hard",
+    "-mfpu=fpv5-d16",
+]
+link_flags = [
+    "-mcpu=cortex-m7",
+    "-mthumb",
+    "-mfloat-abi=hard",
+    "-mfpu=fpv5-d16",
+]
+
+[toolchain]
+compiler = "arm-none-eabi-gcc"
+
+[flashing]
+tool    = "st-flash"
+address = "0x08000000"
+
+[framework]
+default   = "navhal"
+supported = ["navhal"]
