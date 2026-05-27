@@ -989,12 +989,12 @@ function parseSetupArgs(values = [], defaultBoard = 'stm32f401') {
 }
 
 async function setupProject(projectInput) {
-  const { projectArg } = parseSetupArgs(projectInput);
+  const { projectArg, board } = parseSetupArgs(projectInput);
   const projectDir = resolveSetupProjectDir(projectArg);
   let manifest = await readProjectManifest(projectDir).catch(() => null);
   if (!manifest) {
-    printStep('no nav.toml/nav.json found; initializing from registry package nav/navhal@0.1.0');
-    await initializeFromRegistryPackage(projectDir, 'nav/navhal@0.1.0');
+    printStep(`no navmod.toml/nav.toml/nav.json found; initializing ABI v1 app for ${board}`);
+    await initializeProjectScaffold(projectDir, path.basename(projectDir), board, { overwriteMain: false });
     manifest = await readProjectManifest(projectDir);
   }
   const resolution = await resolveProject(manifest);
