@@ -475,10 +475,9 @@ code {
   padding: 44px 30px 30px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: color-mix(in srgb, var(--background) 94%, var(--card));
-  box-shadow: 0 -16px 42px rgb(0 0 0 / 0.18);
+  background: var(--background);
   transform: translateY(calc(var(--stack-index) * -8px));
-  transition: box-shadow 180ms ease, transform 180ms ease;
+  transition: transform 180ms ease;
 }
 
 .home-feature-row:last-child {
@@ -555,11 +554,9 @@ code {
 
   @keyframes feature-rise {
     from {
-      opacity: 0.72;
       transform: translateY(44px) scale(0.975);
     }
     to {
-      opacity: 1;
       transform: translateY(calc(var(--stack-index) * -8px)) scale(1);
     }
   }
