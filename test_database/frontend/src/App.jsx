@@ -73,6 +73,30 @@ function FacebookLogo() {
   );
 }
 
+function LinkedInLogo() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path fill="currentColor" d="M20.45 20.45h-3.56v-5.58c0-1.33-.03-3.04-1.85-3.04-1.85 0-2.13 1.45-2.13 2.94v5.68H9.35V9h3.42v1.56h.05c.48-.9 1.64-1.85 3.37-1.85 3.6 0 4.27 2.37 4.27 5.46v6.28zM5.34 7.43a2.06 2.06 0 1 1 0-4.13 2.06 2.06 0 0 1 0 4.13zm1.78 13.02H3.56V9h3.56v11.45zM22.22 0H1.77C.79 0 0 .77 0 1.72v20.56C0 23.23.79 24 1.77 24h20.45c.98 0 1.78-.77 1.78-1.72V1.72C24 .77 23.2 0 22.22 0z" />
+    </svg>
+  );
+}
+
+function InstagramLogo() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path fill="currentColor" d="M7.8 2h8.4A5.81 5.81 0 0 1 22 7.8v8.4a5.81 5.81 0 0 1-5.8 5.8H7.8A5.81 5.81 0 0 1 2 16.2V7.8A5.81 5.81 0 0 1 7.8 2zm-.2 2A3.6 3.6 0 0 0 4 7.6v8.8A3.6 3.6 0 0 0 7.6 20h8.8a3.6 3.6 0 0 0 3.6-3.6V7.6A3.6 3.6 0 0 0 16.4 4H7.6zm9.65 1.5a1.25 1.25 0 1 1 0 2.5 1.25 1.25 0 0 1 0-2.5zM12 7.1a4.9 4.9 0 1 1 0 9.8 4.9 4.9 0 0 1 0-9.8zm0 2a2.9 2.9 0 1 0 0 5.8 2.9 2.9 0 0 0 0-5.8z" />
+    </svg>
+  );
+}
+
+function XLogo() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path fill="currentColor" d="M18.9 2h3.28l-7.16 8.18L23.44 22h-6.6l-5.17-6.76L5.75 22H2.47l7.66-8.75L2.06 2h6.77l4.67 6.18L18.9 2zm-1.15 17.92h1.82L7.84 3.98H5.89l11.86 15.94z" />
+    </svg>
+  );
+}
+
 function readCliLoginRequest() {
   const url = new URL(window.location.href);
   const redirectUri = url.searchParams.get('cli_redirect') || '';
@@ -1142,9 +1166,14 @@ function HomePage({ stats, filteredPackages, filteredToolchainGroups, toolchainF
   const footerLinks = [
     ['Packages', 'packages'],
     ['Toolchains', 'toolchains'],
-    ['GitHub', 'https://github.com/ragnar-vallhala/nav'],
     ['Install CLI', 'install'],
     ['Namespaces', 'namespaces']
+  ];
+  const socialLinks = [
+    { label: 'LinkedIn', href: 'https://www.linkedin.com/company/navrobotec/posts/?feedView=all', icon: LinkedInLogo },
+    { label: 'GitHub', href: 'https://github.com/ragnar-vallhala/nav', icon: GitHubLogo },
+    { label: 'Instagram', href: 'https://www.instagram.com/navrobotec', icon: InstagramLogo },
+    { label: 'X', href: 'https://x.com/NAVRobotec', icon: XLogo }
   ];
 
   return (
@@ -1213,18 +1242,39 @@ function HomePage({ stats, filteredPackages, filteredToolchainGroups, toolchainF
       </section>
 
       <footer className="home-footer">
-        <div>
-          <BrandMark />
-          <strong>Nav Registry</strong>
-          <p>Packages and managed toolchains for embedded firmware teams.</p>
+        <div className="home-footer-main">
+          <div className="footer-brand">
+            <div className="footer-brand-title">
+              <BrandMark />
+              <strong>Nav Registry</strong>
+            </div>
+            <p>Packages, modules, boards, and managed toolchains for embedded firmware teams.</p>
+          </div>
+          <div className="footer-columns">
+            <div className="footer-column">
+              <strong>Registry</strong>
+              <nav aria-label="Footer registry navigation">
+                {footerLinks.map(([label, target]) => (
+                  <button key={label} onClick={() => navigate(target)}>{label}</button>
+                ))}
+              </nav>
+            </div>
+            <div className="footer-column">
+              <strong>Social</strong>
+              <div className="footer-socials">
+                {socialLinks.map(({ label, href, icon: Icon }) => (
+                  <a className="social-link" key={label} href={href} target="_blank" rel="noreferrer" aria-label={label}>
+                    <Icon />
+                  </a>
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
-        <nav>
-          {footerLinks.map(([label, target]) => (
-            target.startsWith('http')
-              ? <a key={label} href={target} target="_blank" rel="noreferrer">{label}</a>
-              : <button key={label} onClick={() => navigate(target)}>{label}</button>
-          ))}
-        </nav>
+        <div className="home-footer-bottom">
+          <span>Navrobotec</span>
+          <span>Development registry for embedded packages.</span>
+        </div>
       </footer>
     </Page>
   );
