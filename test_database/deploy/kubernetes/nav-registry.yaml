@@ -416,6 +416,8 @@ spec:
   selector:
     matchLabels:
       app: nav-worker
+  strategy:
+    type: Recreate
   template:
     metadata:
       labels:
@@ -536,6 +538,8 @@ spec:
   selector:
     matchLabels:
       app: nav-frontend
+  strategy:
+    type: Recreate
   template:
     metadata:
       labels:
