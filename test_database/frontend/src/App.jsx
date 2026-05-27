@@ -838,6 +838,7 @@ function App() {
       {route === 'admin' && user?.system_role === 'root' && <AdminPage {...sharedPageProps} />}
       {route === 'admin' && user?.system_role !== 'root' && <Page><div className="empty-state">Root administrator access is required.</div></Page>}
       {route === 'home' && <HomePage {...sharedPageProps} />}
+      {route === 'install' && <InstallPage />}
     </main>
   );
 }
@@ -845,6 +846,7 @@ function App() {
 function Header({ route, navigate, isAuthed, user, logout, theme, setTheme }) {
   const links = [
     ['home', 'Registry'],
+    ['install', 'Install'],
     ['packages', 'Packages'],
     ['toolchains', 'Toolchains']
   ];
@@ -1063,25 +1065,30 @@ function InvitePage({ navigate, isAuthed }) {
   );
 }
 
-function HomePage({ stats, statCards, filteredPackages, filteredToolchainGroups, toolchainFilterOptions, navigate }) {
-  const installers = [
+function getInstallers() {
+  return [
     {
       name: 'Windows',
       logo: '/windows-applications-svgrepo-com.svg',
-      command: `irm ${API}/downloads/nav/install.ps1 | iex`
+      command: `irm ${API}/downloads/nav/install.ps1 | iex`,
+      detail: 'PowerShell installer for Windows 10 and later.'
     },
     {
       name: 'Linux',
       logo: '/linux-svgrepo-com.svg',
-      command: `curl -fsSL ${API}/downloads/nav/install.sh | sh`
+      command: `curl -fsSL ${API}/downloads/nav/install.sh | sh`,
+      detail: 'Shell installer for Linux distributions with curl.'
     },
     {
       name: 'macOS',
       logo: '/apple-logo-svgrepo-com.svg',
-      command: `curl -fsSL ${API}/downloads/nav/install.sh | sh`
+      command: `curl -fsSL ${API}/downloads/nav/install.sh | sh`,
+      detail: 'Shell installer for Apple Silicon and Intel Macs.'
     }
   ];
+}
 
+function HomePage({ stats, filteredPackages, filteredToolchainGroups, toolchainFilterOptions, navigate }) {
   const boards = toolchainFilterOptions?.boards?.length || 0;
   const platforms = toolchainFilterOptions?.platforms?.length || 0;
   const packageCount = stats?.packages ?? filteredPackages?.length ?? 0;
@@ -1136,7 +1143,7 @@ function HomePage({ stats, statCards, filteredPackages, filteredToolchainGroups,
     ['Packages', 'packages'],
     ['Toolchains', 'toolchains'],
     ['GitHub', 'https://github.com/ragnar-vallhala/nav'],
-    ['Install CLI', 'home'],
+    ['Install CLI', 'install'],
     ['Namespaces', 'namespaces']
   ];
 
@@ -1150,7 +1157,7 @@ function HomePage({ stats, statCards, filteredPackages, filteredToolchainGroups,
             Install hardware packages, board support, compilers, uploaders, and reusable firmware modules from one registry.
           </p>
           <div className="hero-actions">
-            <Button onClick={() => document.getElementById('install-nav')?.scrollIntoView({ behavior: 'smooth' })}>Install Nav</Button>
+            <Button onClick={() => navigate('install')}>Install Nav</Button>
             <Button variant="outline" onClick={() => navigate('packages')}>Browse packages</Button>
             <Button variant="ghost" onClick={() => navigate('toolchains')}>View toolchains</Button>
           </div>
@@ -1177,26 +1184,6 @@ function HomePage({ stats, statCards, filteredPackages, filteredToolchainGroups,
             </Card>
           );
         })}
-      </section>
-
-      <section id="install-nav" className="home-install">
-        <div className="home-section-head">
-          <h2>Install the Nav CLI</h2>
-          <p>One command installs the CLI and adds it to the user path.</p>
-        </div>
-        <div className="install-grid">
-          {installers.map(installer => (
-            <Card className="install-card" key={installer.name}>
-              <div className="install-header">
-                <span className="os-logo-frame">
-                  <img className="os-logo" src={installer.logo} alt="" />
-                </span>
-                <h3>{installer.name}</h3>
-              </div>
-              <CommandLine command={installer.command} />
-            </Card>
-          ))}
-        </div>
       </section>
 
       <section className="home-feature-stack">
@@ -1239,6 +1226,48 @@ function HomePage({ stats, statCards, filteredPackages, filteredToolchainGroups,
           ))}
         </nav>
       </footer>
+    </Page>
+  );
+}
+
+function InstallPage() {
+  const installers = getInstallers();
+
+  return (
+    <Page className="install-page">
+      <section className="install-hero">
+        <p className="hero-kicker">Install Nav CLI</p>
+        <h1>Start building embedded projects from the terminal.</h1>
+        <p>
+          Pick your operating system, run the command, then use Nav to install packages, resolve toolchains, build firmware, and upload to boards.
+        </p>
+      </section>
+
+      <section className="install-grid install-page-grid">
+        {installers.map(installer => (
+          <Card className="install-card install-page-card" key={installer.name}>
+            <div className="install-header">
+              <span className="os-logo-frame">
+                <img className="os-logo" src={installer.logo} alt="" />
+              </span>
+              <div>
+                <h3>{installer.name}</h3>
+                <p>{installer.detail}</p>
+              </div>
+            </div>
+            <CommandLine command={installer.command} />
+          </Card>
+        ))}
+      </section>
+
+      <Card className="install-next-card">
+        <h2>After installation</h2>
+        <div className="install-next-grid">
+          <CommandLine command="nav login" />
+          <CommandLine command="nav setup" />
+          <CommandLine command="nav build" />
+        </div>
+      </Card>
     </Page>
   );
 }
@@ -1968,9 +1997,9 @@ function AdminPage({
   );
 }
 
-function Page({ title, description, children }) {
+function Page({ title, description, children, className = '' }) {
   return (
-    <section className="page">
+    <section className={cn('page', className)}>
       {title && (
         <header className="page-header">
           <h1>{title}</h1>
@@ -2311,6 +2340,7 @@ function normalizeRoute(pathname) {
   if (pathname.includes('reset-password')) return 'reset-password';
   if (pathname.includes('invite')) return 'invite';
   if (pathname === '/settings') return 'settings';
+  if (pathname.includes('install')) return 'install';
   const namespaceMatch = pathname.match(/^\/namespaces\/([^/]+)\/settings/);
   if (namespaceMatch) return `namespace-settings:${decodeURIComponent(namespaceMatch[1])}`;
   if (pathname.includes('namespaces')) return 'namespaces';
@@ -2321,13 +2351,14 @@ function normalizeRoute(pathname) {
   if (pathname.includes('packages')) return 'packages';
   if (pathname.includes('toolchains')) return 'toolchains';
   if (pathname.includes('admin')) return 'admin';
-  if (pathname.includes('cli')) return 'home';
+  if (pathname.includes('cli')) return 'install';
   if (pathname.includes('security')) return 'toolchains';
   return 'home';
 }
 
 function routeToPath(route) {
   if (route === 'home') return '/';
+  if (route === 'install') return '/install';
   if (route === 'settings') return '/settings';
   if (route === 'verify-email') return '/verify-email';
   if (route === 'forgot-password') return '/forgot-password';
