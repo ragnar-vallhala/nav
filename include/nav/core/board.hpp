@@ -56,4 +56,15 @@ BoardCatalog default_catalog(const std::optional<std::filesystem::path>& project
 // required field (id, arch) is missing.
 std::optional<Board> parse_board_file(const std::filesystem::path& path);
 
+// Render the board as CMake `set()` directives for inclusion at configure
+// time. Variables exposed (NAV_BOARD_ prefix to avoid collision with NavHAL's
+// BOARD/FLASHER/FLASH_ADDRESS): ID, NAME, ARCH, VENDOR, MCU, COMPILER,
+// COMPILE_FLAGS, LINK_FLAGS, FLASH_TOOL, FLASH_ADDRESS. Lists use CMake
+// semicolon notation.
+std::string render_board_cmake(const Board& board);
+
+// Write render_board_cmake() output to `out_path`, creating parent dirs as
+// needed. Returns true on success.
+bool write_board_cmake(const Board& board, const std::filesystem::path& out_path);
+
 } // namespace nav::core

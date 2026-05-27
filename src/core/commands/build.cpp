@@ -1,3 +1,4 @@
+#include "nav/core/board.hpp"
 #include "nav/core/command.hpp"
 #include "nav/core/config.hpp"
 #include "nav/core/ui.hpp"
@@ -18,10 +19,34 @@ int BuildCommand::run(IExecutionContext& ctx, const std::vector<std::string>& /*
     }
     fs::current_path(*root);
 
+    auto cfg = load_project_config(*root);
+    if (!cfg) {
+        ui::error("Failed to parse 'nav.toml'.");
+        return 1;
+    }
+    if (cfg->target_board.empty()) {
+        ui::error("'nav.toml' has no [target].board entry. Set one (see 'nav board list') and re-run.");
+        return 1;
+    }
+
+    auto catalog = default_catalog(root);
+    auto board = catalog.find(cfg->target_board);
+    if (!board) {
+        ui::error("Board id '" + cfg->target_board + "' not in catalog. Run 'nav board list' to see available ids.");
+        return 1;
+    }
+
     if (!fs::exists("build")) {
         fs::create_directory("build");
         ui::info("Created pristine build workspace sub-node.");
     }
+
+    const fs::path board_cmake = fs::path("build") / "nav-board.cmake";
+    if (!write_board_cmake(*board, board_cmake)) {
+        ui::error("Failed to write " + board_cmake.string() + ".");
+        return 1;
+    }
+    ui::info("Resolved board: " + board->id + " (" + board->arch + ")");
 
     ui::step("Configuring", "Initializing dynamic build system generator (CMake)...");
     auto conf_res = ctx.execute({"cmake", "-S", ".", "-B", "build"});

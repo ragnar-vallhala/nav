@@ -38,6 +38,16 @@ Several rounds of work have landed since this doc was first drafted. Items liste
 - `nav board list` / `nav board info <id>` verbs.
 - `ToolchainManager::get_project_requirements(const Board&)` replaces substring matching.
 
+### Phase 1.2 — catalog-driven CMake generation
+
+- `nav::core::render_board_cmake(const Board&)` + `write_board_cmake(...)` — emit a `nav-board.cmake` file with `NAV_BOARD_{ID,NAME,ARCH,VENDOR,MCU,COMPILER,COMPILE_FLAGS,LINK_FLAGS,FLASH_TOOL,FLASH_ADDRESS}` set directives.
+- `BuildCommand` now loads `nav.toml`, resolves `[target].board` via `default_catalog`, and writes `build/nav-board.cmake` before invoking cmake. Errors cleanly when the board id is missing or unknown.
+- `templates/cmakelists.txt.in` rewritten:
+  - Includes `${CMAKE_BINARY_DIR}/nav-board.cmake` *before* `project()` so toolchain settings (compiler, prefix-derived objcopy/size) flow from the board.
+  - Replaces the hardcoded `-mcpu=cortex-m4` / `-mfpu=fpv4-sp-d16` block with `${NAV_BOARD_COMPILE_FLAGS}` and `${NAV_BOARD_LINK_FLAGS}`.
+  - Adds a "Nav-resolved → NavHAL fallback" precedence chain for the flash target so the catalog wins when populated but NavHAL's `BOARD`/`FLASHER`/`FLASH_ADDRESS` continue to drive linker-script lookup.
+- Existing projects keep building (the hardcoded flags they were generated with still work); they migrate by replacing their `CMakeLists.txt` with the new template.
+
 ### CLI design conventions (established in Phase 0 + 1.1)
 
 These are decisions, not tradeoffs to revisit. Document them so future contributors don't try to "fix" them.
@@ -54,7 +64,6 @@ These are decisions, not tradeoffs to revisit. Document them so future contribut
 - Real registry verbs (deferred to Phase 4).
 - `toml::parse_error` line/column surfacing (P1-7).
 - `check.cpp` mixing `std::cout` with `ui::*` (P1-8).
-- Phase 1.2 — catalog-driven CMake generation.
 
 ---
 
@@ -186,11 +195,11 @@ The vision in `docs/plan.md` is "PlatformIO + Cargo + Docker + ROS for robotics.
 
 **Exit criterion:** existing verbs are correct, scriptable, colour-respectful, and have non-trivial test coverage. P1-3 unblocks every subsequent phase.
 
-## Phase 1 — Board catalog
-
-**Duration:** 3–6 weeks. Split into 1.1 (in-progress) and 1.2 (deferred).
+## Phase 1 — Board catalog (LANDED)
 
 **Goal:** replace substring-based board detection (`src/core/toolchain.cpp:121`) with a declarative catalog. Precondition for everything else.
+
+Both halves shipped: 1.1 (catalog primitive + verbs) and 1.2 (CMake generation).
 
 ### Phase 1.1 — Catalog primitive (LANDED)
 
@@ -204,7 +213,7 @@ The board catalog, the verbs that read it, and the toolchain integration. Does *
 - `ToolchainManager::get_project_requirements` now takes a resolved `Board` and derives `{compiler, flash_tool}` from it. `check` and `update` look up the catalog and warn cleanly when the board id isn't known.
 - 6 catalog tests (parse, missing-required-fields, first-add-wins, `NAV_BOARD_PATH` override).
 
-### Phase 1.2 — Catalog-driven CMake generation (DEFERRED)
+### Phase 1.2 — Catalog-driven CMake generation (LANDED)
 
 The harder half: make `nav build` actually consume the catalog at build time instead of inheriting NavHAL's per-board CMake. Touches the generated `templates/cmakelists.txt.in`. Tracked separately because it interacts with NavHAL's existing `.config` / `config.cmake` flow.
 

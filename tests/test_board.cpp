@@ -138,6 +138,54 @@ arch = "different-arch"
     EXPECT_EQ(b->arch, "cortex-m4");
 }
 
+TEST(Board, RenderBoardCmake_EmitsAllFields) {
+    nav::core::Board b;
+    b.id            = "pico";
+    b.name          = "Raspberry Pi Pico (RP2040)";
+    b.arch          = "cortex-m0plus";
+    b.vendor        = "raspberrypi";
+    b.mcu           = "rp2040";
+    b.compiler      = "arm-none-eabi-gcc";
+    b.compile_flags = {"-mcpu=cortex-m0plus", "-mthumb"};
+    b.link_flags    = {"-mcpu=cortex-m0plus", "-mthumb"};
+    b.flash_tool    = "picotool";
+    b.flash_address = "0x10000000";
+
+    auto cmake = nav::core::render_board_cmake(b);
+    EXPECT_NE(cmake.find("set(NAV_BOARD_ID \"pico\")"), std::string::npos);
+    EXPECT_NE(cmake.find("set(NAV_BOARD_ARCH \"cortex-m0plus\")"), std::string::npos);
+    EXPECT_NE(cmake.find("set(NAV_BOARD_VENDOR \"raspberrypi\")"), std::string::npos);
+    EXPECT_NE(cmake.find("set(NAV_BOARD_MCU \"rp2040\")"), std::string::npos);
+    EXPECT_NE(cmake.find("set(NAV_BOARD_COMPILER \"arm-none-eabi-gcc\")"), std::string::npos);
+    EXPECT_NE(cmake.find("set(NAV_BOARD_COMPILE_FLAGS \"-mcpu=cortex-m0plus\" \"-mthumb\")"), std::string::npos);
+    EXPECT_NE(cmake.find("set(NAV_BOARD_LINK_FLAGS \"-mcpu=cortex-m0plus\" \"-mthumb\")"), std::string::npos);
+    EXPECT_NE(cmake.find("set(NAV_BOARD_FLASH_TOOL \"picotool\")"), std::string::npos);
+    EXPECT_NE(cmake.find("set(NAV_BOARD_FLASH_ADDRESS \"0x10000000\")"), std::string::npos);
+    EXPECT_NE(cmake.find("share/nav/boards/pico.toml"), std::string::npos);
+}
+
+TEST(Board, RenderBoardCmake_EmptyListsAreEmptySet) {
+    nav::core::Board b;
+    b.id   = "min";
+    b.arch = "rv32";
+    auto cmake = nav::core::render_board_cmake(b);
+    EXPECT_NE(cmake.find("set(NAV_BOARD_COMPILE_FLAGS)"), std::string::npos);
+    EXPECT_NE(cmake.find("set(NAV_BOARD_LINK_FLAGS)"), std::string::npos);
+}
+
+TEST(Board, WriteBoardCmake_CreatesParentDirs) {
+    TempDir td;
+    nav::core::Board b;
+    b.id   = "x";
+    b.arch = "any";
+    auto out = td.path() / "nested" / "deep" / "nav-board.cmake";
+    ASSERT_TRUE(nav::core::write_board_cmake(b, out));
+    ASSERT_TRUE(fs::exists(out));
+    std::ifstream f(out);
+    std::string contents((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+    EXPECT_NE(contents.find("set(NAV_BOARD_ID \"x\")"), std::string::npos);
+}
+
 TEST(Board, DefaultCatalogRespectsNavBoardPathEnv) {
     TempDir td;
     write(td.path() / "p.toml", kMinimalBoard);
