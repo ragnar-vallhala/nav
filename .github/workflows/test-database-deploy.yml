@@ -1,15 +1,7 @@
 name: Deploy Test Database Registry
 
 on:
-  workflow_run:
-    workflows:
-      - Test Database Backend
-      - Test Database Frontend
-      - Test Database Worker
-      - Publish Test Database Backend Image
-      - Publish Test Database Frontend Image
-      - Publish Test Database Worker Image
-    types: [completed]
+  push:
     branches: [dev]
   workflow_dispatch:
     inputs:
@@ -22,20 +14,19 @@ permissions:
   contents: read
 
 concurrency:
-  group: nav-registry-deploy-${{ github.event.workflow_run.head_sha || inputs.sha }}
+  group: nav-registry-deploy-${{ github.sha || inputs.sha }}
   cancel-in-progress: false
 
 jobs:
   deploy:
     name: Deploy successful registry build
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'dev')
+    timeout-minutes: 45
 
     steps:
       - name: Check required workflow results
         id: gate
-        if: github.event_name == 'workflow_run'
+        if: github.event_name == 'push'
         uses: actions/github-script@v7
         with:
           script: |
@@ -48,54 +39,60 @@ jobs:
               'Publish Test Database Worker Image',
             ];
 
-            const sha = context.payload.workflow_run.head_sha;
-            const branch = context.payload.workflow_run.head_branch;
+            const sha = context.sha;
+            const branch = context.ref.replace('refs/heads/', '');
             const { owner, repo } = context.repo;
-            const runs = [];
 
-            for (let page = 1; page <= 3; page += 1) {
-              const response = await github.rest.actions.listWorkflowRunsForRepo({
-                owner,
-                repo,
-                branch,
-                event: 'push',
-                per_page: 100,
-                page,
-              });
-              runs.push(...response.data.workflow_runs.filter((run) => run.head_sha === sha));
-              if (response.data.workflow_runs.length < 100) break;
-            }
+            const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-            const latest = new Map();
-            for (const run of runs.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))) {
-              if (required.includes(run.name) && !latest.has(run.name)) {
-                latest.set(run.name, run);
+            for (let attempt = 1; attempt <= 90; attempt += 1) {
+              const runs = [];
+              for (let page = 1; page <= 3; page += 1) {
+                const response = await github.rest.actions.listWorkflowRunsForRepo({
+                  owner,
+                  repo,
+                  branch,
+                  event: 'push',
+                  per_page: 100,
+                  page,
+                });
+                runs.push(...response.data.workflow_runs.filter((run) => run.head_sha === sha));
+                if (response.data.workflow_runs.length < 100) break;
               }
+
+              const latest = new Map();
+              for (const run of runs.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))) {
+                if (required.includes(run.name) && !latest.has(run.name)) {
+                  latest.set(run.name, run);
+                }
+              }
+
+              const missing = required.filter((name) => !latest.has(name));
+              const pending = required.filter((name) => latest.get(name)?.status !== 'completed');
+              const failed = required.filter((name) => latest.get(name)?.status === 'completed' && latest.get(name)?.conclusion !== 'success');
+
+              core.info(`Commit: ${sha}`);
+              for (const name of required) {
+                const run = latest.get(name);
+                core.info(`${name}: ${run ? `${run.status}/${run.conclusion}` : 'missing'}`);
+              }
+
+              if (failed.length) {
+                core.setFailed(`Deployment blocked by failed workflows: ${failed.join(', ')}`);
+                return;
+              }
+
+              if (!missing.length && !pending.length) {
+                core.setOutput('ready', 'true');
+                core.setOutput('sha', sha);
+                return;
+              }
+
+              core.notice(`Waiting for workflows: ${[...missing, ...pending].join(', ')}. Attempt ${attempt}/90`);
+              await sleep(30000);
             }
 
-            const missing = required.filter((name) => !latest.has(name));
-            const pending = required.filter((name) => latest.get(name)?.status !== 'completed');
-            const failed = required.filter((name) => latest.get(name)?.conclusion !== 'success');
-
-            core.info(`Commit: ${sha}`);
-            for (const name of required) {
-              const run = latest.get(name);
-              core.info(`${name}: ${run ? `${run.status}/${run.conclusion}` : 'missing'}`);
-            }
-
-            if (missing.length || pending.length) {
-              core.notice(`Waiting for workflows: ${[...missing, ...pending].join(', ')}`);
-              core.setOutput('ready', 'false');
-              return;
-            }
-
-            if (failed.length) {
-              core.setFailed(`Deployment blocked by failed workflows: ${failed.join(', ')}`);
-              return;
-            }
-
-            core.setOutput('ready', 'true');
-            core.setOutput('sha', sha);
+            core.setFailed(`Timed out waiting for required workflows for ${sha}`);
 
       - name: Select manual deployment SHA
         id: manual
@@ -104,12 +101,8 @@ jobs:
           echo "ready=true" >> "$GITHUB_OUTPUT"
           echo "sha=${{ inputs.sha }}" >> "$GITHUB_OUTPUT"
 
-      - name: Stop if build gate is still waiting
-        if: github.event_name == 'workflow_run' && steps.gate.outputs.ready != 'true'
-        run: echo "Not all required workflows are ready for this commit yet."
-
       - name: Configure SSH
-        if: (github.event_name == 'workflow_dispatch' && steps.manual.outputs.ready == 'true') || (github.event_name == 'workflow_run' && steps.gate.outputs.ready == 'true')
+        if: (github.event_name == 'workflow_dispatch' && steps.manual.outputs.ready == 'true') || (github.event_name == 'push' && steps.gate.outputs.ready == 'true')
         env:
           NAV_DEPLOY_SSH_KEY: ${{ secrets.NAV_DEPLOY_SSH_KEY }}
           NAV_DEPLOY_HOST: ${{ secrets.NAV_DEPLOY_HOST }}
@@ -122,7 +115,7 @@ jobs:
           ssh-keyscan -H "$NAV_DEPLOY_HOST" >> ~/.ssh/known_hosts
 
       - name: Deploy to Kubernetes
-        if: (github.event_name == 'workflow_dispatch' && steps.manual.outputs.ready == 'true') || (github.event_name == 'workflow_run' && steps.gate.outputs.ready == 'true')
+        if: (github.event_name == 'workflow_dispatch' && steps.manual.outputs.ready == 'true') || (github.event_name == 'push' && steps.gate.outputs.ready == 'true')
         env:
           NAV_DEPLOY_HOST: ${{ secrets.NAV_DEPLOY_HOST }}
           NAV_DEPLOY_USER: ${{ secrets.NAV_DEPLOY_USER }}
