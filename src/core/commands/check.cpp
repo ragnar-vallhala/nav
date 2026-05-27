@@ -17,16 +17,16 @@ int CheckCommand::run(IExecutionContext& ctx, const std::vector<std::string>& /*
     for (const auto& req : system_reqs) {
         auto res = tm.probe_tool(ctx, req);
         if (res.is_found) {
-            std::cout << "  " << ui::GREEN << "✔ " << ui::RESET << ui::BOLD
-                      << res.tool_name << ui::RESET << " -> Detected.\n";
+            std::cout << "  " << ui::GREEN() << "✔ " << ui::RESET() << ui::BOLD()
+                      << res.tool_name << ui::RESET() << " -> Detected.\n";
         } else if (res.is_critical) {
             failed_critical++;
-            std::cout << "  " << ui::RED << "✖ " << ui::RESET << ui::BOLD
-                      << res.tool_name << ui::RESET << " -> "
-                      << ui::RED << "NOT FOUND (CRITICAL)\n" << ui::RESET;
+            std::cout << "  " << ui::RED() << "✖ " << ui::RESET() << ui::BOLD()
+                      << res.tool_name << ui::RESET() << " -> "
+                      << ui::RED() << "NOT FOUND (CRITICAL)\n" << ui::RESET();
         } else {
-            std::cout << "  " << ui::YELLOW << "⚠ " << ui::RESET << ui::BOLD
-                      << res.tool_name << ui::RESET << " -> Optional (Not Installed)\n";
+            std::cout << "  " << ui::YELLOW() << "⚠ " << ui::RESET() << ui::BOLD()
+                      << res.tool_name << ui::RESET() << " -> Optional (Not Installed)\n";
         }
     }
     std::cout << std::endl;
@@ -53,16 +53,16 @@ int CheckCommand::run(IExecutionContext& ctx, const std::vector<std::string>& /*
             for (const auto& req : project_reqs) {
                 auto res = tm.probe_tool(ctx, req);
                 if (res.is_found) {
-                    std::cout << "  " << ui::GREEN << "✔ " << ui::RESET << ui::BOLD
-                              << res.tool_name << ui::RESET << " -> " << res.version_info << std::endl;
+                    std::cout << "  " << ui::GREEN() << "✔ " << ui::RESET() << ui::BOLD()
+                              << res.tool_name << ui::RESET() << " -> " << res.version_info << std::endl;
                 } else if (res.is_critical) {
                     failed_critical++;
-                    std::cout << "  " << ui::RED << "✖ " << ui::RESET << ui::BOLD
-                              << res.tool_name << ui::RESET << " -> "
-                              << ui::RED << "NOT FOUND (CRITICAL)\n" << ui::RESET;
+                    std::cout << "  " << ui::RED() << "✖ " << ui::RESET() << ui::BOLD()
+                              << res.tool_name << ui::RESET() << " -> "
+                              << ui::RED() << "NOT FOUND (CRITICAL)\n" << ui::RESET();
                 } else {
-                    std::cout << "  " << ui::YELLOW << "⚠ " << ui::RESET << ui::BOLD
-                              << res.tool_name << ui::RESET << " -> Optional (Not Installed)\n";
+                    std::cout << "  " << ui::YELLOW() << "⚠ " << ui::RESET() << ui::BOLD()
+                              << res.tool_name << ui::RESET() << " -> Optional (Not Installed)\n";
                 }
             }
         }

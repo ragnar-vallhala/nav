@@ -12,7 +12,13 @@ FetchContent_Declare(
     GIT_TAG        v3.4.0
     GIT_SHALLOW    TRUE
 )
-FetchContent_MakeAvailable(tomlplusplus)
+FetchContent_Declare(
+    cli11
+    GIT_REPOSITORY https://github.com/CLIUtils/CLI11.git
+    GIT_TAG        v2.4.2
+    GIT_SHALLOW    TRUE
+)
+FetchContent_MakeAvailable(tomlplusplus cli11)
 
 # --- Embedded project templates ---
 # Each template is read into a CMake variable and inlined into a generated
@@ -33,6 +39,7 @@ add_library(nav_core STATIC
     src/core/execution_context.cpp
     src/core/toolchain.cpp
     src/core/config.cpp
+    src/core/project_name.cpp
     src/core/commands/create.cpp
     src/core/commands/build.cpp
     src/core/commands/upload.cpp
@@ -56,8 +63,15 @@ add_executable(nav
     src/cli/main.cpp
 )
 
-target_link_libraries(nav PRIVATE nav_core)
+target_link_libraries(nav PRIVATE nav_core CLI11::CLI11)
 target_compile_definitions(nav PRIVATE NAV_VERSION="${PROJECT_VERSION}")
+
+# --- Tests ---
+option(NAV_BUILD_TESTS "Build the Nav test suite" OFF)
+if(NAV_BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
+endif()
 
 # --- Packaging and Installation Setup ---
 

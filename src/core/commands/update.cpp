@@ -102,7 +102,19 @@ int UpdateCommand::run(IExecutionContext& ctx, const std::vector<std::string>& /
     } else {
         ui::error("Installation execution fault. Please run manually via shell.");
     }
-    return ins_res.exit_code;
+
+    // Re-surface unmapped binaries after install spam, and OR them into the
+    // exit code so partial success surfaces as failure.
+    if (!unmapped.empty()) {
+        ui::warning("The following binaries have no package mapping on this distribution and were NOT installed:");
+        for (const auto& bin : unmapped) ui::warning("  - " + bin);
+        ui::warning("Install them manually before continuing.");
+    }
+
+    if (ins_res.exit_code != 0 || !unmapped.empty()) {
+        return 1;
+    }
+    return 0;
 }
 
 } // namespace nav::core

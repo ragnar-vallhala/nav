@@ -1,76 +1,102 @@
-#include <iostream>
-#include <string>
-#include <vector>
-#include <memory>
-#include <algorithm>
+#include <CLI/CLI.hpp>
 
+#include <filesystem>
+#include <iostream>
 #include <map>
+#include <memory>
+#include <string>
+#include <system_error>
+#include <vector>
+
 #include "nav/core/command.hpp"
+#include "nav/core/execution_context.hpp"
 #include "nav/core/ui.hpp"
 
 #ifndef NAV_VERSION
 #define NAV_VERSION "0.0.0-dev"
 #endif
 
-void print_usage() {
-    std::cout << "Usage: nav <command> [args...]\n\n"
-              << "Commands:\n"
-              << "  create  - Create new project space\n"
-              << "  build   - Compile source tree\n"
-              << "  upload  - Push images to chips\n"
-              << "  monitor - Connect to serial telemetry\n"
-              << "  clean   - Flush cache and build files\n"
-              << "  check   - Perform verification checks\n"
-              << "  update  - Upgrade environment definitions\n"
-              << "  add     - Cache external library resource     (coming soon)\n"
-              << "  search  - Search master package catalog       (coming soon)\n"
-              << "  login   - Secure session authorization link   (coming soon)\n"
-              << "  publish - Push artifact bundle to backend     (coming soon)\n"
-              << "\nFlags:\n"
-              << "  --version, -v   Print version and exit\n"
-              << "  --help, help    Print this message\n";
+namespace {
+
+void apply_color_mode(const std::string& mode) {
+    using nav::core::ui::ColorMode;
+    if (mode == "always") nav::core::ui::set_color_mode(ColorMode::Always);
+    else if (mode == "never") nav::core::ui::set_color_mode(ColorMode::Never);
+    else nav::core::ui::set_color_mode(ColorMode::Auto);
 }
 
+} // namespace
+
 int main(int argc, char* argv[]) {
-    std::vector<std::string> args(argv + 1, argv + argc);
+    CLI::App app{"Nav — embedded development orchestrator"};
+    app.set_version_flag("--version,-V", NAV_VERSION);
+    app.require_subcommand(1);
+    app.fallthrough();
 
-    if (args.empty() || args[0] == "--help" || args[0] == "help") {
-        print_usage();
-        return 0;
+    std::string color_mode = "auto";
+    bool verbose = false;
+    bool quiet = false;
+    std::string cwd;
+
+    app.add_option("--color", color_mode, "Color output policy")
+        ->check(CLI::IsMember({"auto", "always", "never"}))
+        ->default_val("auto");
+    app.add_flag("--no-color", [&](std::int64_t) { color_mode = "never"; }, "Disable color output");
+    app.add_flag("--verbose,-v", verbose, "Verbose output");
+    app.add_flag("--quiet,-q", quiet, "Suppress informational output");
+    app.add_option("--cwd", cwd, "Run as if invoked from this directory");
+
+    std::map<std::string, std::unique_ptr<nav::core::ICommand>> commands;
+    commands["create"]  = std::make_unique<nav::core::CreateCommand>();
+    commands["build"]   = std::make_unique<nav::core::BuildCommand>();
+    commands["upload"]  = std::make_unique<nav::core::UploadCommand>();
+    commands["monitor"] = std::make_unique<nav::core::MonitorCommand>();
+    commands["clean"]   = std::make_unique<nav::core::CleanCommand>();
+    commands["check"]   = std::make_unique<nav::core::CheckCommand>();
+    commands["update"]  = std::make_unique<nav::core::UpdateCommand>();
+    commands["add"]     = std::make_unique<nav::core::AddCommand>();
+    commands["search"]  = std::make_unique<nav::core::SearchCommand>();
+    commands["login"]   = std::make_unique<nav::core::LoginCommand>();
+    commands["publish"] = std::make_unique<nav::core::PublishCommand>();
+
+    // Each subcommand allows extras so verbs that still parse their own argv
+    // (monitor: --port/--baud; create: --force) keep working unchanged.
+    for (auto& [name, cmd] : commands) {
+        auto* sub = app.add_subcommand(name, cmd->help_text());
+        sub->allow_extras();
+        cmd->register_flags(*sub);
     }
 
-    if (args[0] == "--version" || args[0] == "-v") {
-        std::cout << "nav " << NAV_VERSION << "\n";
-        return 0;
+    CLI11_PARSE(app, argc, argv);
+
+    apply_color_mode(color_mode);
+
+    if (!cwd.empty()) {
+        std::error_code ec;
+        std::filesystem::current_path(cwd, ec);
+        if (ec) {
+            nav::core::ui::error("Failed to chdir to '" + cwd + "': " + ec.message());
+            return 1;
+        }
     }
 
-    // Factory setup for known verbs
-    std::map<std::string, std::unique_ptr<nav::core::ICommand>> command_registry;
-    command_registry["create"] = std::make_unique<nav::core::CreateCommand>();
-    command_registry["build"] = std::make_unique<nav::core::BuildCommand>();
-    command_registry["upload"] = std::make_unique<nav::core::UploadCommand>();
-    command_registry["monitor"] = std::make_unique<nav::core::MonitorCommand>();
-    command_registry["clean"] = std::make_unique<nav::core::CleanCommand>();
-    command_registry["check"] = std::make_unique<nav::core::CheckCommand>();
-    command_registry["update"] = std::make_unique<nav::core::UpdateCommand>();
-    command_registry["add"] = std::make_unique<nav::core::AddCommand>();
-    command_registry["search"] = std::make_unique<nav::core::SearchCommand>();
-    command_registry["login"] = std::make_unique<nav::core::LoginCommand>();
-    command_registry["publish"] = std::make_unique<nav::core::PublishCommand>();
+    auto subs = app.get_subcommands();
+    if (subs.empty()) {
+        // require_subcommand(1) should have already errored, but guard anyway.
+        std::cerr << app.help() << std::endl;
+        return 1;
+    }
+    CLI::App* selected = subs.front();
+    const std::string verb = selected->get_name();
 
-    // Context remains strictly native host
-    auto context = std::make_unique<nav::core::HostExecutionContext>();
-
-    std::string verb = args[0];
-    std::vector<std::string> remaining_args(args.begin() + 1, args.end());
-
-    auto it = command_registry.find(verb);
-    if (it == command_registry.end()) {
-        std::cerr << "Error: Unknown command '" << verb << "'.\n";
-        print_usage();
+    auto it = commands.find(verb);
+    if (it == commands.end()) {
+        nav::core::ui::error("Unknown command '" + verb + "'.");
         return 1;
     }
 
-    // Execute chosen command through designated context
-    return it->second->run(*context, remaining_args);
+    std::vector<std::string> remaining = selected->remaining();
+
+    auto context = std::make_unique<nav::core::HostExecutionContext>();
+    return it->second->run(*context, remaining);
 }

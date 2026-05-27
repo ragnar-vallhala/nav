@@ -22,13 +22,16 @@ jobs:
           sudo apt-get install -y build-essential cmake git libssl-dev
 
       - name: Configure
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DNAV_BUILD_TESTS=ON
 
       - name: Build
         run: cmake --build build --config Release -j $(nproc)
 
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
       - name: Smoke check nav binary
-        run: ./build/nav --version || ./build/nav --help
+        run: ./build/nav --version
 
   registry-api:
     name: Go Registry API

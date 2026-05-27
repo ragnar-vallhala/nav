@@ -1,20 +1,27 @@
 #pragma once
 
-#include <vector>
 #include <string>
+#include <vector>
+
 #include "nav/core/execution_context.hpp"
+
+namespace CLI { class App; }
 
 namespace nav::core {
 
 class ICommand {
 public:
     virtual ~ICommand() = default;
-    
-    // Main entry logic for a specific command verb
+
+    // Main entry logic for a specific command verb.
     virtual int run(IExecutionContext& ctx, const std::vector<std::string>& args) = 0;
-    
-    // Basic text describing command for help printer
+
+    // Basic text describing command for help printer.
     virtual std::string help_text() const = 0;
+
+    // Optional CLI11 hook for registering per-command flags. Default no-op so
+    // existing commands keep working while we migrate them piecemeal.
+    virtual void register_flags(CLI::App& /*sub*/) {}
 };
 
 class CreateCommand : public ICommand {

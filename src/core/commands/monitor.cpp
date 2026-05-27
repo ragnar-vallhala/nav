@@ -106,7 +106,7 @@ int MonitorCommand::run(IExecutionContext& /*ctx*/, const std::vector<std::strin
     }
 
     ui::success("Successfully latched interface. Capturing raw telemetry stream now...");
-    ui::info("System notice: [Press Ctrl+C to cleanly detatch]");
+    ui::info("System notice: [Press Ctrl+C to cleanly detach]");
     std::cout << "-------------------------------------------------------------\n" << std::endl;
 
     g_running_monitor = true;
@@ -129,7 +129,7 @@ int MonitorCommand::run(IExecutionContext& /*ctx*/, const std::vector<std::strin
     close(fd);
 
     std::cout << "\n\n";
-    ui::success("Link detatched gracefully. Channel closed.");
+    ui::success("Link detached gracefully. Channel closed.");
     return 0;
 }
 

@@ -1,7 +1,9 @@
 #include "nav/core/toolchain.hpp"
+
+#include <chrono>
+#include <filesystem>
 #include <sstream>
 
-#include <filesystem>
 #include <unistd.h>
 namespace fs = std::filesystem;
 
@@ -140,8 +142,10 @@ ProbeResult ToolchainManager::probe_tool(IExecutionContext& ctx, const ToolRequi
 
     // If present in environment, attempt to perform metadata extraction
     if (res.is_found) {
-        // Passive probe using silent execution mode
-        auto call_result = ctx.execute({req.binary_name, req.version_flag}, "", true);
+        // Passive probe using silent execution mode. 10s ceiling so a hung
+        // --version (interactive prompt, license check, etc.) can't wedge nav.
+        auto call_result = ctx.execute({req.binary_name, req.version_flag}, "", true,
+                                       std::chrono::seconds(10));
 
         if (call_result.exit_code == 0) {
             // Extract basic line-one version string
