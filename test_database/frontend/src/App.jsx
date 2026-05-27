@@ -1190,7 +1190,7 @@ function HomePage({ stats, filteredPackages, filteredToolchainGroups, toolchainF
         {featureRows.map((feature, index) => {
           const Icon = feature.icon;
           return (
-            <article className="home-feature-row" key={feature.title}>
+            <article className="home-feature-row" key={feature.title} style={{ '--stack-index': index }}>
               <div className="feature-copy">
                 <div className="feature-icon"><Icon size={20} /></div>
                 <p>{feature.eyebrow}</p>
