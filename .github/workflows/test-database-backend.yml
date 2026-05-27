@@ -50,6 +50,9 @@ jobs:
         working-directory: test_database/backend
         run: find src -name '*.js' -print0 | xargs -0 -n1 node --check
 
+      - name: Prepare CI environment file
+        run: touch .env.local
+
       - name: Start PostgreSQL and MinIO dependencies
         working-directory: test_database
         run: docker compose up -d postgres minio
