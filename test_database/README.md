@@ -103,7 +103,7 @@ nav run
 nav monitor --port COM8 --baud 9600
 ```
 
-`nav setup` in an empty folder installs the first-party `nav/navhal` base project from the registry. For an existing project, its `nav.toml` or `nav.json` determines the packages, board and toolchains that Nav resolves.
+`nav setup` in an empty folder installs the first-party `nav/navhal` base project from the registry. For existing projects, ABI v1 modules/apps use `navmod.toml`; legacy projects can still use `nav.toml` or `nav.json`. Nav resolves package, build, and uploader toolchains from the manifest, so `uploader = "stlink"` is locked and installed by `nav setup`.
 
 ## Deploy To `navdev.navrobotec.com`
 

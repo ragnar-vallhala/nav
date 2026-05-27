@@ -902,7 +902,7 @@ async function createProject(projectName, rest) {
   if (!projectName) throw new Error('create requires <project> [--board <board>]');
   const { board } = parseSetupArgs(rest, 'esp32-devkit-v1');
   const projectDir = path.resolve(projectName);
-  await initializeProjectScaffold(projectDir, projectName, board, { overwriteMain: false });
+  await initializeProjectScaffold(projectDir, path.basename(projectDir), board, { overwriteMain: false });
   printSuccess(`created ${formatPath(projectDir)}`);
   console.log(`${bold('next:')} ${formatCommand('cd into the project and run nav setup')}`);
 }
@@ -910,6 +910,45 @@ async function createProject(projectName, rest) {
 async function initializeProjectScaffold(projectDir, projectName, board, options = {}) {
   await fs.mkdir(path.join(projectDir, 'src'), { recursive: true });
   const projectSlug = slug(projectName || path.basename(projectDir) || 'nav-project');
+  if (board.startsWith('stm32')) {
+    const manifest = {
+      package: {
+        kind: 'app',
+        name: projectSlug,
+        version: '0.1.0',
+        license: 'MIT',
+        description: `${projectSlug} firmware app`
+      },
+      abi: {
+        abi_version: ABI_VERSION,
+        hal_api_version: HAL_API_VERSION
+      },
+      target: {
+        arch: 'cortex-m4',
+        vendor: 'stm32',
+        family: board,
+        board
+      },
+      requires: {
+        caps: ['GPIO', 'TIMER']
+      },
+      dependencies: {
+        'nav/board-stm32f401': '0.1.0'
+      },
+      build: {
+        sources: ['src/**/*.c'],
+        include_dirs: ['include'],
+        entry: 'src/main.c'
+      }
+    };
+    await writeIfMissing(path.join(projectDir, 'navmod.toml'), writeToml(manifest));
+    const mainPath = path.join(projectDir, 'src', 'main.c');
+    const mainExists = await exists(mainPath);
+    if (options.overwriteMain || !mainExists) {
+      await fs.writeFile(mainPath, `#include <stdint.h>\n#include "hal.h"\n\nint main(void) {\n    volatile uint32_t ticks = 0;\n    while (1) {\n        ticks++;\n    }\n}\n`);
+    }
+    return;
+  }
   const manifest = {
     name: projectSlug,
     version: '0.1.0',
@@ -1082,7 +1121,11 @@ async function buildProject(projectArg) {
     lock = await readJson(lockPath);
   }
   const requestedToolchains = manifest.toolchains || [];
-  const missingToolchains = requestedToolchains.filter(name => !lock.toolchains.some(toolchain => toolchain.name === name));
+  const buildSystemForRequirements = manifest.build_system || (await exists(path.join(projectDir, 'CMakeLists.txt')) ? 'cmake' : undefined);
+  const missingToolchains = unique([
+    ...requestedToolchains.filter(name => !lock.toolchains.some(toolchain => toolchain.name === name)),
+    ...missingRequiredToolchains(manifest, lock, buildSystemForRequirements)
+  ]);
   if (missingToolchains.length > 0) {
     printInfo(`lockfile is missing toolchains (${missingToolchains.join(', ')}); running nav setup first`);
     await setupProject(projectDir);
@@ -1555,9 +1598,21 @@ async function runLocalBuildOutput(projectDir, manifest) {
 async function uploadProject(rawArgs = []) {
   const { projectDir, options } = parseProjectOptions(rawArgs);
   const manifest = await readProjectManifest(projectDir);
-  const lock = await readJson(path.join(projectDir, '.nav', 'lock.json')).catch(() => null);
-  if (!lock) throw new Error('run nav setup/build before upload');
-  const buildSystem = resolveBuildSystem(manifest, lock, projectDir);
+  const lockPath = path.join(projectDir, '.nav', 'lock.json');
+  let lock = await readJson(lockPath).catch(() => null);
+  if (!lock) {
+    printInfo('no lockfile found; running nav setup first');
+    await setupProject(projectDir);
+    lock = await readJson(lockPath);
+  }
+  let buildSystem = resolveBuildSystem(manifest, lock, projectDir);
+  const missingToolchains = missingRequiredToolchains(manifest, lock, buildSystem);
+  if (missingToolchains.length > 0) {
+    printInfo(`lockfile is missing upload/build toolchains (${missingToolchains.join(', ')}); running nav setup first`);
+    await setupProject(projectDir);
+    lock = await readJson(lockPath);
+    buildSystem = resolveBuildSystem(manifest, lock, projectDir);
+  }
   const uploader = resolveUploader(manifest, lock, buildSystem);
   console.log(`${bold('upload plan:')} ${manifest.name || path.basename(projectDir)} ${cyan('->')} ${manifest.board || 'unknown board'}`);
   console.log(`${bold('registry-managed uploader:')} ${uploader}`);
@@ -1799,7 +1854,7 @@ async function toolchainCommand(subcommand, rest) {
 async function resolveProject(manifest) {
   const packageMap = new Map();
   const resolvedByPackage = new Map();
-  const toolchainSet = new Set(manifest.toolchains || []);
+  const toolchainSet = new Set(requiredToolchainsForManifest(manifest));
   const queue = [...(manifest.dependencies || [])].map(spec => ({ spec, via: manifest.name || 'project' }));
   const seen = new Set();
 
@@ -1866,6 +1921,46 @@ async function resolveProject(manifest) {
     packages: [...packageMap.values()],
     toolchains: resolvedToolchains
   };
+}
+
+function requiredToolchainsForManifest(manifest, buildSystem = manifest?.build_system) {
+  const toolchains = new Set(normalizeStringArray(manifest?.toolchains));
+  const uploaderToolchain = uploaderToToolchainName(manifest?.uploader);
+  if (uploaderToolchain) toolchains.add(uploaderToolchain);
+
+  if (manifest?.name === 'navhal' || buildSystem === 'cmake') {
+    toolchains.add('cmake');
+    toolchains.add('ninja');
+    toolchains.add('arm-none-eabi');
+  }
+
+  if (buildSystem === 'abi-v1') {
+    toolchains.add('cmake');
+    toolchains.add('ninja');
+    toolchains.add('arm-none-eabi');
+    if (manifest?.target?.vendor === 'stm32') toolchains.add('stlink');
+  }
+
+  if (buildSystem === 'stm32-gcc' || String(manifest?.board || '').startsWith('stm32') || String(manifest?.target || '').startsWith('stm32')) {
+    toolchains.add('arm-none-eabi');
+    if (manifest?.uploader === 'stlink') toolchains.add('stlink');
+  }
+
+  if (buildSystem === 'arduino-cli') toolchains.add('arduino-cli');
+  return [...toolchains].filter(Boolean);
+}
+
+function uploaderToToolchainName(uploader) {
+  const value = String(uploader || '').trim();
+  if (!value || value === 'none') return null;
+  if (value === 'arduino-cli upload') return 'arduino-cli';
+  if (['stlink', 'esptool', 'openocd', 'arduino-cli'].includes(value)) return value;
+  return null;
+}
+
+function missingRequiredToolchains(manifest, lock, buildSystem = manifest?.build_system) {
+  const locked = new Set((lock?.toolchains || []).map(toolchain => toolchain.name));
+  return requiredToolchainsForManifest(manifest, buildSystem).filter(name => !locked.has(name));
 }
 
 async function resolveSystemToolchain(name) {
@@ -2518,7 +2613,7 @@ async function uploadCmake(projectDir, manifest, lock) {
     await runCommand(stFlash, ['write', binPath, address], projectDir);
     return;
   }
-  throw new Error('CMake upload needs a registry-managed uploader. Add uploader = "stlink" or another supported uploader to nav.toml.');
+  throw new Error('CMake upload needs a registry-managed uploader. Add uploader = "stlink" or another supported uploader to nav.toml/navmod.toml.');
 }
 
 function resolveBuildSystem(manifest, lock, projectDir) {
@@ -2874,11 +2969,13 @@ function enhanceProjectManifest(manifest, projectDir) {
     manifest.run ||= 'none';
     manifest.flash_address ||= null;
     if (Array.isArray(manifest.toolchains)) {
-      manifest.toolchains = manifest.toolchains.filter(item => !['nav-packager', 'stlink'].includes(item));
+      manifest.toolchains = manifest.toolchains.filter(item => item !== 'nav-packager');
       manifest.toolchains = unique(['cmake', 'ninja', 'arm-none-eabi', ...manifest.toolchains]);
     } else {
       manifest.toolchains = ['cmake', 'ninja', 'arm-none-eabi'];
     }
+    const uploaderToolchain = uploaderToToolchainName(manifest.uploader);
+    if (uploaderToolchain) manifest.toolchains = unique([...manifest.toolchains, uploaderToolchain]);
   }
   return manifest;
 }
@@ -3152,15 +3249,44 @@ function splitTomlArray(inner) {
 function writeToml(manifest) {
   const order = ['name', 'version', 'board', 'target', 'toolchains', 'dependencies'];
   const keys = unique([...order, ...Object.keys(manifest)]);
-  return keys
-    .filter(key => manifest[key] !== undefined && manifest[key] !== null)
-    .map(key => `${key} = ${formatTomlValue(manifest[key])}`)
-    .join('\n') + '\n';
+  const lines = [];
+  const tableKeys = [];
+  for (const key of keys) {
+    const value = manifest[key];
+    if (value === undefined || value === null) continue;
+    if (isTomlTable(value)) {
+      tableKeys.push(key);
+      continue;
+    }
+    lines.push(`${formatTomlKey(key)} = ${formatTomlValue(value)}`);
+  }
+  for (const key of tableKeys) emitTomlTable(lines, key, manifest[key]);
+  return lines.join('\n') + '\n';
+}
+
+function emitTomlTable(lines, name, value) {
+  if (lines.length && lines.at(-1) !== '') lines.push('');
+  lines.push(`[${name}]`);
+  const nested = [];
+  for (const [key, entry] of Object.entries(value)) {
+    if (entry === undefined || entry === null) continue;
+    if (isTomlTable(entry)) {
+      nested.push([key, entry]);
+      continue;
+    }
+    lines.push(`${formatTomlKey(key)} = ${formatTomlValue(entry)}`);
+  }
+  for (const [key, entry] of nested) emitTomlTable(lines, `${name}.${key}`, entry);
+}
+
+function isTomlTable(value) {
+  return value && typeof value === 'object' && !Array.isArray(value);
 }
 
 function formatTomlValue(value) {
   if (Array.isArray(value)) return `[${value.map(formatTomlValue).join(', ')}]`;
   if (typeof value === 'boolean') return String(value);
+  if (typeof value === 'number') return String(value);
   return JSON.stringify(String(value));
 }
 
