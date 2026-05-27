@@ -837,7 +837,7 @@ function App() {
       {route === 'settings' && isAuthed && <AccountSettingsPage {...sharedPageProps} user={user} />}
       {route === 'admin' && user?.system_role === 'root' && <AdminPage {...sharedPageProps} />}
       {route === 'admin' && user?.system_role !== 'root' && <Page><div className="empty-state">Root administrator access is required.</div></Page>}
-      {route === 'home' && <HomePage />}
+      {route === 'home' && <HomePage {...sharedPageProps} />}
     </main>
   );
 }
@@ -1063,7 +1063,7 @@ function InvitePage({ navigate, isAuthed }) {
   );
 }
 
-function HomePage() {
+function HomePage({ stats, statCards, filteredPackages, filteredToolchainGroups, toolchainFilterOptions, navigate }) {
   const installers = [
     {
       name: 'Windows',
@@ -1081,11 +1081,109 @@ function HomePage() {
       command: `curl -fsSL ${API}/downloads/nav/install.sh | sh`
     }
   ];
+
+  const boards = toolchainFilterOptions?.boards?.length || 0;
+  const platforms = toolchainFilterOptions?.platforms?.length || 0;
+  const packageCount = stats?.packages ?? filteredPackages?.length ?? 0;
+  const versionCount = stats?.package_versions ?? 0;
+  const toolchainCount = stats?.toolchains ?? filteredToolchainGroups?.length ?? 0;
+  const downloads = filteredPackages?.reduce((total, pkg) => total + Number(pkg.total_downloads || pkg.downloads || 0), 0) || 0;
+  const metrics = [
+    { label: 'Packages', value: packageCount, detail: 'Public firmware modules', icon: Package },
+    { label: 'Versions', value: versionCount, detail: 'Immutable releases', icon: Boxes },
+    { label: 'Boards', value: boards || '10+', detail: 'Board-aware targets', icon: CircuitBoard },
+    { label: 'Toolchains', value: toolchainCount, detail: 'Managed compilers and uploaders', icon: Wrench },
+    { label: 'Platforms', value: platforms || 3, detail: 'Windows, Linux, macOS', icon: Monitor },
+    { label: 'Downloads', value: downloads, detail: 'Verified archive pulls', icon: Download }
+  ];
+
+  const featureRows = [
+    {
+      title: 'Interactive CLI for firmware work',
+      eyebrow: 'From empty folder to board flash',
+      copy: 'Nav gives embedded teams the same flow developers expect from modern package managers: set up a project, add modules, build, upload, and monitor from the terminal.',
+      bullets: ['nav setup initializes the project', 'nav add resolves packages and tools', 'nav build and nav run use the project target'],
+      icon: Activity,
+      videoTitle: 'CLI install and build demo'
+    },
+    {
+      title: 'Toolchains managed by the registry',
+      eyebrow: 'No manual compiler hunting',
+      copy: 'Packages can declare the compiler, uploader, board support, and platform artifacts they need. Nav installs the right version for the user’s OS and verifies it before use.',
+      bullets: ['Versioned compiler archives', 'SHA256 verification before extraction', 'OS and architecture aware installs'],
+      icon: Wrench,
+      videoTitle: 'Toolchain auto-install demo'
+    },
+    {
+      title: 'Reusable embedded modules',
+      eyebrow: 'npm-style dependency graph',
+      copy: 'Publish HAL modules, board packages, drivers, and firmware helpers once. Projects consume them through Nav and keep dependency metadata in the project manifest.',
+      bullets: ['Module packages with ABI metadata', 'Dependency resolution across nested packages', 'Changelogs and immutable versions'],
+      icon: Package,
+      videoTitle: 'Package add and module demo'
+    },
+    {
+      title: 'Security built into publishing',
+      eyebrow: 'Safe before it reaches users',
+      copy: 'The registry stores package metadata separately from immutable blobs and validates uploads through workers before they become trusted install targets.',
+      bullets: ['Archive limits and checksum validation', 'Worker scan pipeline', 'Future-ready signatures, SBOM, and CVE checks'],
+      icon: ShieldCheck,
+      videoTitle: 'Publish validation demo'
+    }
+  ];
+
+  const footerLinks = [
+    ['Packages', 'packages'],
+    ['Toolchains', 'toolchains'],
+    ['GitHub', 'https://github.com/ragnar-vallhala/nav'],
+    ['Install CLI', 'home'],
+    ['Namespaces', 'namespaces']
+  ];
+
   return (
-    <Page>
-      <section className="home-simple">
-        <h1>Nav Registry</h1>
-        <p>Packages and managed toolchains for embedded systems.</p>
+    <Page className="home-page">
+      <section className="home-hero">
+        <div className="home-hero-copy">
+          <p className="hero-kicker">Nav Registry</p>
+          <h1>npm for embedded systems.</h1>
+          <p>
+            Install hardware packages, board support, compilers, uploaders, and reusable firmware modules from one registry.
+          </p>
+          <div className="hero-actions">
+            <Button onClick={() => document.getElementById('install-nav')?.scrollIntoView({ behavior: 'smooth' })}>Install Nav</Button>
+            <Button variant="outline" onClick={() => navigate('packages')}>Browse packages</Button>
+            <Button variant="ghost" onClick={() => navigate('toolchains')}>View toolchains</Button>
+          </div>
+        </div>
+        <Card className="hero-terminal">
+          <div className="terminal-dots" aria-hidden="true"><span /><span /><span /></div>
+          <code>nav setup</code>
+          <code>nav add nav/blink-add</code>
+          <code>nav build</code>
+          <code>nav run</code>
+          <p>resolved packages, installed toolchains, built firmware, ready to flash</p>
+        </Card>
+      </section>
+
+      <section className="home-metrics" aria-label="Registry metrics">
+        {metrics.map(metric => {
+          const Icon = metric.icon;
+          return (
+            <Card className="metric-card" key={metric.label}>
+              <Icon size={19} />
+              <span>{metric.label}</span>
+              <strong>{metric.value}</strong>
+              <p>{metric.detail}</p>
+            </Card>
+          );
+        })}
+      </section>
+
+      <section id="install-nav" className="home-install">
+        <div className="home-section-head">
+          <h2>Install the Nav CLI</h2>
+          <p>One command installs the CLI and adds it to the user path.</p>
+        </div>
         <div className="install-grid">
           {installers.map(installer => (
             <Card className="install-card" key={installer.name}>
@@ -1093,13 +1191,54 @@ function HomePage() {
                 <span className="os-logo-frame">
                   <img className="os-logo" src={installer.logo} alt="" />
                 </span>
-                <h2>{installer.name}</h2>
+                <h3>{installer.name}</h3>
               </div>
               <CommandLine command={installer.command} />
             </Card>
           ))}
         </div>
       </section>
+
+      <section className="home-feature-stack">
+        {featureRows.map((feature, index) => {
+          const Icon = feature.icon;
+          return (
+            <article className="home-feature-row" key={feature.title}>
+              <div className="feature-copy">
+                <div className="feature-icon"><Icon size={20} /></div>
+                <p>{feature.eyebrow}</p>
+                <h2>{feature.title}</h2>
+                <span>{feature.copy}</span>
+                <ul>
+                  {feature.bullets.map(bullet => <li key={bullet}>{bullet}</li>)}
+                </ul>
+              </div>
+              <Card className="feature-video-card">
+                <div className="video-placeholder">
+                  <span className="play-mark" aria-hidden="true" />
+                  <strong>{feature.videoTitle}</strong>
+                  <p>Video slot {index + 1}</p>
+                </div>
+              </Card>
+            </article>
+          );
+        })}
+      </section>
+
+      <footer className="home-footer">
+        <div>
+          <BrandMark />
+          <strong>Nav Registry</strong>
+          <p>Packages and managed toolchains for embedded firmware teams.</p>
+        </div>
+        <nav>
+          {footerLinks.map(([label, target]) => (
+            target.startsWith('http')
+              ? <a key={label} href={target} target="_blank" rel="noreferrer">{label}</a>
+              : <button key={label} onClick={() => navigate(target)}>{label}</button>
+          ))}
+        </nav>
+      </footer>
     </Page>
   );
 }
