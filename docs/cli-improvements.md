@@ -4,9 +4,11 @@ Scope: the C++ CLI in `src/` and `include/`. Registry-side work (`registry-api/`
 
 NavHAL branch policy: continue consuming `--branch stable`. Branch pinning is not part of this plan.
 
-## Status of the previous iteration
+## Status
 
-The original P0/P1 list in this document has largely landed:
+Several rounds of work have landed since this doc was first drafted. Items listed here are done — the per-defect entries in Part A still call out specifics for searchability.
+
+### Round 0 — original P0/P1 list (pre-Phase-0)
 
 - Merged stdout+stderr capture, single `output` field (`include/nav/core/execution_context.hpp:8`).
 - Walk-up `find_project_root` (`src/core/config.cpp:9`).
@@ -16,11 +18,43 @@ The original P0/P1 list in this document has largely landed:
 - Embedded templates extracted under `templates/` and inlined via `configure_file` into `embedded.hpp`.
 - `access(X_OK)` replaces `fs::exists` for PATH probing (`src/core/toolchain.cpp:25`).
 - Per-tool `version_flag` field (`include/nav/core/toolchain.hpp:17`).
-- `--version` / `-v` flag on the binary (`src/cli/main.cpp:42`).
+- `--version` flag on the binary (since rebound to `-V` in Phase 0; see CLI conventions).
 
-Two items remain open from that iteration: serial-port multi-device handling (now P1-4 below) and real registry verbs (now Phase 4 below).
+### Phase 0 — defect cleanup, CLI restructure, test harness (commit 2499b14)
 
-This document supersedes the previous version with: (a) defects found in a re-audit after those landings, and (b) a phased roadmap toward PlatformIO-parity functionality.
+- P0-1, P0-2, P0-3 (`create` hardening: name validation, refuse-overwrite, temp-dir + atomic rename).
+- P0-4 (`update` exit-code propagation for unmapped binaries).
+- P0-5 (`IExecutionContext::execute` takes a `chrono` timeout; `poll()` + SIGTERM/SIGKILL cascade; 1 MiB silent-mode cap).
+- P1-1 (`ui.hpp` colours gated on `isatty` / `NO_COLOR`).
+- P1-2 + P1-3 (CLI11 vendored via `FetchContent`; per-command `--help` works; `ICommand::register_flags` hook).
+- P1-6 (monitor typo fixes).
+- P2-2 (`-v` rebound to `--verbose`; `-V` reserved for `--version`).
+- P2-4 (`tests/` with GoogleTest, `MockExecutionContext`).
+
+### Phase 1.1 — board catalog primitive (commit ec49ca1)
+
+- `include/nav/core/board.hpp` + `src/core/board.cpp` — `Board` struct + `BoardCatalog`.
+- Five board files under `share/nav/boards/`: `pico`, `nucleo_f401re`, `nucleo_h743zi`, `esp32_devkitc`, `arduino_uno`.
+- `nav board list` / `nav board info <id>` verbs.
+- `ToolchainManager::get_project_requirements(const Board&)` replaces substring matching.
+
+### CLI design conventions (established in Phase 0 + 1.1)
+
+These are decisions, not tradeoffs to revisit. Document them so future contributors don't try to "fix" them.
+
+- **CLI11 with `prefix_command()` per subcommand.** Everything after the verb name is collected raw into `remaining()` and handed to the verb. Verbs that still parse their own argv (`monitor --port`, `create --force`, `board list`, `board info <id>`) keep working without per-verb CLI11 wiring.
+- **Global flags come before the verb.** `nav --verbose build` works; `nav build --verbose` does not — the latter is swallowed by `prefix_command()`. This matches git, cargo, npm, kubectl. The earlier `app.fallthrough()` approach (which would allow flags after the verb) was deliberately removed because it hijacks positional extras like `board list`.
+- **Per-verb migration to CLI11 is opt-in.** Each `ICommand` exposes `virtual void register_flags(CLI::App&)` with a default no-op body. Verbs that want CLI11-managed flags (instead of scanning `remaining()` themselves) override it; the others continue as-is.
+- **Subcommand `--help` is automatic.** CLI11 generates `nav <verb> --help` for every registered subcommand. Override `ICommand::help_text()` for richer per-verb text.
+- **Flag aliases:** `-V`/`--version` for version, `-v`/`--verbose` for verbosity, `-q`/`--quiet`, `--no-color`, `--color={auto,always,never}`, `--cwd`.
+
+### Open from earlier rounds
+
+- Serial-port multi-device handling (P1-4).
+- Real registry verbs (deferred to Phase 4).
+- `toml::parse_error` line/column surfacing (P1-7).
+- `check.cpp` mixing `std::cout` with `ui::*` (P1-8).
+- Phase 1.2 — catalog-driven CMake generation.
 
 ---
 
@@ -73,11 +107,10 @@ This document supersedes the previous version with: (a) defects found in a re-au
 - **Fix:** after lookup but before `it->second->run(...)`, if `remaining_args[0]` is `--help` or `-h`, print `it->second->help_text()` and return 0. Expand each `help_text()` override to a multi-line usage block listing flags. Once P1-3 lands, route through the flag parser instead.
 - **Acceptance:** for each verb, `nav <verb> --help` exits 0 with non-empty output that mentions the verb name.
 
-### P1-3. No global flag parser
-- **Where:** `src/cli/main.cpp:34-65`. Positional-only dispatch. Each command re-rolls its own flag scan (`src/core/commands/monitor.cpp:34-40`).
-- **Symptom:** nowhere to add `--verbose`, `--quiet`, `--json`, `--no-color`, `--cwd`. The codebase will not scale to Phase 2 without one.
-- **Fix:** vendor CLI11 via `FetchContent` (header-only, MIT, native subcommand support — closest to clap). Restructure `main.cpp` so each `ICommand` exposes `void register_flags(CLI::App& sub)` and `ICommand::run` reads from a populated config struct instead of a raw `std::vector<std::string>`.
-- **Acceptance:** `nav --verbose build`, `nav build --verbose`, and `nav --cwd /tmp/proj build` all parse and dispatch correctly. Unknown flags exit non-zero with a useful error.
+### P1-3. No global flag parser — **LANDED (Phase 0)**
+- **Where:** `src/cli/main.cpp` now wraps CLI11.
+- **Resolved by:** CLI11 vendored via `FetchContent`. Per-subcommand `prefix_command()` collects verb argv raw into `remaining()`. `ICommand::register_flags(CLI::App&)` is an opt-in hook (default no-op).
+- **Design note:** the original acceptance criterion called for `nav build --verbose` to also work (flags after the verb). That requires CLI11's `fallthrough()` mode, which hijacks positional extras like `board list` — incompatible with `prefix_command()`. We chose `prefix_command()`: **global flags must come before the verb** (`nav --verbose build`). Matches git/cargo/npm/kubectl conventions. See the "CLI design conventions" section above; this is not a follow-up to undo.
 
 ### P1-4. `monitor` autodetect is non-deterministic
 - **Where:** `src/core/commands/monitor.cpp:45-53`.
@@ -121,9 +154,8 @@ This document supersedes the previous version with: (a) defects found in a re-au
 - **Symptom:** even with `silent=true`, the merged stream is appended to a `stringstream`. Currently fine because all silent callers are short `--version` probes. Becomes a latent OOM as soon as any new caller goes silent on a chatty toolchain.
 - **Fix:** if `silent=true`, cap the captured buffer at 1 MiB; truncate with a `"<output truncated>"` marker. Document the cap in the header comment.
 
-### P2-2. `-v` shortcut binds to `--version`, colliding with conventional verbose
-- **Where:** `src/cli/main.cpp:42`.
-- **Fix (after P1-3 lands):** reserve `-V` / `--version` for version, `-v` / `--verbose` for verbosity. CLI11 supports both bindings trivially.
+### P2-2. `-v` shortcut binds to `--version`, colliding with conventional verbose — **LANDED (Phase 0)**
+- **Resolved by:** CLI11 `set_version_flag("--version,-V", NAV_VERSION)` + `add_flag("--verbose,-v", ...)`. `-V` is version, `-v` is verbose.
 
 ### P2-3. Stub registry verbs still listed in main help
 - **Where:** `src/cli/main.cpp:25-28`. Keep the `(coming soon)` tag until each gets a real implementation. As each Phase 4 verb lands, drop the tag for that verb individually.
