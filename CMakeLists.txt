@@ -18,7 +18,13 @@ FetchContent_Declare(
     GIT_TAG        v2.4.2
     GIT_SHALLOW    TRUE
 )
-FetchContent_MakeAvailable(tomlplusplus cli11)
+FetchContent_Declare(
+    nlohmann_json
+    GIT_REPOSITORY https://github.com/nlohmann/json.git
+    GIT_TAG        v3.11.3
+    GIT_SHALLOW    TRUE
+)
+FetchContent_MakeAvailable(tomlplusplus cli11 nlohmann_json)
 
 # --- Embedded project templates ---
 # Each template is read into a CMake variable and inlined into a generated
@@ -61,7 +67,9 @@ target_include_directories(nav_core PUBLIC
     $<INSTALL_INTERFACE:include>
 )
 
-target_link_libraries(nav_core PUBLIC tomlplusplus::tomlplusplus)
+target_link_libraries(nav_core
+    PUBLIC tomlplusplus::tomlplusplus
+    PRIVATE nlohmann_json::nlohmann_json)
 
 # CLI executable
 add_executable(nav

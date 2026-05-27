@@ -30,43 +30,67 @@ void write_file(const fs::path& p, const std::string& s) {
     std::ofstream(p) << s;
 }
 
-constexpr const char* kLibraryEntry = R"(
-name = "nav-hal"
+constexpr const char* kLibraryEntry = R"({
+  "name": "nav-hal",
+  "versions": [
+    {
+      "version": "0.5.0",
+      "kind": "library",
+      "downloads": {
+        "source": {
+          "url": "https://example.com/nav-hal-0.5.0.tar.gz",
+          "sha256": "deadbeef"
+        }
+      },
+      "dependencies": {
+        "cmsis": "^6.0.0"
+      }
+    },
+    {
+      "version": "0.4.2",
+      "kind": "library",
+      "downloads": {
+        "source": {
+          "url": "https://example.com/nav-hal-0.4.2.tar.gz",
+          "sha256": "cafebabe"
+        }
+      }
+    }
+  ]
+})";
 
-[[versions]]
-version      = "0.5.0"
-kind         = "library"
-downloads    = { source = { url = "https://example.com/nav-hal-0.5.0.tar.gz", sha256 = "deadbeef" } }
-dependencies = { cmsis = "^6.0.0" }
-
-[[versions]]
-version   = "0.4.2"
-kind      = "library"
-downloads = { source = { url = "https://example.com/nav-hal-0.4.2.tar.gz", sha256 = "cafebabe" } }
-)";
-
-constexpr const char* kToolchainEntry = R"(
-name = "arm-none-eabi-gcc"
-
-[[versions]]
-version            = "13.2.0"
-kind               = "toolchain"
-toolchain_binaries = ["arm-none-eabi-gcc", "arm-none-eabi-objcopy"]
-downloads = { linux_x86_64 = { url = "https://registry.navrobotec.com/arm-none-eabi-gcc-13.2-linux-x86_64.tar.xz", sha256 = "aaaa" }, darwin_arm64 = { url = "https://registry.navrobotec.com/arm-none-eabi-gcc-13.2-darwin-arm64.tar.xz", sha256 = "bbbb" } }
-)";
+constexpr const char* kToolchainEntry = R"({
+  "name": "arm-none-eabi-gcc",
+  "versions": [
+    {
+      "version": "13.2.0",
+      "kind": "toolchain",
+      "toolchain_binaries": ["arm-none-eabi-gcc", "arm-none-eabi-objcopy"],
+      "downloads": {
+        "linux_x86_64": {
+          "url": "https://registry.navrobotec.com/arm-none-eabi-gcc-13.2-linux-x86_64.tar.xz",
+          "sha256": "aaaa"
+        },
+        "darwin_arm64": {
+          "url": "https://registry.navrobotec.com/arm-none-eabi-gcc-13.2-darwin-arm64.tar.xz",
+          "sha256": "bbbb"
+        }
+      }
+    }
+  ]
+})";
 
 } // namespace
 
 TEST(Index, ParseLibrary) {
     TempDir td;
-    auto path = td.path() / "lib.toml";
+    auto path = td.path() / "lib.json";
     write_file(path, kLibraryEntry);
     auto pkg = nav::core::parse_index_file(path);
     ASSERT_TRUE(pkg.has_value());
     EXPECT_EQ(pkg->name, "nav-hal");
 
     ASSERT_EQ(pkg->versions.size(), 2u);
-    // Sorted ascending: 0.4.2 then 0.5.0.
     EXPECT_EQ(pkg->versions[0].version, (nav::core::Version{0,4,2,"",""}));
     EXPECT_EQ(pkg->versions[1].version, (nav::core::Version{0,5,0,"",""}));
 
@@ -80,7 +104,7 @@ TEST(Index, ParseLibrary) {
 
 TEST(Index, ParseToolchain) {
     TempDir td;
-    auto path = td.path() / "tc.toml";
+    auto path = td.path() / "tc.json";
     write_file(path, kToolchainEntry);
     auto pkg = nav::core::parse_index_file(path);
     ASSERT_TRUE(pkg.has_value());
@@ -98,17 +122,22 @@ TEST(Index, ParseToolchain) {
 
 TEST(Index, MissingNameRejected) {
     TempDir td;
-    auto path = td.path() / "broken.toml";
-    write_file(path, R"([[versions]]
-version = "0.1.0"
-)");
+    auto path = td.path() / "broken.json";
+    write_file(path, R"({"versions":[{"version":"0.1.0"}]})");
     EXPECT_FALSE(nav::core::parse_index_file(path).has_value());
 }
 
 TEST(Index, MissingVersionsRejected) {
     TempDir td;
-    auto path = td.path() / "broken.toml";
-    write_file(path, R"(name = "x")");
+    auto path = td.path() / "broken.json";
+    write_file(path, R"({"name":"x"})");
+    EXPECT_FALSE(nav::core::parse_index_file(path).has_value());
+}
+
+TEST(Index, MalformedJsonRejected) {
+    TempDir td;
+    auto path = td.path() / "broken.json";
+    write_file(path, "this is not json");
     EXPECT_FALSE(nav::core::parse_index_file(path).has_value());
 }
 
@@ -122,16 +151,15 @@ TEST(Index, ParseKindHelpers) {
 
 TEST(LocalIndexClient, ShardedPath) {
     nav::core::LocalIndexClient cli("/tmp/idx");
-    EXPECT_EQ(cli.index_path("nav-hal").string(),           "/tmp/idx/na/nav-hal.toml");
-    EXPECT_EQ(cli.index_path("arm-none-eabi-gcc").string(), "/tmp/idx/ar/arm-none-eabi-gcc.toml");
-    EXPECT_EQ(cli.index_path("imu-driver").string(),        "/tmp/idx/im/imu-driver.toml");
-    // Single-char name uses single-char prefix.
-    EXPECT_EQ(cli.index_path("x").string(),                 "/tmp/idx/x/x.toml");
+    EXPECT_EQ(cli.index_path("nav-hal").string(),           "/tmp/idx/na/nav-hal.json");
+    EXPECT_EQ(cli.index_path("arm-none-eabi-gcc").string(), "/tmp/idx/ar/arm-none-eabi-gcc.json");
+    EXPECT_EQ(cli.index_path("imu-driver").string(),        "/tmp/idx/im/imu-driver.json");
+    EXPECT_EQ(cli.index_path("x").string(),                 "/tmp/idx/x/x.json");
 }
 
 TEST(LocalIndexClient, ShardedFetchSuccess) {
     TempDir td;
-    write_file(td.path() / "na" / "nav-hal.toml", kLibraryEntry);
+    write_file(td.path() / "na" / "nav-hal.json", kLibraryEntry);
     nav::core::LocalIndexClient cli(td.path());
     auto pkg = cli.fetch("nav-hal");
     ASSERT_TRUE(pkg.has_value());
@@ -146,8 +174,7 @@ TEST(LocalIndexClient, FetchMissingReturnsNullopt) {
 
 TEST(LocalIndexClient, FetchWrongShardReturnsNullopt) {
     TempDir td;
-    // Place a file in the wrong shard directory; client must not find it.
-    write_file(td.path() / "zz" / "nav-hal.toml", kLibraryEntry);
+    write_file(td.path() / "zz" / "nav-hal.json", kLibraryEntry);
     nav::core::LocalIndexClient cli(td.path());
     EXPECT_FALSE(cli.fetch("nav-hal").has_value());
 }

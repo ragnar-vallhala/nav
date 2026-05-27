@@ -43,14 +43,15 @@ std::string to_string(const Version& v);
 // Version requirement.
 //
 // Supported syntax:
+//   =1.2.3   — exact match (also the meaning of bare "1.2.3" with no operator)
 //   ^1.2.3   — compatible: >=1.2.3, <2.0.0 (or <0.3.0 for "^0.2.x", etc.)
 //   ~1.2.3   — tilde:      >=1.2.3, <1.3.0
-//   =1.2.3   — exact match (also accepted as bare "1.2.3" only when bare:
-//              actually bare defaults to caret per Cargo convention)
 //   >=1.2.3, <=1.2.3, >1.2.3, <1.2.3 — direct comparison
 //   *        — any version
 //
-// Bare "1.2.3" (no operator) is treated as "^1.2.3" — matches Cargo / npm.
+// Bare "1.2.3" is treated as "=1.2.3" (exact). This is the conservative
+// default — when a user or generator writes a bare version, we take it
+// literally rather than inferring a compatibility range.
 struct VersionReq {
     enum class Op {
         Any,         // *

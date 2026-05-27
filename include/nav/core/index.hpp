@@ -48,7 +48,7 @@ struct IndexPackage {
     std::vector<IndexVersion> versions;
 };
 
-// Parse a registry-index TOML file describing a single package. Returns
+// Parse a registry-index JSON file describing a single package. Returns
 // nullopt on parse failure or when a required field is missing.
 std::optional<IndexPackage> parse_index_file(const std::filesystem::path& path);
 
@@ -61,8 +61,8 @@ public:
     virtual std::optional<IndexPackage> fetch(const std::string& package_name) = 0;
 };
 
-// Reads a sharded directory tree of *.toml files:
-//   <root>/<two-char-prefix>/<package-name>.toml
+// Reads a sharded directory tree of *.json files:
+//   <root>/<two-char-prefix>/<package-name>.json
 // Names shorter than two characters use a single-char prefix dir.
 class LocalIndexClient : public IIndexClient {
 public:

@@ -62,11 +62,20 @@ These are decisions, not tradeoffs to revisit. Document them so future contribut
 
 The pure-logic layer of Phase 2. No HTTP, no cache, no verbs hooked up yet. What the resolver and lockfile work in 2.2 will build on:
 
-- `include/nav/core/semver.hpp` + `src/core/semver.cpp` — `Version` (with full SemVer 2.0.0 precedence including prerelease identifier rules), `VersionReq` covering `^`, `~`, `=`, `>=`, `<=`, `>`, `<`, `*`, with `matches(req, v)`. Bare `1.2.3` parses as `^1.2.3` (Cargo/npm convention).
-- `include/nav/core/index.hpp` + `src/core/index.cpp` — `Download`, `IndexVersion` (with `PackageKind::Library` / `Toolchain`, multi-platform downloads keyed `<os>_<arch>`, dependency map, toolchain-binary list), `IndexPackage` (sorted versions ascending), `parse_index_file`, `IIndexClient` interface, `LocalIndexClient` with sharded `<root>/<2char>/<name>.toml` layout.
-- Index files are TOML, not JSON as the Phase 2 spec originally said. Reasons: consistency with the rest of Nav's config surface, no new parser dependency, easier authoring. The doc's Phase 2 examples have been updated accordingly.
+- `include/nav/core/semver.hpp` + `src/core/semver.cpp` — `Version` (with full SemVer 2.0.0 precedence including prerelease identifier rules), `VersionReq` covering `^`, `~`, `=`, `>=`, `<=`, `>`, `<`, `*`, with `matches(req, v)`. Bare `1.2.3` parses as `=1.2.3` (exact) — conservative default; an operator-less version is taken literally rather than inferred as a range.
+- `include/nav/core/index.hpp` + `src/core/index.cpp` — `Download`, `IndexVersion` (with `PackageKind::Library` / `Toolchain`, multi-platform downloads keyed `<os>_<arch>`, dependency map, toolchain-binary list), `IndexPackage` (sorted versions ascending), `parse_index_file` reading JSON via `nlohmann/json` (vendored alongside the existing `tomlplusplus` / `CLI11`), `IIndexClient` interface, `LocalIndexClient` with sharded `<root>/<2char>/<name>.json` layout.
 
-Tests: +30 (semver parse/compare/match across SemVer §11 examples, index TOML round-trip, sharded path computation, fetch-success / fetch-missing / wrong-shard).
+Tests: +30 (semver parse/compare/match across SemVer §11 examples, index JSON round-trip for library + toolchain kinds, malformed-JSON rejection, sharded path computation, fetch-success / fetch-missing / wrong-shard).
+
+### Data-format policy (effective Phase 2.1 onward)
+
+Nav's data-format surface is **JSON and YAML only** going forward. Drivers for the choice:
+
+- JSON for machine-authored / registry-served artifacts: the index, future `nav.lock`, cache manifests. Ubiquitous parsers, terse, no whitespace-sensitivity.
+- YAML for user-authored config we want to read pleasantly (planned migration target for `nav.toml` and `share/nav/boards/*.toml`).
+- TOML is no longer the target for new schemas. The existing TOML files (`nav.toml`, board catalog) remain on TOML for now to avoid a breaking change mid-roadmap; their migration is tracked under "Open" below.
+
+We will not model Nav's CLI / config surface after Cargo. SemVer operators (`^`, `~`, `>=`, etc.) stay because they're industry-standard — but Nav's own conventions (bare-version semantics, manifest field names, verb behaviour) are independent decisions, justified on their own terms rather than by reference to Cargo.
 
 ### Phase 1.3 — small P1 sweep
 
@@ -78,6 +87,7 @@ Tests: +30 (semver parse/compare/match across SemVer §11 examples, index TOML r
 ### Open
 
 - Phase 2 — registry (libraries **and** toolchains) + lockfile. Replaces the originally-planned standalone "toolchain manager" phase: we'll host toolchain binaries as packages on Nav's own registry rather than pulling tarballs from upstream Arm/AVR/etc. The earlier Phase 2/3 split is collapsed; sequencing summary updated.
+- Migrate existing TOML files (`nav.toml`, `share/nav/boards/*.toml`) to YAML or JSON to honour the format policy above. Currently kept on TOML to avoid a breaking change while Phase 2 is in flight; treat as a coordinated migration after the registry lands.
 - Phase 3 — framework / flashing / monitor filters / debug / test / registry auth (the old long-tail Phase 4).
 
 ---
@@ -266,77 +276,102 @@ The cache layout, lockfile schema, and resolver are shared. The build wires each
 
 ### Deliverables
 
-1. **Registry index** — phase-1 strategy from `docs/plan.md:303-315`. A GitHub repo `nav-index/` of TOML metadata files (TOML keeps the parser surface consistent across the codebase), two-character prefix sharded:
+1. **Registry index** — phase-1 strategy from `docs/plan.md:303-315`. A GitHub repo `nav-index/` of JSON metadata files, two-character prefix sharded:
    ```
    nav-index/
-     ar/arm-none-eabi-gcc.toml
-     im/imu-driver.toml
-     na/nav-hal.toml
+     ar/arm-none-eabi-gcc.json
+     im/imu-driver.json
+     na/nav-hal.json
    ```
-   Each entry lists versions, per-platform tarball URLs, SHA256s, kind, dependency specs. Phase 2.1 reads this format via `LocalIndexClient`; Phase 2.3 adds the HTTP equivalent.
+   Each entry lists versions, per-platform tarball URLs, SHA256s, kind, dependency specs. Phase 2.1 reads this format via `LocalIndexClient`; Phase 2.3 adds the HTTP equivalent. (JSON chosen per the data-format policy in the Status section.)
 
-2. **Package manifest** (publisher side, library kind):
-   ```toml
-   [package]
-   name        = "nav-hal"
-   version     = "0.5.0"
-   kind        = "library"
-   description = "..."
-   license     = "MIT"
-
-   [dependencies]
-   cmsis = "^6.0"
+2. **Index file format** (publisher side, library kind):
+   ```json
+   {
+     "name": "nav-hal",
+     "versions": [
+       {
+         "version": "0.5.0",
+         "kind": "library",
+         "description": "...",
+         "license": "MIT",
+         "downloads": {
+           "source": {
+             "url": "https://...",
+             "sha256": "..."
+           }
+         },
+         "dependencies": {
+           "cmsis": "^6.0.0"
+         }
+       }
+     ]
+   }
    ```
 
    And toolchain kind:
-   ```toml
-   [package]
-   name    = "arm-none-eabi-gcc"
-   version = "13.2"
-   kind    = "toolchain"
-
-   [download.linux_x86_64]
-   url    = "https://registry.navrobotec.com/.../arm-none-eabi-gcc-13.2-linux-x86_64.tar.xz"
-   sha256 = "..."
-
-   [download.darwin_arm64]
-   url    = "https://..."
-   sha256 = "..."
-
-   [toolchain]
-   binaries = ["arm-none-eabi-gcc", "arm-none-eabi-g++", "arm-none-eabi-objcopy",
-               "arm-none-eabi-size", "arm-none-eabi-as", "arm-none-eabi-ld"]
+   ```json
+   {
+     "name": "arm-none-eabi-gcc",
+     "versions": [
+       {
+         "version": "13.2.0",
+         "kind": "toolchain",
+         "downloads": {
+           "linux_x86_64": {
+             "url": "https://registry.navrobotec.com/.../arm-none-eabi-gcc-13.2-linux-x86_64.tar.xz",
+             "sha256": "..."
+           },
+           "darwin_arm64": {
+             "url": "https://...",
+             "sha256": "..."
+           }
+         },
+         "toolchain_binaries": [
+           "arm-none-eabi-gcc",
+           "arm-none-eabi-g++",
+           "arm-none-eabi-objcopy",
+           "arm-none-eabi-size"
+         ]
+       }
+     ]
+   }
    ```
 
 3. **Resolver** — DFS-based with cycle + conflict detection. SAT solver deferred. Same code path resolves library and toolchain dependency graphs; toolchains typically have no transitive deps.
 
-4. **Lockfile** at `nav.lock`:
-   ```toml
-   [[package]]
-   name         = "nav-hal"
-   version      = "0.5.0"
-   kind         = "library"
-   source       = "registry+https://github.com/ragnar-vallhala/nav-index"
-   checksum     = "sha256:..."
-   dependencies = ["cmsis@6.0.1"]
-
-   [[package]]
-   name     = "arm-none-eabi-gcc"
-   version  = "13.2"
-   kind     = "toolchain"
-   source   = "registry+https://github.com/ragnar-vallhala/nav-index"
-   checksum = "sha256:..."
+4. **Lockfile** at `nav.lock` (JSON; eventual successor to today's `nav.toml`-style manifests):
+   ```json
+   {
+     "packages": [
+       {
+         "name": "nav-hal",
+         "version": "0.5.0",
+         "kind": "library",
+         "source": "registry+https://github.com/ragnar-vallhala/nav-index",
+         "checksum": "sha256:...",
+         "dependencies": ["cmsis@6.0.1"]
+       },
+       {
+         "name": "arm-none-eabi-gcc",
+         "version": "13.2.0",
+         "kind": "toolchain",
+         "source": "registry+https://github.com/ragnar-vallhala/nav-index",
+         "checksum": "sha256:..."
+       }
+     ]
+   }
    ```
 
 5. **Cache** at `~/.nav/packages/<name>-<version>-<sha>/`. Content-addressed; shared across projects. Toolchain packages put binaries under `bin/`; library packages put headers under `include/` and archives under `lib/`. The kind determines layout.
 
-6. **Project manifest additions** in `nav.toml`:
+6. **Project manifest additions.** Project config currently lives in `nav.toml`; per the data-format policy it will migrate to YAML during Phase 2. For the registry consumer-side fields the structure is (TOML shown for current compatibility; YAML translation is mechanical):
    ```toml
    [dependencies]
-   nav-hal = "^0.5"
+   nav-hal = "^0.5.0"
 
    [toolchain]
-   compiler = "arm-none-eabi-gcc@13.2"
+   compiler = "arm-none-eabi-gcc@13.2.0"
    ```
    Both blocks are optional. With no `[toolchain]`, nav falls back to the binary name from the board catalog resolved against `$PATH` — today's behaviour. With a pinned `[toolchain]`, nav resolves the binary path from the cache and feeds it into `nav-board.cmake`.
 

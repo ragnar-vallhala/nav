@@ -121,10 +121,10 @@ TEST(Semver, ParseReq_AllOperators) {
     }
 }
 
-TEST(Semver, ParseReq_BareIsCaret) {
+TEST(Semver, ParseReq_BareIsExact) {
     auto r = parse_version_req("1.2.3");
     ASSERT_TRUE(r);
-    EXPECT_EQ(r->op, VersionReq::Op::Caret);
+    EXPECT_EQ(r->op, VersionReq::Op::Exact);
     EXPECT_EQ(r->base, V(1,2,3));
 }
 

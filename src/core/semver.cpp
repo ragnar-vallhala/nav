@@ -201,8 +201,9 @@ std::optional<VersionReq> parse_version_req(std::string_view s) {
         r.op = VersionReq::Op::Exact;
         s.remove_prefix(1);
     } else {
-        // Bare "1.2.3" → caret semantics (Cargo / npm convention).
-        r.op = VersionReq::Op::Caret;
+        // Bare "1.2.3" → exact match. Conservative default; an operator-less
+        // version is taken literally rather than inferred as a range.
+        r.op = VersionReq::Op::Exact;
     }
 
     s = trim(s);
@@ -236,7 +237,8 @@ bool matches(const VersionReq& req, const Version& v) {
         case VersionReq::Op::Less:      return v <  req.base;
 
         case VersionReq::Op::Caret: {
-            // Per Cargo §SemVer compatibility:
+            // Compatibility semantics: the highest non-zero component fixes
+            // the upper bound at its next increment.
             //   ^1.2.3 → >=1.2.3, <2.0.0
             //   ^0.2.3 → >=0.2.3, <0.3.0
             //   ^0.0.3 → >=0.0.3, <0.0.4
