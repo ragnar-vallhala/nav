@@ -200,11 +200,13 @@ spec:
         app: nav-backend
     spec:
       nodeSelector:
-        kubernetes.io/hostname: srv1237670
+        kubernetes.io/hostname: node2
+      imagePullSecrets:
+        - name: ghcr-pull-secret
       containers:
         - name: backend
-          image: nav-registry-backend:dev
-          imagePullPolicy: Never
+          image: ghcr.io/ragnar-vallhala/nav-backend:dev
+          imagePullPolicy: Always
           ports:
             - containerPort: 14000
           env:
@@ -383,11 +385,13 @@ spec:
         app: nav-worker
     spec:
       nodeSelector:
-        kubernetes.io/hostname: srv1237670
+        kubernetes.io/hostname: node0
+      imagePullSecrets:
+        - name: ghcr-pull-secret
       containers:
         - name: worker
-          image: nav-registry-worker:dev
-          imagePullPolicy: Never
+          image: ghcr.io/ragnar-vallhala/nav-worker:dev
+          imagePullPolicy: Always
           env:
             - name: NODE_ENV
               value: production
@@ -464,11 +468,13 @@ spec:
         app: nav-frontend
     spec:
       nodeSelector:
-        kubernetes.io/hostname: srv1237670
+        kubernetes.io/hostname: node1
+      imagePullSecrets:
+        - name: ghcr-pull-secret
       containers:
         - name: frontend
-          image: nav-registry-frontend:dev
-          imagePullPolicy: Never
+          image: ghcr.io/ragnar-vallhala/nav-frontend:dev
+          imagePullPolicy: Always
           ports:
             - containerPort: 80
           readinessProbe:

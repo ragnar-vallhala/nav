@@ -50,4 +50,4 @@ jobs:
 
       - name: Build frontend Docker image
         working-directory: test_database/frontend
-        run: docker build -t nav-registry-frontend:ci .
+        run: docker build -f Dockerfile.production --build-arg VITE_API_BASE=http://localhost:14000 -t nav-registry-frontend:ci .
