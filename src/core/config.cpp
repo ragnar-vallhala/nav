@@ -2,6 +2,8 @@
 
 #include <toml++/toml.hpp>
 
+#include <iostream>
+
 namespace fs = std::filesystem;
 
 namespace nav::core {
@@ -27,7 +29,11 @@ std::optional<ProjectConfig> load_project_config(const fs::path& project_root) {
     toml::table tbl;
     try {
         tbl = toml::parse_file(toml_path.string());
-    } catch (const toml::parse_error&) {
+    } catch (const toml::parse_error& e) {
+        const auto& src = e.source();
+        std::cerr << "nav.toml: " << toml_path.string() << ":"
+                  << src.begin.line << ":" << src.begin.column
+                  << ": " << e.description() << "\n";
         return std::nullopt;
     }
 

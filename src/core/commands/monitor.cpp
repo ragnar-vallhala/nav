@@ -1,19 +1,18 @@
 #include "nav/core/command.hpp"
+#include "nav/core/serial.hpp"
 #include "nav/core/ui.hpp"
 
 #include <atomic>
-#include <chrono>
 #include <csignal>
-#include <filesystem>
 #include <iostream>
 #include <map>
-#include <thread>
+#include <string>
 
+#include <errno.h>
 #include <fcntl.h>
+#include <poll.h>
 #include <termios.h>
 #include <unistd.h>
-
-namespace fs = std::filesystem;
 
 namespace {
 
@@ -41,21 +40,19 @@ int MonitorCommand::run(IExecutionContext& /*ctx*/, const std::vector<std::strin
 
     if (target_port.empty()) {
         ui::step("Scanning", "Autodetecting active serial hardware interfaces...");
-        try {
-            for (const auto& entry : fs::directory_iterator("/dev")) {
-                std::string dev_path = entry.path().string();
-                if (dev_path.find("ttyACM") != std::string::npos ||
-                    dev_path.find("ttyUSB") != std::string::npos) {
-                    target_port = dev_path;
-                    break;
-                }
-            }
-        } catch (...) {}
-    }
-
-    if (target_port.empty()) {
-        ui::error("Auto-detection failed. No hardware detected. Specify manually.");
-        return 1;
+        auto candidates = find_serial_ports();
+        if (candidates.empty()) {
+            ui::error("Auto-detection failed. No hardware detected. Specify manually with --port <path>.");
+            return 1;
+        }
+        if (candidates.size() == 1) {
+            target_port = candidates.front();
+            ui::info("Using port: " + target_port);
+        } else {
+            ui::error("Multiple serial devices detected. Specify one with --port <path>:");
+            for (const auto& c : candidates) ui::info("  " + c);
+            return 1;
+        }
     }
 
     speed_t baud_rate = B9600;
@@ -114,15 +111,29 @@ int MonitorCommand::run(IExecutionContext& /*ctx*/, const std::vector<std::strin
 
     char read_buffer[1024];
     while (g_running_monitor) {
-        ssize_t bytes_read = read(fd, read_buffer, sizeof(read_buffer));
-        if (bytes_read > 0) {
-            std::cout.write(read_buffer, bytes_read);
-            std::cout.flush();
-        } else if (bytes_read < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
-            ui::error("\nCritical Link Failure: Connection severed by host kernel.");
+        struct pollfd pfd{fd, POLLIN, 0};
+        int prc = ::poll(&pfd, 1, 100);
+        if (prc < 0) {
+            if (errno == EINTR) continue;
+            ui::error("\nCritical Link Failure: poll() failed.");
             break;
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        if (prc == 0) continue; // timeout — loop and re-check g_running_monitor
+
+        if (pfd.revents & (POLLIN | POLLHUP)) {
+            ssize_t bytes_read = ::read(fd, read_buffer, sizeof(read_buffer));
+            if (bytes_read > 0) {
+                std::cout.write(read_buffer, bytes_read);
+                std::cout.flush();
+            } else if (bytes_read < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
+                ui::error("\nCritical Link Failure: Connection severed by host kernel.");
+                break;
+            }
+        }
+        if (pfd.revents & POLLERR) {
+            ui::error("\nCritical Link Failure: device reported error.");
+            break;
+        }
     }
 
     std::signal(SIGINT, old_handler);

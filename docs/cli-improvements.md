@@ -58,12 +58,17 @@ These are decisions, not tradeoffs to revisit. Document them so future contribut
 - **Subcommand `--help` is automatic.** CLI11 generates `nav <verb> --help` for every registered subcommand. Override `ICommand::help_text()` for richer per-verb text.
 - **Flag aliases:** `-V`/`--version` for version, `-v`/`--verbose` for verbosity, `-q`/`--quiet`, `--no-color`, `--color={auto,always,never}`, `--cwd`.
 
-### Open from earlier rounds
+### Phase 1.3 — small P1 sweep
 
-- Serial-port multi-device handling (P1-4).
+- P1-4 (`find_serial_ports` extracted to `nav::core::serial`; sorted; `nav monitor` errors and lists candidates when ≥2 are present).
+- P1-5 (`nav monitor` read loop now uses `poll(POLLIN, 100ms)` instead of busy-sleep).
+- P1-7 (`load_project_config` prints `nav.toml:line:column: <description>` on parse error before returning nullopt).
+- P1-8 (`ui::tool_ok` / `tool_missing_critical` / `tool_missing_optional` helpers; `check.cpp` routes through them and the per-result branching moved to a local `render_probe` helper).
+
+### Open
+
 - Real registry verbs (deferred to Phase 4).
-- `toml::parse_error` line/column surfacing (P1-7).
-- `check.cpp` mixing `std::cout` with `ui::*` (P1-8).
+- Phase 2 — toolchain manager.
 
 ---
 

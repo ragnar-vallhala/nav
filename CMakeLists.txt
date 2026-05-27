@@ -41,6 +41,7 @@ add_library(nav_core STATIC
     src/core/config.cpp
     src/core/project_name.cpp
     src/core/board.cpp
+    src/core/serial.cpp
     src/core/commands/create.cpp
     src/core/commands/build.cpp
     src/core/commands/upload.cpp

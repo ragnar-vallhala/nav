@@ -18,6 +18,7 @@ add_executable(nav_tests
     test_execution_context.cpp
     test_ui.cpp
     test_board.cpp
+    test_serial.cpp
 )
 
 target_include_directories(nav_tests PRIVATE

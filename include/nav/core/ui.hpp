@@ -96,4 +96,21 @@ inline void step(const std::string& verb, const std::string& item) {
     std::cout << MAGENTA() << BOLD() << " => " << RESET() << BOLD() << verb << " " << RESET() << item << std::endl;
 }
 
+// Per-tool result lines. Consolidated here so the toolchain probe output
+// (`nav check`) keeps a single rendering path and respects color gating.
+inline void tool_ok(const std::string& name, const std::string& detail) {
+    std::cout << "  " << GREEN() << "✔ " << RESET() << BOLD() << name << RESET()
+              << " -> " << detail << "\n";
+}
+
+inline void tool_missing_critical(const std::string& name) {
+    std::cout << "  " << RED() << "✖ " << RESET() << BOLD() << name << RESET()
+              << " -> " << RED() << "NOT FOUND (CRITICAL)" << RESET() << "\n";
+}
+
+inline void tool_missing_optional(const std::string& name) {
+    std::cout << "  " << YELLOW() << "⚠ " << RESET() << BOLD() << name << RESET()
+              << " -> Optional (Not Installed)\n";
+}
+
 } // namespace nav::core::ui

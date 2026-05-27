@@ -85,3 +85,18 @@ TEST(Config, LoadProjectConfig_ReturnsNullOptOnParseError) {
     auto cfg = nav::core::load_project_config(td.path());
     EXPECT_FALSE(cfg.has_value());
 }
+
+TEST(Config, LoadProjectConfig_ParseErrorPrintsLineColumn) {
+    TempDir td;
+    // Break on line 3.
+    write_file(td.path() / "nav.toml", "[project]\nname = \"ok\"\nthis = is = broken\n");
+
+    // Capture stderr.
+    testing::internal::CaptureStderr();
+    auto cfg = nav::core::load_project_config(td.path());
+    std::string err = testing::internal::GetCapturedStderr();
+
+    EXPECT_FALSE(cfg.has_value());
+    EXPECT_NE(err.find("nav.toml"), std::string::npos);
+    EXPECT_NE(err.find(":3"), std::string::npos); // line 3
+}

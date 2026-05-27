@@ -9,32 +9,37 @@
 
 namespace nav::core {
 
+namespace {
+
+// Returns 1 if the probe was a critical miss (for caller's failed_critical tally).
+int render_probe(const ProbeResult& res, const std::string& ok_detail) {
+    if (res.is_found) {
+        ui::tool_ok(res.tool_name, ok_detail);
+        return 0;
+    }
+    if (res.is_critical) {
+        ui::tool_missing_critical(res.tool_name);
+        return 1;
+    }
+    ui::tool_missing_optional(res.tool_name);
+    return 0;
+}
+
+} // namespace
+
 int CheckCommand::run(IExecutionContext& ctx, const std::vector<std::string>& /*args*/) {
     ToolchainManager tm;
     int failed_critical = 0;
 
     ui::step("Validating [STAGE 1]", "System Environment Dependencies");
-    auto system_reqs = tm.get_system_requirements();
-    for (const auto& req : system_reqs) {
+    for (const auto& req : tm.get_system_requirements()) {
         auto res = tm.probe_tool(ctx, req);
-        if (res.is_found) {
-            std::cout << "  " << ui::GREEN() << "✔ " << ui::RESET() << ui::BOLD()
-                      << res.tool_name << ui::RESET() << " -> Detected.\n";
-        } else if (res.is_critical) {
-            failed_critical++;
-            std::cout << "  " << ui::RED() << "✖ " << ui::RESET() << ui::BOLD()
-                      << res.tool_name << ui::RESET() << " -> "
-                      << ui::RED() << "NOT FOUND (CRITICAL)\n" << ui::RESET();
-        } else {
-            std::cout << "  " << ui::YELLOW() << "⚠ " << ui::RESET() << ui::BOLD()
-                      << res.tool_name << ui::RESET() << " -> Optional (Not Installed)\n";
-        }
+        failed_critical += render_probe(res, "Detected.");
     }
     std::cout << std::endl;
 
     ui::step("Validating [STAGE 2]", "Target Specific Hardware Dependency");
 
-    std::string board_id;
     auto root = find_project_root();
     if (!root) {
         ui::warning("No 'nav.toml' located in current scope. Project checks bypassed.");
@@ -42,35 +47,19 @@ int CheckCommand::run(IExecutionContext& ctx, const std::vector<std::string>& /*
         auto cfg = load_project_config(*root);
         if (!cfg) {
             ui::warning("Failed to parse 'nav.toml'. Project checks bypassed.");
-        } else {
-            board_id = cfg->target_board;
-        }
-
-        if (board_id.empty()) {
+        } else if (cfg->target_board.empty()) {
             ui::warning("Resolved configuration is incomplete. Unable to extract target 'board' from toml.");
         } else {
+            const std::string& board_id = cfg->target_board;
             ui::info("Context resolved! Targeting hardware configuration: [" + board_id + "]");
             auto catalog = default_catalog(root);
             auto board = catalog.find(board_id);
             if (!board) {
                 ui::warning("Board id '" + board_id + "' not in catalog. Run 'nav board list' to see available ids; project checks skipped.");
-                std::cout << std::endl;
-                return failed_critical > 0 ? 1 : 0;
-            }
-            auto project_reqs = tm.get_project_requirements(*board);
-            for (const auto& req : project_reqs) {
-                auto res = tm.probe_tool(ctx, req);
-                if (res.is_found) {
-                    std::cout << "  " << ui::GREEN() << "✔ " << ui::RESET() << ui::BOLD()
-                              << res.tool_name << ui::RESET() << " -> " << res.version_info << std::endl;
-                } else if (res.is_critical) {
-                    failed_critical++;
-                    std::cout << "  " << ui::RED() << "✖ " << ui::RESET() << ui::BOLD()
-                              << res.tool_name << ui::RESET() << " -> "
-                              << ui::RED() << "NOT FOUND (CRITICAL)\n" << ui::RESET();
-                } else {
-                    std::cout << "  " << ui::YELLOW() << "⚠ " << ui::RESET() << ui::BOLD()
-                              << res.tool_name << ui::RESET() << " -> Optional (Not Installed)\n";
+            } else {
+                for (const auto& req : tm.get_project_requirements(*board)) {
+                    auto res = tm.probe_tool(ctx, req);
+                    failed_critical += render_probe(res, res.version_info);
                 }
             }
         }
