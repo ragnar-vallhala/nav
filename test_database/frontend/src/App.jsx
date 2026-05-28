@@ -315,6 +315,7 @@ function App() {
   const [emailStatus, setEmailStatus] = useState(null);
   const [route, setRoute] = useState(() => normalizeRoute(window.location.pathname));
   const [query, setQuery] = useState('');
+  const [toolchainQuery, setToolchainQuery] = useState('');
   const [activeVendor, setActiveVendor] = useState('all');
   const [toolchainFilters, setToolchainFilters] = useState({ os: 'all', arch: 'all', board: 'all' });
   const [showToolchainFilters, setShowToolchainFilters] = useState(false);
@@ -742,14 +743,19 @@ function App() {
   }, [toolchains]);
 
   const filteredToolchainGroups = useMemo(() => {
+    const value = toolchainQuery.trim().toLowerCase();
     return toolchainGroups.filter(group => {
       if (activeVendor !== 'all' && group.vendor_kind !== activeVendor) return false;
       if (toolchainFilters.os !== 'all' && !group.artifacts.some(artifact => artifact.os === toolchainFilters.os)) return false;
       if (toolchainFilters.arch !== 'all' && !group.artifacts.some(artifact => artifact.arch === toolchainFilters.arch)) return false;
       if (toolchainFilters.board !== 'all' && !group.boards.includes(toolchainFilters.board)) return false;
+      if (value) {
+        const haystack = `${group.name} ${group.description} ${group.vendor} ${group.version} ${group.boards.join(' ')} ${group.artifacts.map(artifact => `${artifact.os}/${artifact.arch}`).join(' ')}`.toLowerCase();
+        if (!haystack.includes(value)) return false;
+      }
       return true;
     });
-  }, [toolchainGroups, activeVendor, toolchainFilters]);
+  }, [toolchainGroups, activeVendor, toolchainFilters, toolchainQuery]);
 
   const statCards = useMemo(() => [
     { label: 'Packages', value: stats?.packages ?? 0, icon: Package, detail: 'Public install targets' },
@@ -769,6 +775,8 @@ function App() {
     load,
     query,
     setQuery,
+    toolchainQuery,
+    setToolchainQuery,
     filteredPackages,
     downloadPackage,
     isAuthed,
@@ -861,6 +869,8 @@ function App() {
       {route === 'settings' && isAuthed && <AccountSettingsPage {...sharedPageProps} user={user} />}
       {route === 'admin' && user?.system_role === 'root' && <AdminPage {...sharedPageProps} />}
       {route === 'admin' && user?.system_role !== 'root' && <Page><div className="empty-state">Root administrator access is required.</div></Page>}
+      {route === 'privacy' && <LegalPage {...sharedPageProps} slug="privacy" user={user} />}
+      {route === 'terms' && <LegalPage {...sharedPageProps} slug="terms" user={user} />}
       {route === 'home' && <HomePage {...sharedPageProps} />}
       {route === 'install' && <InstallPage />}
     </main>
@@ -1167,7 +1177,9 @@ function HomePage({ stats, filteredPackages, filteredToolchainGroups, toolchainF
     ['Packages', 'packages'],
     ['Toolchains', 'toolchains'],
     ['Install CLI', 'install'],
-    ['Namespaces', 'namespaces']
+    ['Namespaces', 'namespaces'],
+    ['Privacy', 'privacy'],
+    ['Terms', 'terms']
   ];
   const socialLinks = [
     { label: 'LinkedIn', href: 'https://www.linkedin.com/company/navrobotec/posts/?feedView=all', icon: LinkedInLogo },
@@ -1332,7 +1344,7 @@ function PackagesPage({ error, notice, query, setQuery, filteredPackages, downlo
   return (
     <Page title="Packages" description="Browse public packages and install them with Nav.">
       <PageAlerts error={error} notice={notice} />
-      <Card className="section-card">
+      <section className="catalog-section">
         <div className="section-heading">
           <div>
             <h2>Registry Packages</h2>
@@ -1350,7 +1362,7 @@ function PackagesPage({ error, notice, query, setQuery, filteredPackages, downlo
           {filteredPackages.length === 0 && <div className="empty-state">No packages match this search.</div>}
         </div>
         {filteredPackages.length > 0 && <Pagination page={page} pageCount={pageCount} onPageChange={setPage} />}
-      </Card>
+      </section>
     </Page>
   );
 }
@@ -1592,6 +1604,8 @@ function ToolchainsPage({
   stats,
   activeVendor,
   setActiveVendor,
+  toolchainQuery,
+  setToolchainQuery,
   filteredToolchainGroups,
   toolchainFilters,
   setToolchainFilters,
@@ -1608,7 +1622,7 @@ function ToolchainsPage({
     .filter(artifact => artifact.os && artifact.arch)
     .map(artifact => `${artifact.os}/${artifact.arch}`))).size;
   const vendorCount = new Set(filteredToolchainGroups.map(toolchain => toolchain.vendor)).size;
-  useEffect(() => setPage(1), [activeVendor, toolchainFilters.os, toolchainFilters.arch, toolchainFilters.board]);
+  useEffect(() => setPage(1), [activeVendor, toolchainQuery, toolchainFilters.os, toolchainFilters.arch, toolchainFilters.board]);
   useEffect(() => setPage(current => Math.min(current, pageCount)), [pageCount]);
   return (
     <Page title="Toolchains">
@@ -1639,13 +1653,17 @@ function ToolchainsPage({
           <strong>{vendorCount}</strong>
         </Card>
       </section>
-      <Card className="section-card">
+      <section className="catalog-section">
         <div className="section-heading">
           <div>
             <h2>Managed Toolchains</h2>
             <p>Grouped by toolchain version, with platform artifacts and official source links.</p>
           </div>
           <div className="toolbar-actions">
+            <div className="search-box">
+              <Search size={17} />
+              <Input value={toolchainQuery} onChange={event => setToolchainQuery(event.target.value)} placeholder="Search toolchains..." />
+            </div>
             <div className="tabs">
               {['all', 'nav', 'official', 'hardware'].map(vendor => (
                 <button key={vendor} className={activeVendor === vendor ? 'active' : ''} onClick={() => setActiveVendor(vendor)}>
@@ -1706,7 +1724,7 @@ function ToolchainsPage({
           {filteredToolchainGroups.length === 0 && <div className="empty-state">No toolchains match this filter.</div>}
         </div>
         {filteredToolchainGroups.length > 0 && <Pagination page={page} pageCount={pageCount} onPageChange={setPage} />}
-      </Card>
+      </section>
     </Page>
   );
 }
@@ -2043,6 +2061,84 @@ function AdminPage({
           <Button type="submit">Publish toolchain</Button>
         </form>
       </Card>
+    </Page>
+  );
+}
+
+function LegalPage({ slug, request, user }) {
+  const [document, setDocument] = useState(null);
+  const [draft, setDraft] = useState({ title: '', body: '', effective_date: '' });
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const canEdit = user?.system_role === 'root';
+
+  useEffect(() => {
+    let alive = true;
+    setError('');
+    setNotice('');
+    request(`/legal/${slug}`)
+      .then(data => {
+        if (!alive) return;
+        const doc = data.document;
+        setDocument(doc);
+        setDraft({
+          title: doc.title || '',
+          body: doc.body || '',
+          effective_date: String(doc.effective_date || '').slice(0, 10)
+        });
+      })
+      .catch(err => {
+        if (alive) setError(err.message);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [slug]);
+
+  async function saveLegalDocument(event) {
+    event.preventDefault();
+    setError('');
+    setNotice('');
+    try {
+      const data = await request(`/legal/${slug}`, {
+        method: 'PUT',
+        body: JSON.stringify(draft)
+      });
+      setDocument(data.document);
+      setNotice(`${data.document.title} updated.`);
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  return (
+    <Page title={document?.title || (slug === 'privacy' ? 'Privacy Policy' : 'Terms of Service')} description={document ? `Effective ${formatDate(document.effective_date)} - updated ${formatDate(document.updated_at)}` : ''}>
+      <PageAlerts error={error} notice={notice} />
+      <div className="legal-layout">
+        <Card className="section-card legal-document">
+          {renderLegalBody(document?.body || 'Loading document...')}
+        </Card>
+        {canEdit && (
+          <Card className="section-card legal-editor">
+            <h2>Edit document</h2>
+            <form className="stack-form" onSubmit={saveLegalDocument}>
+              <Label>
+                Title
+                <Input value={draft.title} onChange={event => setDraft({ ...draft, title: event.target.value })} />
+              </Label>
+              <Label>
+                Effective date
+                <Input type="date" value={draft.effective_date} onChange={event => setDraft({ ...draft, effective_date: event.target.value })} />
+              </Label>
+              <Label>
+                Body
+                <Textarea value={draft.body} onChange={event => setDraft({ ...draft, body: event.target.value })} rows={16} />
+              </Label>
+              <Button type="submit">Save document</Button>
+            </form>
+          </Card>
+        )}
+      </div>
     </Page>
   );
 }
@@ -2385,6 +2481,8 @@ function groupToolchains(toolchains) {
 function normalizeRoute(pathname) {
   if (pathname.includes('signup')) return 'signup';
   if (pathname.includes('login')) return 'login';
+  if (pathname.includes('privacy')) return 'privacy';
+  if (pathname.includes('terms')) return 'terms';
   if (pathname.includes('verify-email')) return 'verify-email';
   if (pathname.includes('forgot-password')) return 'forgot-password';
   if (pathname.includes('reset-password')) return 'reset-password';
@@ -2409,6 +2507,8 @@ function normalizeRoute(pathname) {
 function routeToPath(route) {
   if (route === 'home') return '/';
   if (route === 'install') return '/install';
+  if (route === 'privacy') return '/privacy';
+  if (route === 'terms') return '/terms';
   if (route === 'settings') return '/settings';
   if (route === 'verify-email') return '/verify-email';
   if (route === 'forgot-password') return '/forgot-password';
@@ -2445,6 +2545,28 @@ function formatBytes(value) {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function formatDate(value) {
+  if (!value) return 'not set';
+  return new Date(value).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+function renderLegalBody(body) {
+  const blocks = String(body || '').split(/\n{2,}/).filter(Boolean);
+  return blocks.map((block, index) => {
+    if (block.startsWith('# ')) return <h2 key={index}>{block.replace(/^#\s+/, '')}</h2>;
+    if (block.startsWith('## ')) return <h3 key={index}>{block.replace(/^##\s+/, '')}</h3>;
+    const lines = block.split('\n').filter(Boolean);
+    if (lines.every(line => line.trim().startsWith('- '))) {
+      return (
+        <ul key={index}>
+          {lines.map(line => <li key={line}>{line.trim().replace(/^-\s+/, '')}</li>)}
+        </ul>
+      );
+    }
+    return <p key={index}>{lines.join(' ')}</p>;
+  });
 }
 
 async function sha256Hex(arrayBuffer) {

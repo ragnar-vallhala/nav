@@ -724,6 +724,40 @@ code {
   font-size: 13px;
 }
 
+.legal-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 460px);
+  gap: 16px;
+  align-items: start;
+}
+
+.legal-document {
+  gap: 14px;
+}
+
+.legal-document h2 {
+  font-size: 28px;
+}
+
+.legal-document h3 {
+  font-size: 20px;
+}
+
+.legal-document p,
+.legal-document li {
+  color: var(--muted-foreground);
+  line-height: 1.7;
+}
+
+.legal-document ul {
+  padding-left: 20px;
+}
+
+.legal-editor {
+  position: sticky;
+  top: 96px;
+}
+
 .install-card .command-line code {
   min-height: 42px;
   padding-block: 12px;
@@ -750,6 +784,11 @@ code {
 .maintainer-console {
   display: grid;
   gap: 16px;
+}
+
+.catalog-section {
+  display: grid;
+  gap: 18px;
 }
 
 .settings-layout,
@@ -1179,6 +1218,10 @@ code {
   gap: 12px;
 }
 
+.catalog-section > .section-heading {
+  margin-bottom: 2px;
+}
+
 .version-list {
   display: grid;
   gap: 12px;
@@ -1563,7 +1606,8 @@ code {
   .stats-grid,
   .home-metrics,
   .toolchain-grid,
-  .console-grid {
+  .console-grid,
+  .legal-layout {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -1680,6 +1724,20 @@ code {
   .filter-panel,
   .oauth-row {
     grid-template-columns: 1fr;
+  }
+
+  .toolbar-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .toolbar-actions .search-box {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .legal-editor {
+    position: static;
   }
 
   .install-card {

@@ -47,6 +47,16 @@ CREATE TABLE IF NOT EXISTS auth_otps (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS legal_documents (
+    slug TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    body TEXT NOT NULL,
+    effective_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    updated_by UUID REFERENCES users(id),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS namespaces (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT UNIQUE NOT NULL,
