@@ -1159,7 +1159,7 @@ function HomePage({ stats, filteredPackages, filteredToolchainGroups, toolchainF
     },
     {
       title: 'Reusable embedded modules',
-      eyebrow: 'npm-style dependency graph',
+      eyebrow: 'Nav-style dependency graph',
       copy: 'Publish HAL modules, board packages, drivers, and firmware helpers once. Projects consume them through Nav and keep dependency metadata in the project manifest.',
       bullets: ['Module packages with ABI metadata', 'Dependency resolution across nested packages', 'Changelogs and immutable versions'],
       icon: Package,
@@ -1195,7 +1195,7 @@ function HomePage({ stats, filteredPackages, filteredToolchainGroups, toolchainF
       <section className="home-hero">
         <div className="home-hero-copy">
           <p className="hero-kicker">Nav Registry</p>
-          <h1>npm for embedded systems.</h1>
+          <h1>Nav for embedded systems.</h1>
           <p>
             Install hardware packages, board support, compilers, uploaders, and reusable firmware modules from one registry.
           </p>

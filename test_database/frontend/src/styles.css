@@ -518,12 +518,12 @@ code {
   top: 84px;
   z-index: calc(var(--stack-index) + 1);
   display: grid;
-  grid-template-columns: minmax(0, 0.9fr) minmax(320px, 1fr);
-  gap: 32px;
+  grid-template-columns: minmax(0, 0.72fr) minmax(520px, 1.35fr);
+  gap: 24px;
   align-items: start;
   min-height: calc(100vh - 104px);
   margin-bottom: 92px;
-  padding: 44px 30px 30px;
+  padding: 44px 20px 30px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--background);
@@ -557,7 +557,7 @@ code {
 
 .feature-copy h2 {
   max-width: 720px;
-  font-size: 42px;
+  font-size: 40px;
   line-height: 1.1;
 }
 
