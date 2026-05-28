@@ -1146,7 +1146,8 @@ function HomePage({ stats, filteredPackages, filteredToolchainGroups, toolchainF
       copy: 'Nav gives embedded teams the same flow developers expect from modern package managers: set up a project, add modules, build, upload, and monitor from the terminal.',
       bullets: ['nav setup initializes the project', 'nav add resolves packages and tools', 'nav build and nav run use the project target'],
       icon: Activity,
-      videoTitle: 'CLI install and build demo'
+      videoTitle: 'CLI install and build demo',
+      videoSrc: '/card%201.mp4'
     },
     {
       title: 'Toolchains managed by the registry',
@@ -1243,11 +1244,24 @@ function HomePage({ stats, filteredPackages, filteredToolchainGroups, toolchainF
                 </ul>
               </div>
               <Card className="feature-video-card">
-                <div className="video-placeholder">
-                  <span className="play-mark" aria-hidden="true" />
-                  <strong>{feature.videoTitle}</strong>
-                  <p>Video slot {index + 1}</p>
-                </div>
+                {feature.videoSrc ? (
+                  <video
+                    className="feature-video"
+                    src={feature.videoSrc}
+                    preload="auto"
+                    autoPlay
+                    muted
+                    loop
+                    playsInline
+                    aria-label={feature.videoTitle}
+                  />
+                ) : (
+                  <div className="video-placeholder">
+                    <span className="play-mark" aria-hidden="true" />
+                    <strong>{feature.videoTitle}</strong>
+                    <p>Video slot {index + 1}</p>
+                  </div>
+                )}
               </Card>
             </article>
           );
