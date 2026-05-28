@@ -21,6 +21,8 @@ add_executable(nav_tests
     test_serial.cpp
     test_semver.cpp
     test_index.cpp
+    test_lockfile.cpp
+    test_resolver.cpp
 )
 
 target_include_directories(nav_tests PRIVATE

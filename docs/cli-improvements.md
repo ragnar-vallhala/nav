@@ -67,6 +67,18 @@ The pure-logic layer of Phase 2. No HTTP, no cache, no verbs hooked up yet. What
 
 Tests: +30 (semver parse/compare/match across SemVer §11 examples, index JSON round-trip for library + toolchain kinds, malformed-JSON rejection, sharded path computation, fetch-success / fetch-missing / wrong-shard).
 
+### Phase 2.2 — resolver + lockfile
+
+Builds on 2.1's semver + index. Still no HTTP / cache / verbs; this is the resolution engine and its serialized output.
+
+- `include/nav/core/lockfile.hpp` + `src/core/lockfile.cpp` — `LockedPackage` (name, version, kind, source, per-download `checksums` map, `dependencies` as `name@version` refs) and `Lockfile`. `load_lockfile` / `save_lockfile` / `render_lockfile` via `nlohmann/json`. Output is sorted (packages by name, deps sorted) for stable diffs.
+- `include/nav/core/resolver.hpp` + `src/core/resolver.cpp` — `Resolver` over `IIndexClient`. **Strategy: fixed-point constraint accumulation**, not a naive greedy walk. Each pass rebuilds the per-package constraint set from the roots plus the deps of currently-resolved versions, then picks the highest version satisfying *all* constraints on each package. Rebuilding from scratch each pass discards stale constraints from versions we've moved away from. This resolves diamond dependencies with compatible-but-narrowing constraints correctly (e.g. `^1.0.0` + `=1.2.0` → `1.2.0`) without a SAT solver; genuine conflicts (no version satisfies all) are reported as `NoMatchingVersion` rather than backtracked. Cycles terminate via the fixed-point convergence check. Errors: `PackageNotFound`, `NoMatchingVersion`, `DidNotConverge` (iteration-bound safety net).
+- `to_lockfile(ResolveResult, source)` bridges a successful resolution into a `Lockfile`, recording each dependency as a concrete `name@version` reference.
+
+Tests: +16 (lockfile round-trip, render stability, malformed/missing handling; resolver single/linear/diamond/narrowing/conflict/missing/cycle/no-match + lockfile graph capture). 88 total.
+
+Known limitation: the constraint-accumulation approach is not a complete solver. It handles linear chains, diamonds, and narrowing constraints, but a graph that requires *backtracking* (picking a non-latest version of package X so that an unrelated constraint elsewhere becomes satisfiable) will report a conflict rather than find the solution. That's the documented Phase 2 trade-off; a SAT-style solver is deferred.
+
 ### Data-format policy (effective Phase 2.1 onward)
 
 Nav's data-format surface is **JSON and YAML only** going forward. Drivers for the choice:
