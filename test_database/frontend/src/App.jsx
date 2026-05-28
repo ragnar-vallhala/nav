@@ -24,6 +24,7 @@ import {
   Mail,
   Monitor,
   Package,
+  Pencil,
   RefreshCcw,
   Search,
   ShieldCheck,
@@ -1265,7 +1266,7 @@ function HomePage({ stats, filteredPackages, filteredToolchainGroups, toolchainF
           <div className="footer-columns">
             <div className="footer-column">
               <strong>Registry</strong>
-              <nav aria-label="Footer registry navigation">
+              <nav className="footer-link-grid" aria-label="Footer registry navigation">
                 {footerLinks.map(([label, target]) => (
                   <button key={label} onClick={() => navigate(target)}>{label}</button>
                 ))}
@@ -2070,6 +2071,7 @@ function LegalPage({ slug, request, user }) {
   const [draft, setDraft] = useState({ title: '', body: '', effective_date: '' });
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [editOpen, setEditOpen] = useState(false);
   const canEdit = user?.system_role === 'root';
 
   useEffect(() => {
@@ -2105,6 +2107,12 @@ function LegalPage({ slug, request, user }) {
         body: JSON.stringify(draft)
       });
       setDocument(data.document);
+      setDraft({
+        title: data.document.title || '',
+        body: data.document.body || '',
+        effective_date: String(data.document.effective_date || '').slice(0, 10)
+      });
+      setEditOpen(false);
       setNotice(`${data.document.title} updated.`);
     } catch (err) {
       setError(err.message);
@@ -2112,44 +2120,69 @@ function LegalPage({ slug, request, user }) {
   }
 
   return (
-    <Page title={document?.title || (slug === 'privacy' ? 'Privacy Policy' : 'Terms of Service')} description={document ? `Effective ${formatDate(document.effective_date)} - updated ${formatDate(document.updated_at)}` : ''}>
+    <Page
+      title={document?.title || (slug === 'privacy' ? 'Privacy Policy' : 'Terms of Service')}
+      description={document ? `Effective ${formatDate(document.effective_date)} - updated ${formatDate(document.updated_at)}` : ''}
+      actions={canEdit ? (
+        <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
+          <Pencil size={15} />
+          Edit
+        </Button>
+      ) : null}
+    >
       <PageAlerts error={error} notice={notice} />
       <div className="legal-layout">
         <Card className="section-card legal-document">
           {renderLegalBody(document?.body || 'Loading document...')}
         </Card>
-        {canEdit && (
-          <Card className="section-card legal-editor">
-            <h2>Edit document</h2>
-            <form className="stack-form" onSubmit={saveLegalDocument}>
-              <Label>
-                Title
-                <Input value={draft.title} onChange={event => setDraft({ ...draft, title: event.target.value })} />
-              </Label>
-              <Label>
-                Effective date
-                <Input type="date" value={draft.effective_date} onChange={event => setDraft({ ...draft, effective_date: event.target.value })} />
-              </Label>
-              <Label>
-                Body
-                <Textarea value={draft.body} onChange={event => setDraft({ ...draft, body: event.target.value })} rows={16} />
-              </Label>
-              <Button type="submit">Save document</Button>
-            </form>
-          </Card>
+        {canEdit && editOpen && (
+          <div className="modal-backdrop" role="presentation" onMouseDown={() => setEditOpen(false)}>
+            <Card className="section-card legal-editor modal-card" role="dialog" aria-modal="true" aria-label={`Edit ${document?.title || 'document'}`} onMouseDown={event => event.stopPropagation()}>
+              <div className="modal-heading">
+                <div>
+                  <h2>Edit document</h2>
+                  <p>{document?.title || 'Legal document'}</p>
+                </div>
+                <Button variant="ghost" size="sm" type="button" onClick={() => setEditOpen(false)}>
+                  <X size={16} />
+                </Button>
+              </div>
+              <form className="stack-form" onSubmit={saveLegalDocument}>
+                <Label>
+                  Title
+                  <Input value={draft.title} onChange={event => setDraft({ ...draft, title: event.target.value })} />
+                </Label>
+                <Label>
+                  Effective date
+                  <Input type="date" value={draft.effective_date} onChange={event => setDraft({ ...draft, effective_date: event.target.value })} />
+                </Label>
+                <Label>
+                  Body
+                  <Textarea value={draft.body} onChange={event => setDraft({ ...draft, body: event.target.value })} rows={16} />
+                </Label>
+                <div className="button-row">
+                  <Button type="submit">Save document</Button>
+                  <Button type="button" variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
+                </div>
+              </form>
+            </Card>
+          </div>
         )}
       </div>
     </Page>
   );
 }
 
-function Page({ title, description, children, className = '' }) {
+function Page({ title, description, actions = null, children, className = '' }) {
   return (
     <section className={cn('page', className)}>
       {title && (
         <header className="page-header">
-          <h1>{title}</h1>
-          {description && <p>{description}</p>}
+          <div>
+            <h1>{title}</h1>
+            {description && <p>{description}</p>}
+          </div>
+          {actions && <div className="page-actions">{actions}</div>}
         </header>
       )}
       <div className="page-content">{children}</div>
