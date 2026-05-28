@@ -22,6 +22,7 @@ import {
   KeyRound,
   LockKeyhole,
   Mail,
+  Menu,
   Monitor,
   Package,
   Pencil,
@@ -879,6 +880,7 @@ function App() {
 }
 
 function Header({ route, navigate, isAuthed, user, logout, theme, setTheme }) {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const links = [
     ['home', 'Registry'],
     ['install', 'Install'],
@@ -887,6 +889,17 @@ function Header({ route, navigate, isAuthed, user, logout, theme, setTheme }) {
   ];
   if (isAuthed) links.push(['namespaces', 'Namespaces'], ['settings', 'Settings']);
   if (user?.system_role === 'root') links.push(['admin', 'Admin']);
+
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [route, isAuthed]);
+
+  const goTo = (key) => {
+    setMobileMenuOpen(false);
+    navigate(key);
+  };
+
+  const toggleTheme = () => setTheme(theme === 'dark' ? 'light' : 'dark');
 
   return (
     <header className="site-header">
@@ -904,7 +917,7 @@ function Header({ route, navigate, isAuthed, user, logout, theme, setTheme }) {
         ))}
       </nav>
       <div className="header-actions">
-        <Button variant="outline" size="sm" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
+        <Button variant="outline" size="sm" onClick={toggleTheme}>
           {theme === 'dark' ? 'Light' : 'Dark'}
         </Button>
         {isAuthed ? (
@@ -922,6 +935,56 @@ function Header({ route, navigate, isAuthed, user, logout, theme, setTheme }) {
           </>
         )}
       </div>
+      <button
+        className="mobile-menu-button"
+        type="button"
+        aria-label="Open navigation menu"
+        aria-expanded={mobileMenuOpen}
+        onClick={() => setMobileMenuOpen(true)}
+      >
+        <Menu size={22} />
+      </button>
+      {mobileMenuOpen && (
+        <div className="mobile-menu-layer" role="presentation" onClick={() => setMobileMenuOpen(false)}>
+          <aside className="mobile-menu-panel" role="dialog" aria-modal="true" aria-label="Navigation menu" onClick={(event) => event.stopPropagation()}>
+            <div className="mobile-menu-head">
+              <button className="brand-button" onClick={() => goTo('home')}>
+                <BrandMark />
+                <span><strong>Nav</strong></span>
+              </button>
+              <button className="mobile-menu-close" type="button" aria-label="Close navigation menu" onClick={() => setMobileMenuOpen(false)}>
+                <X size={22} />
+              </button>
+            </div>
+            <nav className="mobile-menu-nav">
+              {links.map(([key, label]) => (
+                <button key={key} className={routeKey(route) === key ? 'active' : ''} onClick={() => goTo(key)}>
+                  {label}
+                </button>
+              ))}
+            </nav>
+            <div className="mobile-menu-actions">
+              <Button variant="outline" size="sm" onClick={toggleTheme}>
+                {theme === 'dark' ? 'Light' : 'Dark'}
+              </Button>
+              {isAuthed ? (
+                <>
+                  <div className="user-pill">
+                    <KeyRound size={15} />
+                    <span>{user?.name || 'Signed in'}</span>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={() => { setMobileMenuOpen(false); logout(); }}>Sign out</Button>
+                </>
+              ) : (
+                <>
+                  <Button variant="ghost" size="sm" onClick={() => goTo('login')}>Log in</Button>
+                  <Button size="sm" onClick={() => goTo('signup')}>Sign up</Button>
+                </>
+              )}
+            </div>
+          </aside>
+        </div>
+      )}
     </header>
   );
 }

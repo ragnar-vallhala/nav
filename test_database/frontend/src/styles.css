@@ -184,6 +184,81 @@ code {
   justify-content: end;
 }
 
+.mobile-menu-button,
+.mobile-menu-layer {
+  display: none;
+}
+
+.mobile-menu-button,
+.mobile-menu-close {
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border: 1px solid var(--border);
+  background: var(--background);
+  color: var(--foreground);
+}
+
+.mobile-menu-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  justify-content: flex-end;
+  background: rgb(0 0 0 / 0.52);
+}
+
+.mobile-menu-panel {
+  width: min(84vw, 340px);
+  height: 100%;
+  border-left: 1px solid var(--border);
+  background: var(--background);
+  padding: 18px;
+  overflow-y: auto;
+  animation: mobileMenuIn 160ms ease-out;
+}
+
+.mobile-menu-head,
+.mobile-menu-actions,
+.mobile-menu-nav {
+  display: grid;
+  gap: 10px;
+}
+
+.mobile-menu-head {
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  margin-bottom: 22px;
+}
+
+.mobile-menu-nav button {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--muted-foreground);
+  padding: 12px;
+  text-align: left;
+}
+
+.mobile-menu-nav button.active,
+.mobile-menu-nav button:hover {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+
+.mobile-menu-actions {
+  margin-top: 24px;
+}
+
+@keyframes mobileMenuIn {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
 .user-pill {
   display: inline-flex;
   align-items: center;
@@ -1660,7 +1735,6 @@ code {
 }
 
 @media (max-width: 1000px) {
-  .site-header,
   .settings-layout,
   .repo-layout,
   .auth-page {
@@ -1717,10 +1791,35 @@ code {
 }
 
 @media (max-width: 720px) {
-  .site-header,
   .page,
   .auth-page {
     padding: 18px;
+  }
+
+  .site-header {
+    grid-template-columns: auto 1fr auto;
+    gap: 12px;
+    min-height: 58px;
+    padding: 0 18px;
+  }
+
+  .site-header > .brand-button {
+    grid-column: 1;
+  }
+
+  .site-header > .main-nav,
+  .site-header > .header-actions {
+    display: none;
+  }
+
+  .mobile-menu-button {
+    display: inline-flex;
+    grid-column: 3;
+    justify-self: end;
+  }
+
+  .mobile-menu-layer {
+    display: flex;
   }
 
   .section-heading,
