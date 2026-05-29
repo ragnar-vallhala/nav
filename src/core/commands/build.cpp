@@ -1,6 +1,12 @@
 #include "nav/core/board.hpp"
+#include "nav/core/cache.hpp"
 #include "nav/core/command.hpp"
 #include "nav/core/config.hpp"
+#include "nav/core/deps.hpp"
+#include "nav/core/http_index.hpp"
+#include "nav/core/install.hpp"
+#include "nav/core/lockfile.hpp"
+#include "nav/core/platform.hpp"
 #include "nav/core/ui.hpp"
 
 #include <filesystem>
@@ -47,6 +53,28 @@ int BuildCommand::run(IExecutionContext& ctx, const std::vector<std::string>& /*
         return 1;
     }
     ui::info("Resolved board: " + board->id + " (" + board->arch + ")");
+
+    // Registry dependencies: ensure everything pinned in nav.lock is cached,
+    // then emit build/nav-deps.cmake so the generated CMake picks up library
+    // include/link inputs and any registry-provided toolchain compiler.
+    if (auto lock = load_lockfile(*root / "nav.lock")) {
+        const std::string platform = host_platform_key(ctx);
+        if (!lock->packages.empty()) {
+            ui::step("Dependencies", "Ensuring locked packages are cached...");
+            auto outcomes = ensure_locked_present(ctx, cache_root(), default_registry_url(),
+                                                  *lock, "", /*skip_cached=*/true, platform);
+            report_ensure_outcomes(outcomes);
+            if (!all_present(outcomes)) {
+                ui::error("Missing dependencies. Run 'nav fetch' once the registry is reachable.");
+                return 1;
+            }
+        }
+        const fs::path deps_cmake = fs::path("build") / "nav-deps.cmake";
+        if (!write_deps_cmake(*lock, cache_root(), platform, board->compiler, deps_cmake)) {
+            ui::error("Failed to write " + deps_cmake.string() + ".");
+            return 1;
+        }
+    }
 
     ui::step("Configuring", "Initializing dynamic build system generator (CMake)...");
     auto conf_res = ctx.execute({"cmake", "-S", ".", "-B", "build"});

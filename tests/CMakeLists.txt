@@ -27,6 +27,7 @@ add_executable(nav_tests
     test_platform.cpp
     test_cache.cpp
     test_fetch.cpp
+    test_deps.cpp
 )
 
 target_include_directories(nav_tests PRIVATE

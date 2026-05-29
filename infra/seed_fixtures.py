@@ -81,14 +81,18 @@ def sha256_file(path):
 
 
 def lib_members(name, version, extra=None):
+    # Flat package layout (the Nav contract): include/, lib/, bin/ sit at the
+    # root of the extracted package dir — no <name>-<version>/ wrapper. This is
+    # what build's nav-deps.cmake generation assumes.
+    guard = name.upper().replace('-', '_')
     m = [
-        (f"{name}-{version}/include/{name}.h",
-         f"#ifndef {name.upper().replace('-', '_')}_H\n"
-         f"#define {name.upper().replace('-', '_')}_H\n"
-         f"#define {name.upper().replace('-', '_')}_VERSION \"{version}\"\n"
+        (f"include/{name}.h",
+         f"#ifndef {guard}_H\n"
+         f"#define {guard}_H\n"
+         f"#define {guard}_VERSION \"{version}\"\n"
          f"#endif\n"),
-        (f"{name}-{version}/LICENSE", "MIT\n"),
-        (f"{name}-{version}/nav-package.json",
+        ("LICENSE", "MIT\n"),
+        ("nav-package.json",
          json.dumps({"name": name, "version": version, "kind": "library"}, indent=2) + "\n"),
     ]
     if extra:

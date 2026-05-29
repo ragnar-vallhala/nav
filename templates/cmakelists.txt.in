@@ -19,6 +19,23 @@ if(NAV_BOARD_COMPILER)
     set(CMAKE_OBJCOPY     ${NAV_TOOLCHAIN_PREFIX}objcopy)
     set(CMAKE_BINARY_SIZE ${NAV_TOOLCHAIN_PREFIX}size)
 endif()
+
+# Nav-resolved registry dependencies (libraries + toolchain) from nav.lock.
+# Included before project() so a registry-provided compiler takes effect for
+# CMake's compiler-detection probe.
+if(EXISTS "${CMAKE_BINARY_DIR}/nav-deps.cmake")
+    include("${CMAKE_BINARY_DIR}/nav-deps.cmake")
+endif()
+
+# A registry toolchain (e.g. `nav add arm-none-eabi-gcc`) overrides the board's
+# bare compiler name with a concrete cached path.
+if(NAV_DEPS_COMPILER)
+    set(CMAKE_C_COMPILER   ${NAV_DEPS_COMPILER})
+    set(CMAKE_ASM_COMPILER ${NAV_DEPS_COMPILER})
+    string(REGEX REPLACE "gcc$" "" NAV_TOOLCHAIN_PREFIX "${NAV_DEPS_COMPILER}")
+    set(CMAKE_OBJCOPY     ${NAV_TOOLCHAIN_PREFIX}objcopy)
+    set(CMAKE_BINARY_SIZE ${NAV_TOOLCHAIN_PREFIX}size)
+endif()
 set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
 
 project({{PROJECT_NAME}} C CXX ASM)
@@ -73,6 +90,18 @@ target_include_directories(${PROJECT_NAME} PUBLIC
     include
     extern/NavHAL/include
 )
+
+# 8a. Registry library inputs (from nav-deps.cmake): headers, archive search
+#     dirs, and the resolved static archives themselves.
+if(NAV_DEPS_INCLUDE_DIRS)
+    target_include_directories(${PROJECT_NAME} PUBLIC ${NAV_DEPS_INCLUDE_DIRS})
+endif()
+if(NAV_DEPS_LINK_DIRS)
+    target_link_directories(${PROJECT_NAME} PRIVATE ${NAV_DEPS_LINK_DIRS})
+endif()
+if(NAV_DEPS_LIBRARIES)
+    target_link_libraries(${PROJECT_NAME} PRIVATE ${NAV_DEPS_LIBRARIES})
+endif()
 
 # 9. Flash target support. Prefer Nav-resolved flasher; fall back to NavHAL's
 #    BOARD-derived FLASHER / FLASH_ADDRESS when the catalog leaves them blank.

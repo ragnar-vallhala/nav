@@ -139,9 +139,49 @@ wiping the cache + `nav fetch` reproduced all three from the lock; a tampered
 MinIO artifact was rejected with a checksum mismatch (non-zero exit, nothing
 installed) and recovered cleanly once the good artifact was restored.
 
-Still open in Phase 2.3: build wiring (`nav-deps.cmake` for library include/link
-dirs, toolchain compiler-path override into `nav-board.cmake`); `nav remove`;
-`nav update` re-resolve. Known rough edge: `nav add`'s `nav.toml` round-trip via
+### Phase 2.3 (cont.) — build wiring: nav-deps.cmake + toolchain override
+
+`nav build` now consumes the cache. Packages are flat — `include/`, `lib/`,
+`bin/` sit at the root of each cache dir (the Nav package-layout contract; the
+fixtures in `infra/seed_fixtures.py` follow it).
+
+- `include/nav/core/deps.hpp` + `src/core/deps.cpp` — `locked_cache_dir` (maps a
+  `LockedPackage` to its content-addressed cache dir via the right checksum key:
+  `source` for libraries, host platform for toolchains) and `render_deps_cmake`,
+  which walks the installed packages and emits `NAV_DEPS_INCLUDE_DIRS`
+  (`<pkg>/include`), `NAV_DEPS_LINK_DIRS` + `NAV_DEPS_LIBRARIES` (`<pkg>/lib/*.a`),
+  and `NAV_DEPS_COMPILER` (`<toolchain>/bin/<board compiler>`). Packages absent
+  from the cache are skipped.
+- `include/nav/core/install.hpp` + `src/core/install.cpp` — `ensure_locked_present`:
+  the reusable "make the lock real in the cache" routine. Re-reads the index per
+  package for its URL, refuses a registry checksum that diverges from the lock,
+  fetches the missing. `skip_cached=true` (build) takes an offline warm-cache
+  fast path — installed packages need no registry round-trip; `skip_cached=false`
+  (`nav fetch`) re-validates every package against the index. `nav fetch` is now
+  a thin wrapper over it.
+- `src/core/commands/build.cpp` — after writing `nav-board.cmake`, loads
+  `nav.lock`, ensures the closure is cached (fails with a "run nav fetch" hint if
+  the registry is unreachable and something is missing), and writes
+  `build/nav-deps.cmake`.
+- `templates/cmakelists.txt.in` — includes `nav-deps.cmake` before `project()`;
+  `NAV_DEPS_COMPILER` overrides the board's bare compiler with the cached path
+  (objcopy/size derived from it by the existing prefix regex); library
+  include/link inputs applied to the target after creation.
+
+Tests: +7 (`locked_cache_dir` key selection; `render_deps_cmake` include dirs /
+archives+link dir / toolchain compiler / cache-absent skip). 122 total pass.
+
+Verified live (containerized registry): with `board = nucleo_f401re` and
+`nav add nav-hal` + `nav add arm-none-eabi-gcc@13.2.0`, wiping the cache and
+running `nav build` re-fetched the closure and wrote a `build/nav-deps.cmake`
+whose include dirs and `NAV_DEPS_COMPILER` point into the cache; a `cmake -P`
+include of that file confirmed it is valid CMake and that the derived
+objcopy/size resolve to real cached binaries.
+
+Still open in Phase 2.3: `nav remove`; `nav update` re-resolve; an end-to-end
+firmware compile of a real NavHAL project through the cached toolchain (the
+generated CMake is verified valid, but a full cross-compile needs a scaffolded
+NavHAL project in CI). Known rough edge: `nav add`'s `nav.toml` round-trip via
 toml++ drops comments and reorders keys — goes away when `nav.toml` migrates to
 YAML.
 

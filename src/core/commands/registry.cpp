@@ -6,6 +6,7 @@
 #include "nav/core/config.hpp"
 #include "nav/core/fetch.hpp"
 #include "nav/core/http_index.hpp"
+#include "nav/core/install.hpp"
 #include "nav/core/lockfile.hpp"
 #include "nav/core/platform.hpp"
 #include "nav/core/resolver.hpp"
@@ -81,18 +82,6 @@ bool upsert_dependency(const fs::path& nav_toml, const std::string& name, const 
     if (!out) return false;
     out << tbl << "\n";
     return out.good();
-}
-
-// Case-insensitive hex digest comparison.
-bool hex_equal(const std::string& a, const std::string& b) {
-    if (a.size() != b.size()) return false;
-    for (std::size_t i = 0; i < a.size(); ++i) {
-        if (std::tolower(static_cast<unsigned char>(a[i])) !=
-            std::tolower(static_cast<unsigned char>(b[i]))) {
-            return false;
-        }
-    }
-    return true;
 }
 
 // Download + verify + extract a set of packages into the shared cache, printing
@@ -248,63 +237,25 @@ int FetchCommand::run(IExecutionContext& ctx, const std::vector<std::string>& ar
     }
 
     const std::string only = args.empty() ? "" : args[0];
-
-    // The lockfile pins versions + checksums but not URLs (URLs aren't lock
-    // material — they can change without affecting reproducibility). Re-read the
-    // index for each locked package to recover the download URL for its pinned
-    // version, then cross-check the index's checksum against the lock so a
-    // mutated registry artifact is refused rather than silently fetched.
-    HttpIndexClient index(default_registry_url(), ctx);
-    const std::string platform = host_platform_key(ctx);
-
-    std::vector<FetchRequest> reqs;
-    for (const auto& lp : lock->packages) {
-        if (!only.empty() && lp.name != only) continue;
-
-        auto pkg = index.fetch(lp.name);
-        if (!pkg) {
-            ui::error("Registry has no index entry for '" + lp.name + "' ("
-                      + default_registry_url() + "). Is it running?");
-            return 1;
-        }
-
-        const std::string want = to_string(lp.version);
-        const IndexVersion* match = nullptr;
-        for (const auto& v : pkg->versions) {
-            if (to_string(v.version) == want) { match = &v; break; }
-        }
-        if (!match) {
-            ui::error("Registry no longer lists " + lp.name + " " + want
-                      + " (pinned in nav.lock).");
-            return 1;
-        }
-
-        // Refuse if the registry's checksum for the host's artifact diverges
-        // from what the lock recorded.
-        if (auto sel = select_download(match->downloads, match->kind, platform)) {
-            auto locked = lp.checksums.find(sel->first);
-            if (locked != lp.checksums.end() && !hex_equal(locked->second, sel->second.sha256)) {
-                ui::error(lp.name + " " + want + ": registry checksum for '" + sel->first
-                          + "' differs from nav.lock — refusing to fetch.");
-                return 1;
-            }
-        }
-
-        reqs.push_back(FetchRequest{lp.name, want, match->kind, platform, match->downloads});
-    }
-
-    if (!only.empty() && reqs.empty()) {
+    if (!only.empty() && !lock->find(only)) {
         ui::error("'" + only + "' is not present in nav.lock.");
         return 1;
     }
-    if (reqs.empty()) {
+    if (lock->packages.empty()) {
         ui::info("nav.lock has no packages to fetch.");
         return 0;
     }
 
-    ui::step("Fetching", "Downloading " + std::to_string(reqs.size())
-             + " package(s) into " + cache_root().string() + " ...");
-    if (!fetch_into_cache(ctx, reqs)) {
+    // Re-read the index per locked package to recover its download URL, refuse
+    // any registry checksum that diverges from the lock, then download+verify+
+    // extract. skip_cached=false so already-cached packages are re-validated.
+    const std::string platform = host_platform_key(ctx);
+    ui::step("Fetching", "Reconciling nav.lock against " + default_registry_url()
+             + " into " + cache_root().string() + " ...");
+    auto outcomes = ensure_locked_present(ctx, cache_root(), default_registry_url(),
+                                          *lock, only, /*skip_cached=*/false, platform);
+    report_ensure_outcomes(outcomes);
+    if (!all_present(outcomes)) {
         ui::error("One or more packages could not be cached.");
         return 1;
     }

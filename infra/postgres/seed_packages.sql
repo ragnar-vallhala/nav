@@ -19,14 +19,14 @@ VALUES ('c1000000-0000-4000-8000-000000000001', 'navrobotec', 'nav-hal',
 INSERT INTO package_versions (package_id, version, description, checksum_sha256, archive_url, manifest, published_by)
 VALUES
 ('c1000000-0000-4000-8000-000000000001', '0.5.0', 'NavHAL 0.5.0',
- '6bab8c0f08fb899c8219866ebbac5159b9289b3a02e6da44f52913cc98993e1e',
+ '98a9b2dbc6b7731e50c80ec2fb4ab1ea655e2a8bd783df5c04975a14fb3fccf5',
  'http://localhost:9000/nav-packages/nav-hal-0.5.0.tar.gz',
- '{"version": "0.5.0", "kind": "library", "downloads": {"source": {"url": "http://localhost:9000/nav-packages/nav-hal-0.5.0.tar.gz", "sha256": "6bab8c0f08fb899c8219866ebbac5159b9289b3a02e6da44f52913cc98993e1e"}}, "dependencies": {"cmsis": "^6.0.0"}}'::jsonb,
+ '{"version": "0.5.0", "kind": "library", "downloads": {"source": {"url": "http://localhost:9000/nav-packages/nav-hal-0.5.0.tar.gz", "sha256": "98a9b2dbc6b7731e50c80ec2fb4ab1ea655e2a8bd783df5c04975a14fb3fccf5"}}, "dependencies": {"cmsis": "^6.0.0"}}'::jsonb,
  'b1000000-0000-4000-8000-000000000001'),
 ('c1000000-0000-4000-8000-000000000001', '0.4.2', 'NavHAL 0.4.2',
- 'ef3c2f655dc297711b07471a2526e5034e2ca19717e888ae792e5cd2b0b167b2',
+ 'c533996a5168fe40cb9664cef0b19e899d0e73818e8c0544271d20927f43b159',
  'http://localhost:9000/nav-packages/nav-hal-0.4.2.tar.gz',
- '{"version": "0.4.2", "kind": "library", "downloads": {"source": {"url": "http://localhost:9000/nav-packages/nav-hal-0.4.2.tar.gz", "sha256": "ef3c2f655dc297711b07471a2526e5034e2ca19717e888ae792e5cd2b0b167b2"}}, "dependencies": {"cmsis": "^6.0.0"}}'::jsonb,
+ '{"version": "0.4.2", "kind": "library", "downloads": {"source": {"url": "http://localhost:9000/nav-packages/nav-hal-0.4.2.tar.gz", "sha256": "c533996a5168fe40cb9664cef0b19e899d0e73818e8c0544271d20927f43b159"}}, "dependencies": {"cmsis": "^6.0.0"}}'::jsonb,
  'b1000000-0000-4000-8000-000000000001');
 
 -- ---- cmsis (library, no deps) ------------------------------------------------
@@ -37,14 +37,14 @@ VALUES ('c1000000-0000-4000-8000-000000000002', 'arm', 'cmsis',
 INSERT INTO package_versions (package_id, version, description, checksum_sha256, archive_url, manifest, published_by)
 VALUES
 ('c1000000-0000-4000-8000-000000000002', '6.0.0', 'CMSIS 6.0.0',
- '0ffaab1da5f0ef814638a4ad55beb10071d0545811314c34597fd905aa46959c',
+ 'b3890724da13c59750af64d7cb352772c238723da35a633fb3ba8a2955860849',
  'http://localhost:9000/nav-packages/cmsis-6.0.0.tar.gz',
- '{"version": "6.0.0", "kind": "library", "downloads": {"source": {"url": "http://localhost:9000/nav-packages/cmsis-6.0.0.tar.gz", "sha256": "0ffaab1da5f0ef814638a4ad55beb10071d0545811314c34597fd905aa46959c"}}}'::jsonb,
+ '{"version": "6.0.0", "kind": "library", "downloads": {"source": {"url": "http://localhost:9000/nav-packages/cmsis-6.0.0.tar.gz", "sha256": "b3890724da13c59750af64d7cb352772c238723da35a633fb3ba8a2955860849"}}}'::jsonb,
  'b1000000-0000-4000-8000-000000000001'),
 ('c1000000-0000-4000-8000-000000000002', '6.1.0', 'CMSIS 6.1.0',
- '19525fd82e0183b10cacb7a9739b1289528838a7e2a375a83bd6a2af365f0f0e',
+ '9c1ae40019a6f52aef1435b8c413e44a7eed7f0f08df03cedf88bf8d661f4680',
  'http://localhost:9000/nav-packages/cmsis-6.1.0.tar.gz',
- '{"version": "6.1.0", "kind": "library", "downloads": {"source": {"url": "http://localhost:9000/nav-packages/cmsis-6.1.0.tar.gz", "sha256": "19525fd82e0183b10cacb7a9739b1289528838a7e2a375a83bd6a2af365f0f0e"}}}'::jsonb,
+ '{"version": "6.1.0", "kind": "library", "downloads": {"source": {"url": "http://localhost:9000/nav-packages/cmsis-6.1.0.tar.gz", "sha256": "9c1ae40019a6f52aef1435b8c413e44a7eed7f0f08df03cedf88bf8d661f4680"}}}'::jsonb,
  'b1000000-0000-4000-8000-000000000001');
 
 -- ---- arm-none-eabi-gcc (toolchain, multi-platform) --------------------------
