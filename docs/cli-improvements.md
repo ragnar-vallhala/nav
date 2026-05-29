@@ -96,7 +96,54 @@ CLI side:
 
 Verified live: `nav add nav-hal` resolved `nav-hal 0.5.0` + transitive `cmsis 6.1.0` (highest matching `^6.0.0`); `nav add arm-none-eabi-gcc@13.2.0` locked the toolchain; `nav.lock` captured all three with checksums, kind, source, and the `nav-hal → cmsis@6.1.0` reference.
 
-Still open in Phase 2.3: tarball download + SHA256 verification + extraction into `~/.nav/packages/`; build wiring (`nav-deps.cmake`, toolchain compiler-path override); `nav remove`; `nav update` re-resolve. Known rough edge: `nav add`'s `nav.toml` round-trip via toml++ drops comments and reorders keys — goes away when `nav.toml` migrates to YAML.
+### Phase 2.3 (cont.) — download + verify + extract into the cache
+
+The fetch half of the loop. `nav add` no longer stops at the lockfile — it now
+materializes the resolved closure into a shared, content-addressed cache, and a
+fresh checkout can reproduce that cache from `nav.lock` alone.
+
+- `include/nav/core/platform.hpp` + `src/core/platform.cpp` — `host_platform_key`
+  (`<os>_<arch>`, e.g. `linux_x86_64`) via `uname -s -m` through the execution
+  context; selects which toolchain download applies to the host.
+- `include/nav/core/cache.hpp` + `src/core/cache.cpp` — `cache_root`
+  (`$NAV_HOME/packages`, else `$HOME/.nav/packages`), content-addressed
+  `package_dir` (`<name>-<version>-<sha12>`), and a `.nav-ok` completion marker
+  so partial extracts are never mistaken for installs.
+- `include/nav/core/fetch.hpp` + `src/core/fetch.cpp` — `PackageFetcher`:
+  `select_download` (library → `source`, toolchain → host platform key), then
+  download (`curl -fsSL`) → **verify SHA256 (`sha256sum`) before unpacking** →
+  extract (`tar -xf`, auto-detects gz/xz/zst) into a staging dir → atomic
+  rename into place → stamp the marker. Idempotent (a complete prior install
+  short-circuits); a failure at any step leaves no half-populated package dir.
+  All external work goes through `IExecutionContext`, so the whole flow is
+  mock-testable.
+- `nav add` fetches the resolved closure straight from the in-hand resolution
+  (URLs already on hand — no second index round-trip).
+- `nav fetch [<name>]` (new verb) materializes the cache from `nav.lock`: it
+  re-reads the index per locked package to recover the download URL for the
+  pinned version (URLs aren't lock material — checksums are), refuses if the
+  registry's checksum diverges from the lock, then downloads + verifies +
+  extracts. This is the "delete the cache, reproduce it" path.
+
+Tests: +21 (platform mapping + uname parse; cache addressing + marker
+semantics; fetcher happy-path / already-cached / checksum-mismatch /
+download-fail / extract-fail / no-platform / case-insensitive digest;
+`select_download` library/toolchain/missing). 115 total pass.
+
+Verified live against a fully containerized registry (Postgres + MinIO +
+`registry-api`, real tarballs uploaded to MinIO with matching SHA256s via
+`infra/seed_fixtures.py`): `nav add nav-hal` downloaded `nav-hal 0.5.0` +
+`cmsis 6.1.0` and extracted both; `nav add arm-none-eabi-gcc@13.2.0` selected
+and unpacked the `linux_x86_64` `.tar.xz`; re-add reported `already cached`;
+wiping the cache + `nav fetch` reproduced all three from the lock; a tampered
+MinIO artifact was rejected with a checksum mismatch (non-zero exit, nothing
+installed) and recovered cleanly once the good artifact was restored.
+
+Still open in Phase 2.3: build wiring (`nav-deps.cmake` for library include/link
+dirs, toolchain compiler-path override into `nav-board.cmake`); `nav remove`;
+`nav update` re-resolve. Known rough edge: `nav add`'s `nav.toml` round-trip via
+toml++ drops comments and reorders keys — goes away when `nav.toml` migrates to
+YAML.
 
 ### Data-format policy (effective Phase 2.1 onward)
 
