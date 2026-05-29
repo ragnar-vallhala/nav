@@ -23,6 +23,7 @@ add_executable(nav_tests
     test_index.cpp
     test_lockfile.cpp
     test_resolver.cpp
+    test_http_index.cpp
 )
 
 target_include_directories(nav_tests PRIVATE

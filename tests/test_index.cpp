@@ -141,6 +141,20 @@ TEST(Index, MalformedJsonRejected) {
     EXPECT_FALSE(nav::core::parse_index_file(path).has_value());
 }
 
+TEST(Index, ParseFromStringMatchesFile) {
+    auto from_string = nav::core::parse_index_string(kLibraryEntry);
+    ASSERT_TRUE(from_string.has_value());
+    EXPECT_EQ(from_string->name, "nav-hal");
+    ASSERT_EQ(from_string->versions.size(), 2u);
+    EXPECT_EQ(from_string->versions[1].version, (nav::core::Version{0,5,0,"",""}));
+}
+
+TEST(Index, ParseStringMalformedRejected) {
+    EXPECT_FALSE(nav::core::parse_index_string("not json").has_value());
+    EXPECT_FALSE(nav::core::parse_index_string("[]").has_value());        // array, not object
+    EXPECT_FALSE(nav::core::parse_index_string(R"({"name":"x"})").has_value()); // no versions
+}
+
 TEST(Index, ParseKindHelpers) {
     EXPECT_EQ(nav::core::parse_kind("library"),   nav::core::PackageKind::Library);
     EXPECT_EQ(nav::core::parse_kind("toolchain"), nav::core::PackageKind::Toolchain);

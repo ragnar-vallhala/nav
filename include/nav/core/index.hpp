@@ -48,8 +48,12 @@ struct IndexPackage {
     std::vector<IndexVersion> versions;
 };
 
-// Parse a registry-index JSON file describing a single package. Returns
+// Parse a registry-index JSON document describing a single package. Returns
 // nullopt on parse failure or when a required field is missing.
+std::optional<IndexPackage> parse_index_string(const std::string& json_text);
+
+// Read + parse a registry-index JSON file. Thin wrapper over
+// parse_index_string. Returns nullopt on read or parse failure.
 std::optional<IndexPackage> parse_index_file(const std::filesystem::path& path);
 
 // Interface clients use to consult the registry. Tests use LocalIndexClient

@@ -79,6 +79,25 @@ Tests: +16 (lockfile round-trip, render stability, malformed/missing handling; r
 
 Known limitation: the constraint-accumulation approach is not a complete solver. It handles linear chains, diamonds, and narrowing constraints, but a graph that requires *backtracking* (picking a non-latest version of package X so that an unrelated constraint elsewhere becomes satisfiable) will report a conflict rather than find the solution. That's the documented Phase 2 trade-off; a SAT-style solver is deferred.
 
+### Phase 2.3 (partial) — live registry wiring
+
+End-to-end loop working against a locally-running registry. This is the "make it real" slice: the CLI now talks to an actual HTTP registry, resolves, and writes a lockfile.
+
+Registry side (`registry-api/`):
+- New `GET /api/v1/index/:name` endpoint assembling `{ name, versions: [<manifest>...] }` from `package_versions` rows — the `IndexPackage` shape the CLI consumes. Thin assembler: each row's `manifest` JSONB is already stored in `IndexVersion` shape.
+- `infra/postgres/seed_packages.sql` seeds three packages (nav-hal library w/ cmsis dep, cmsis library, arm-none-eabi-gcc toolchain) for development.
+- Runs via the existing `docker compose` Postgres + MinIO tiers plus `go run ./cmd/server`.
+
+CLI side:
+- `parse_index_string` extracted from `parse_index_file` so file and HTTP paths share parsing.
+- `HttpIndexClient` (`include/nav/core/http_index.hpp` + `src/core/http_index.cpp`) fetches `<base>/api/v1/index/<name>` by shelling `curl -fsS` through `IExecutionContext`. Base URL from `$NAV_REGISTRY_URL`, default `http://localhost:8081`.
+- `nav search <q>` queries `/api/v1/search` and prints results.
+- `nav add <name>[@<req>]` resolves the full graph via `HttpIndexClient` + `Resolver`, writes `nav.lock`, and upserts the dependency into `nav.toml` `[dependencies]`. Bare name → `*` (latest); `name@<req>` honours the requirement.
+
+Verified live: `nav add nav-hal` resolved `nav-hal 0.5.0` + transitive `cmsis 6.1.0` (highest matching `^6.0.0`); `nav add arm-none-eabi-gcc@13.2.0` locked the toolchain; `nav.lock` captured all three with checksums, kind, source, and the `nav-hal → cmsis@6.1.0` reference.
+
+Still open in Phase 2.3: tarball download + SHA256 verification + extraction into `~/.nav/packages/`; build wiring (`nav-deps.cmake`, toolchain compiler-path override); `nav remove`; `nav update` re-resolve. Known rough edge: `nav add`'s `nav.toml` round-trip via toml++ drops comments and reorders keys — goes away when `nav.toml` migrates to YAML.
+
 ### Data-format policy (effective Phase 2.1 onward)
 
 Nav's data-format surface is **JSON and YAML only** going forward. Drivers for the choice:

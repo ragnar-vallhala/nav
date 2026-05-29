@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"math/rand"
 	"strings"
@@ -63,6 +64,10 @@ func RegisterRoutes(app *fiber.App) {
 
 	v1.Get("/search", searchPackages)
 	v1.Get("/package/:name", getPackageMetadata)
+
+	// Registry index: the CLI's IIndexClient consumes this. Assembles
+	// { name, versions: [<manifest>...] } from the package_versions rows.
+	v1.Get("/index/:name", getPackageIndex)
 }
 
 type AuthRequest struct {
@@ -284,6 +289,47 @@ func getPackageMetadata(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{
 		"package": name,
 		"version": "0.0.0",
+	})
+}
+
+// getPackageIndex returns the registry-index document the Nav CLI consumes:
+//
+//	{ "name": "<pkg>", "versions": [ <IndexVersion manifest>, ... ] }
+//
+// Each version's manifest JSONB is already stored in the IndexVersion shape
+// the CLI expects, so this handler is a thin assembler. Yanked versions are
+// excluded for reproducibility hygiene.
+func getPackageIndex(c *fiber.Ctx) error {
+	name := c.Params("name")
+
+	var pkgID string
+	err := database.DB.QueryRow("SELECT id FROM packages WHERE name = $1 LIMIT 1", name).Scan(&pkgID)
+	if err == sql.ErrNoRows {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "package not found"})
+	} else if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "index lookup failure"})
+	}
+
+	rows, err := database.DB.Query(
+		`SELECT manifest FROM package_versions
+		 WHERE package_id = $1 AND yanked = FALSE
+		 ORDER BY created_at ASC`, pkgID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "version enumeration failure"})
+	}
+	defer rows.Close()
+
+	versions := []json.RawMessage{}
+	for rows.Next() {
+		var manifest []byte
+		if err := rows.Scan(&manifest); err == nil {
+			versions = append(versions, json.RawMessage(manifest))
+		}
+	}
+
+	return c.JSON(fiber.Map{
+		"name":     name,
+		"versions": versions,
 	})
 }
 

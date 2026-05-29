@@ -60,13 +60,10 @@ std::map<std::string, Download> read_downloads(const json& node) {
 
 } // namespace
 
-std::optional<IndexPackage> parse_index_file(const fs::path& path) {
-    std::ifstream f(path);
-    if (!f) return std::nullopt;
-
+std::optional<IndexPackage> parse_index_string(const std::string& json_text) {
     json doc;
     try {
-        f >> doc;
+        doc = json::parse(json_text);
     } catch (const json::parse_error&) {
         return std::nullopt;
     }
@@ -108,6 +105,13 @@ std::optional<IndexPackage> parse_index_file(const fs::path& path) {
               [](const IndexVersion& a, const IndexVersion& b) { return a.version < b.version; });
 
     return pkg;
+}
+
+std::optional<IndexPackage> parse_index_file(const fs::path& path) {
+    std::ifstream f(path);
+    if (!f) return std::nullopt;
+    std::string contents((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+    return parse_index_string(contents);
 }
 
 fs::path LocalIndexClient::index_path(const std::string& package_name) const {

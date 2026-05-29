@@ -1,9 +1,25 @@
-// Stubs for the registry-facing verbs. These will become real HTTP clients
-// once the registry-api contract stabilises (see docs/plan.md, docs/mvp.md).
+// Registry-facing verbs. `add` and `search` talk to a live registry
+// (default http://localhost:8081, override with NAV_REGISTRY_URL); `login`
+// and `publish` remain preview stubs pending the auth workstream.
 #include "nav/core/command.hpp"
+#include "nav/core/config.hpp"
+#include "nav/core/http_index.hpp"
+#include "nav/core/lockfile.hpp"
+#include "nav/core/resolver.hpp"
+#include "nav/core/semver.hpp"
 #include "nav/core/ui.hpp"
 
+#include <toml++/toml.hpp>
+#include <nlohmann/json.hpp>
+
+#include <chrono>
+#include <fstream>
+#include <iostream>
+#include <map>
 #include <string>
+
+namespace fs = std::filesystem;
+using json = nlohmann::json;
 
 namespace nav::core {
 
@@ -13,16 +29,152 @@ void preview_notice(const std::string& verb) {
     ui::warning("'nav " + verb + "' is coming soon — pending the registry rollout (see docs/plan.md).");
 }
 
+// Split "name" or "name@req" into a (name, requirement) pair. A bare name maps
+// to "*" (any version) so the resolver picks the highest available.
+std::pair<std::string, std::string> split_spec(const std::string& arg) {
+    auto at = arg.find('@');
+    if (at == std::string::npos) return {arg, "*"};
+    return {arg.substr(0, at), arg.substr(at + 1)};
+}
+
+// Read the project's existing [dependencies] table as name -> requirement-string.
+std::map<std::string, std::string> read_dependencies(const fs::path& nav_toml) {
+    std::map<std::string, std::string> out;
+    toml::table tbl;
+    try {
+        tbl = toml::parse_file(nav_toml.string());
+    } catch (const toml::parse_error&) {
+        return out;
+    }
+    if (auto deps = tbl["dependencies"].as_table()) {
+        for (auto&& [k, v] : *deps) {
+            if (auto s = v.value<std::string>()) out.emplace(std::string(k.str()), *s);
+        }
+    }
+    return out;
+}
+
+// Persist a dependency into nav.toml's [dependencies] table. Note: round-trips
+// through toml++ and rewrites the file, so hand-written comments are not
+// preserved. Acceptable until nav.toml migrates to YAML.
+bool upsert_dependency(const fs::path& nav_toml, const std::string& name, const std::string& req) {
+    toml::table tbl;
+    try {
+        tbl = toml::parse_file(nav_toml.string());
+    } catch (const toml::parse_error&) {
+        return false;
+    }
+    if (!tbl.contains("dependencies")) {
+        tbl.insert("dependencies", toml::table{});
+    }
+    if (auto deps = tbl["dependencies"].as_table()) {
+        deps->insert_or_assign(name, req);
+    } else {
+        return false;
+    }
+    std::ofstream out(nav_toml);
+    if (!out) return false;
+    out << tbl << "\n";
+    return out.good();
+}
+
 } // namespace
 
+int AddCommand::run(IExecutionContext& ctx, const std::vector<std::string>& args) {
+    if (args.empty()) {
+        ui::error("Usage: nav add <package>[@<version-req>]");
+        return 1;
+    }
 
-int AddCommand::run(IExecutionContext& /*ctx*/, const std::vector<std::string>& /*args*/) {
-    preview_notice("add");
+    auto root = find_project_root();
+    if (!root) {
+        ui::error("No nav.toml found in this directory or any parent.");
+        return 1;
+    }
+    const fs::path nav_toml = *root / "nav.toml";
+
+    auto [name, req_str] = split_spec(args[0]);
+    auto req = parse_version_req(req_str);
+    if (!req) {
+        ui::error("Invalid version requirement '" + req_str + "' for '" + name + "'.");
+        return 1;
+    }
+
+    // Assemble the full root set: existing deps + the new one.
+    std::map<std::string, VersionReq> roots;
+    for (const auto& [dn, dr] : read_dependencies(nav_toml)) {
+        if (auto r = parse_version_req(dr)) roots.emplace(dn, *r);
+    }
+    roots.insert_or_assign(name, *req);  // new request wins if already present
+
+    ui::step("Resolving", "Querying registry " + default_registry_url() + " ...");
+    HttpIndexClient index(default_registry_url(), ctx);
+    Resolver resolver(index);
+    auto result = resolver.resolve(roots);
+
+    if (!result.ok) {
+        ui::error("Resolution failed: " + result.error.message);
+        return 1;
+    }
+
+    const std::string source = "registry+" + default_registry_url();
+    auto lock = to_lockfile(result, source);
+    const fs::path lock_path = *root / "nav.lock";
+    if (!save_lockfile(lock, lock_path)) {
+        ui::error("Failed to write " + lock_path.string());
+        return 1;
+    }
+
+    if (!upsert_dependency(nav_toml, name, req_str)) {
+        ui::warning("Resolved and locked, but failed to update nav.toml [dependencies].");
+    }
+
+    ui::success("Added '" + name + "'. Resolved " + std::to_string(lock.packages.size()) + " package(s):");
+    for (const auto& p : lock.packages) {
+        std::cout << "  " << p.name << " " << to_string(p.version)
+                  << " (" << to_string(p.kind) << ")\n";
+    }
+    ui::info("Lockfile written: " + lock_path.string());
     return 0;
 }
 
-int SearchCommand::run(IExecutionContext& /*ctx*/, const std::vector<std::string>& /*args*/) {
-    preview_notice("search");
+int SearchCommand::run(IExecutionContext& ctx, const std::vector<std::string>& args) {
+    if (args.empty()) {
+        ui::error("Usage: nav search <query>");
+        return 1;
+    }
+    const std::string query = args[0];
+    const std::string url = default_registry_url() + "/api/v1/search?q=" + query;
+
+    auto res = ctx.execute({"curl", "-fsS", url}, "", true, std::chrono::seconds(30));
+    if (res.exit_code != 0) {
+        ui::error("Registry query failed (" + default_registry_url() + "). Is it running?");
+        return 1;
+    }
+
+    json doc;
+    try {
+        doc = json::parse(res.output);
+    } catch (const json::parse_error&) {
+        ui::error("Registry returned a malformed response.");
+        return 1;
+    }
+
+    if (!doc.contains("results") || !doc["results"].is_array() || doc["results"].empty()) {
+        ui::info("No packages match '" + query + "'.");
+        return 0;
+    }
+
+    ui::step("Search", "Results for '" + query + "':");
+    for (const auto& r : doc["results"]) {
+        const std::string ns      = r.value("namespace", "");
+        const std::string name    = r.value("name", "");
+        const std::string version = r.value("version", "");
+        const std::string desc    = r.value("description", "");
+        std::cout << "  " << ui::BOLD() << ns << "/" << name << ui::RESET()
+                  << " " << version << "\n";
+        if (!desc.empty()) std::cout << "      " << desc << "\n";
+    }
     return 0;
 }
 
