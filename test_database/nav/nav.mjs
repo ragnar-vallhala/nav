@@ -1761,15 +1761,44 @@ async function publish(namespace, rest) {
 async function waitForPublish(sessionId) {
   const deadline = Date.now() + 120000;
   const pending = new Set(['queued', 'running', 'uploaded']);
+  const seenEvents = new Set();
+  let printedHeader = false;
   while (Date.now() < deadline) {
     const status = await request(`/publish/${sessionId}/status`);
+    const events = status.events || [];
+    if (events.length && !printedHeader) {
+      console.log(bold('security scan'));
+      printedHeader = true;
+    }
+    for (const event of events) {
+      if (seenEvents.has(event.id)) continue;
+      seenEvents.add(event.id);
+      printScanEvent(event);
+    }
     const state = status.session.scan_status || status.session.status;
     if (!pending.has(state) && !pending.has(status.session.status)) return status;
-    process.stdout.write('.');
     await new Promise(resolve => setTimeout(resolve, 1500));
   }
-  process.stdout.write('\n');
   throw new Error('publish scan timed out; check the registry worker status');
+}
+
+function printScanEvent(event) {
+  const phase = String(event.phase || 'scan').padEnd(10).slice(0, 10);
+  const prefix = `[${phase}]`;
+  const message = event.message || 'scan event';
+  if (event.level === 'success') {
+    console.log(`${green(prefix)} ${message}`);
+    return;
+  }
+  if (event.level === 'warn') {
+    console.log(`${yellow(prefix)} ${message}`);
+    return;
+  }
+  if (event.level === 'error') {
+    console.log(`${red(prefix)} ${message}`);
+    return;
+  }
+  console.log(`${cyan(prefix)} ${message}`);
 }
 
 async function resolveChangelog(options, archivePath, manifest) {

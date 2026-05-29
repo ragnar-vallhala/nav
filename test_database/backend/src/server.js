@@ -1000,6 +1000,17 @@ async function ensureSchema() {
   await pool.query(`CREATE EXTENSION IF NOT EXISTS pgcrypto`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS system_role TEXT NOT NULL DEFAULT 'user'`);
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS legal_documents (
+      slug TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      body TEXT NOT NULL,
+      effective_date DATE NOT NULL DEFAULT CURRENT_DATE,
+      updated_by UUID REFERENCES users(id),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `);
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS http_sessions (
       sid VARCHAR NOT NULL PRIMARY KEY,
       sess JSON NOT NULL,
@@ -1062,8 +1073,62 @@ async function ensureSchema() {
     )
   `);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_scan_jobs_queue ON scan_jobs(status, priority, created_at)`);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS scan_job_events (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      scan_job_id UUID REFERENCES scan_jobs(id) ON DELETE CASCADE,
+      phase TEXT NOT NULL,
+      level TEXT NOT NULL DEFAULT 'info',
+      message TEXT NOT NULL,
+      metadata JSONB NOT NULL DEFAULT '{}',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_scan_job_events_recent ON scan_job_events(created_at DESC)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_scan_job_events_job ON scan_job_events(scan_job_id, created_at)`);
   await pool.query(`ALTER TABLE package_versions ADD COLUMN IF NOT EXISTS changelog TEXT`);
   await pool.query(`ALTER TABLE toolchain_artifacts ALTER COLUMN signature DROP NOT NULL`);
+  await seedLegalDocuments();
+}
+
+async function seedLegalDocuments() {
+  const defaults = [
+    {
+      slug: 'privacy',
+      title: 'Privacy Policy',
+      body: `# Privacy Policy
+
+Nav Registry stores account, authentication, namespace, package, toolchain, and audit information needed to operate the registry.
+
+We use this data to authenticate users, protect package publishing, serve public package metadata, and maintain operational logs for security and reliability.
+
+Public package metadata, package versions, download counts, and maintainer-visible namespace information may be displayed in the registry UI. Private credentials, token hashes, OAuth secrets, and uploaded quarantine data are not public.
+
+Contact Navrobotec if you need account or registry data reviewed, corrected, or removed where allowed by law.`
+    },
+    {
+      slug: 'terms',
+      title: 'Terms of Service',
+      body: `# Terms of Service
+
+Nav Registry is a development registry for embedded packages, modules, board definitions, and managed toolchains.
+
+Users are responsible for the packages and metadata they publish. Package versions are immutable once accepted; unsafe or policy-violating content may be quarantined, yanked, or removed by registry administrators.
+
+Do not upload malicious archives, deceptive metadata, illegal content, credentials, or artifacts you do not have rights to distribute.
+
+Managed toolchains and package archives are provided for developer convenience. Always validate firmware behavior before using it on real hardware.`
+    }
+  ];
+
+  for (const doc of defaults) {
+    await pool.query(
+      `INSERT INTO legal_documents (slug, title, body)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (slug) DO NOTHING`,
+      [doc.slug, doc.title, doc.body]
+    );
+  }
 }
 
 async function audit(userId, action, subjectType, subjectId, metadata = {}, req = null) {
@@ -1745,6 +1810,44 @@ echo "Nav installed. Open a new terminal, or run: . \\"$profile_file\\"; nav che
     oauthSuccessRedirect
   );
 
+  app.get('/legal/:slug', async (req, res) => {
+    if (!['privacy', 'terms'].includes(req.params.slug)) {
+      return res.status(404).json({ error: 'Legal document not found' });
+    }
+    const result = await pool.query(
+      `SELECT slug, title, body, effective_date, updated_at
+       FROM legal_documents WHERE slug = $1`,
+      [req.params.slug]
+    );
+    if (result.rowCount === 0) return res.status(404).json({ error: 'Legal document not found' });
+    res.json({ document: result.rows[0] });
+  });
+
+  app.put('/legal/:slug', authRequired, async (req, res) => {
+    if (!['privacy', 'terms'].includes(req.params.slug)) {
+      return res.status(404).json({ error: 'Legal document not found' });
+    }
+    await requireRegistryPublisher(req.user.sub);
+    const title = String(req.body.title || '').trim();
+    const body = String(req.body.body || '').trim();
+    const effectiveDate = req.body.effective_date || new Date().toISOString().slice(0, 10);
+    if (!title || !body) return res.status(400).json({ error: 'Title and body are required' });
+    const result = await pool.query(
+      `INSERT INTO legal_documents (slug, title, body, effective_date, updated_by, updated_at)
+       VALUES ($1, $2, $3, $4, $5, now())
+       ON CONFLICT (slug) DO UPDATE SET
+         title = EXCLUDED.title,
+         body = EXCLUDED.body,
+         effective_date = EXCLUDED.effective_date,
+         updated_by = EXCLUDED.updated_by,
+         updated_at = now()
+       RETURNING slug, title, body, effective_date, updated_at`,
+      [req.params.slug, title, body, effectiveDate, req.user.sub]
+    );
+    await audit(req.user.sub, 'legal.update', 'legal_document', null, { slug: req.params.slug }, req);
+    res.json({ document: result.rows[0] });
+  });
+
   app.get('/me', authRequired, async (req, res) => {
     const result = await pool.query('SELECT id, name, email, avatar_url, system_role FROM users WHERE id = $1', [req.user.sub]);
     res.json({ user: result.rows[0] });
@@ -1802,6 +1905,26 @@ echo "Nav installed. Open a new terminal, or run: . \\"$profile_file\\"; nav che
         (SELECT COUNT(*)::int FROM publish_sessions) AS publish_sessions
     `);
     res.json(result.rows[0]);
+  });
+
+  app.get('/scan-events/recent', async (req, res) => {
+    const limit = Math.max(1, Math.min(60, Number(req.query.limit || 24)));
+    const result = await pool.query(
+      `SELECT e.id, e.scan_job_id, e.phase, e.level, e.message, e.metadata, e.created_at,
+              sj.status AS job_status,
+              ps.version,
+              p.slug AS package,
+              ns.name AS namespace
+       FROM scan_job_events e
+       LEFT JOIN scan_jobs sj ON sj.id = e.scan_job_id
+       LEFT JOIN publish_sessions ps ON sj.subject_type = 'publish_session' AND sj.subject_id = ps.id
+       LEFT JOIN packages p ON p.id = ps.package_id
+       LEFT JOIN namespaces ns ON ns.id = p.namespace_id
+       ORDER BY e.created_at DESC
+       LIMIT $1`,
+      [limit]
+    );
+    res.json({ events: result.rows.reverse() });
   });
 
   app.get('/namespaces', authRequired, async (req, res) => {
@@ -2183,7 +2306,17 @@ echo "Nav installed. Open a new terminal, or run: . \\"$profile_file\\"; nav che
       [req.params.sessionId, req.user.sub]
     );
     if (result.rowCount === 0) return res.status(404).json({ error: 'Publish session not found' });
-    res.json({ session: result.rows[0] });
+    const scanJobId = result.rows[0].scan_job_id;
+    const events = scanJobId
+      ? await pool.query(
+          `SELECT id, phase, level, message, metadata, created_at
+           FROM scan_job_events
+           WHERE scan_job_id = $1
+           ORDER BY created_at ASC`,
+          [scanJobId]
+        )
+      : { rows: [] };
+    res.json({ session: result.rows[0], events: events.rows });
   });
 
   app.get('/packages/:namespace/:name/versions/:version/download', async (req, res) => {

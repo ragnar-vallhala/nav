@@ -22,8 +22,10 @@ import {
   KeyRound,
   LockKeyhole,
   Mail,
+  Menu,
   Monitor,
   Package,
+  Pencil,
   RefreshCcw,
   Search,
   ShieldCheck,
@@ -69,6 +71,30 @@ function FacebookLogo() {
     <svg className="oauth-brand-icon" viewBox="0 0 24 24" aria-hidden="true">
       <path fill="#1877F2" d="M24 12.07C24 5.43 18.63.05 12 .05S0 5.43 0 12.07c0 6 4.39 10.98 10.13 11.88v-8.4H7.08v-3.48h3.05V9.42c0-3.02 1.79-4.68 4.53-4.68 1.31 0 2.68.23 2.68.23v2.96h-1.51c-1.49 0-1.96.93-1.96 1.88v2.26h3.33l-.53 3.48h-2.8v8.4C19.61 23.05 24 18.07 24 12.07z" />
       <path fill="#fff" d="m16.67 15.55.53-3.48h-3.33V9.81c0-.95.47-1.88 1.96-1.88h1.51V4.97s-1.37-.23-2.68-.23c-2.74 0-4.53 1.66-4.53 4.68v2.65H7.08v3.48h3.05v8.4a12.1 12.1 0 0 0 3.74 0v-8.4h2.8z" />
+    </svg>
+  );
+}
+
+function LinkedInLogo() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path fill="currentColor" d="M20.45 20.45h-3.56v-5.58c0-1.33-.03-3.04-1.85-3.04-1.85 0-2.13 1.45-2.13 2.94v5.68H9.35V9h3.42v1.56h.05c.48-.9 1.64-1.85 3.37-1.85 3.6 0 4.27 2.37 4.27 5.46v6.28zM5.34 7.43a2.06 2.06 0 1 1 0-4.13 2.06 2.06 0 0 1 0 4.13zm1.78 13.02H3.56V9h3.56v11.45zM22.22 0H1.77C.79 0 0 .77 0 1.72v20.56C0 23.23.79 24 1.77 24h20.45c.98 0 1.78-.77 1.78-1.72V1.72C24 .77 23.2 0 22.22 0z" />
+    </svg>
+  );
+}
+
+function InstagramLogo() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path fill="currentColor" d="M7.8 2h8.4A5.81 5.81 0 0 1 22 7.8v8.4a5.81 5.81 0 0 1-5.8 5.8H7.8A5.81 5.81 0 0 1 2 16.2V7.8A5.81 5.81 0 0 1 7.8 2zm-.2 2A3.6 3.6 0 0 0 4 7.6v8.8A3.6 3.6 0 0 0 7.6 20h8.8a3.6 3.6 0 0 0 3.6-3.6V7.6A3.6 3.6 0 0 0 16.4 4H7.6zm9.65 1.5a1.25 1.25 0 1 1 0 2.5 1.25 1.25 0 0 1 0-2.5zM12 7.1a4.9 4.9 0 1 1 0 9.8 4.9 4.9 0 0 1 0-9.8zm0 2a2.9 2.9 0 1 0 0 5.8 2.9 2.9 0 0 0 0-5.8z" />
+    </svg>
+  );
+}
+
+function XLogo() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path fill="currentColor" d="M18.9 2h3.28l-7.16 8.18L23.44 22h-6.6l-5.17-6.76L5.75 22H2.47l7.66-8.75L2.06 2h6.77l4.67 6.18L18.9 2zm-1.15 17.92h1.82L7.84 3.98H5.89l11.86 15.94z" />
     </svg>
   );
 }
@@ -291,6 +317,7 @@ function App() {
   const [emailStatus, setEmailStatus] = useState(null);
   const [route, setRoute] = useState(() => normalizeRoute(window.location.pathname));
   const [query, setQuery] = useState('');
+  const [toolchainQuery, setToolchainQuery] = useState('');
   const [activeVendor, setActiveVendor] = useState('all');
   const [toolchainFilters, setToolchainFilters] = useState({ os: 'all', arch: 'all', board: 'all' });
   const [showToolchainFilters, setShowToolchainFilters] = useState(false);
@@ -718,14 +745,19 @@ function App() {
   }, [toolchains]);
 
   const filteredToolchainGroups = useMemo(() => {
+    const value = toolchainQuery.trim().toLowerCase();
     return toolchainGroups.filter(group => {
       if (activeVendor !== 'all' && group.vendor_kind !== activeVendor) return false;
       if (toolchainFilters.os !== 'all' && !group.artifacts.some(artifact => artifact.os === toolchainFilters.os)) return false;
       if (toolchainFilters.arch !== 'all' && !group.artifacts.some(artifact => artifact.arch === toolchainFilters.arch)) return false;
       if (toolchainFilters.board !== 'all' && !group.boards.includes(toolchainFilters.board)) return false;
+      if (value) {
+        const haystack = `${group.name} ${group.description} ${group.vendor} ${group.version} ${group.boards.join(' ')} ${group.artifacts.map(artifact => `${artifact.os}/${artifact.arch}`).join(' ')}`.toLowerCase();
+        if (!haystack.includes(value)) return false;
+      }
       return true;
     });
-  }, [toolchainGroups, activeVendor, toolchainFilters]);
+  }, [toolchainGroups, activeVendor, toolchainFilters, toolchainQuery]);
 
   const statCards = useMemo(() => [
     { label: 'Packages', value: stats?.packages ?? 0, icon: Package, detail: 'Public install targets' },
@@ -745,6 +777,8 @@ function App() {
     load,
     query,
     setQuery,
+    toolchainQuery,
+    setToolchainQuery,
     filteredPackages,
     downloadPackage,
     isAuthed,
@@ -837,19 +871,35 @@ function App() {
       {route === 'settings' && isAuthed && <AccountSettingsPage {...sharedPageProps} user={user} />}
       {route === 'admin' && user?.system_role === 'root' && <AdminPage {...sharedPageProps} />}
       {route === 'admin' && user?.system_role !== 'root' && <Page><div className="empty-state">Root administrator access is required.</div></Page>}
-      {route === 'home' && <HomePage />}
+      {route === 'privacy' && <LegalPage {...sharedPageProps} slug="privacy" user={user} />}
+      {route === 'terms' && <LegalPage {...sharedPageProps} slug="terms" user={user} />}
+      {route === 'home' && <HomePage {...sharedPageProps} />}
+      {route === 'install' && <InstallPage />}
     </main>
   );
 }
 
 function Header({ route, navigate, isAuthed, user, logout, theme, setTheme }) {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const links = [
     ['home', 'Registry'],
+    ['install', 'Install'],
     ['packages', 'Packages'],
     ['toolchains', 'Toolchains']
   ];
   if (isAuthed) links.push(['namespaces', 'Namespaces'], ['settings', 'Settings']);
   if (user?.system_role === 'root') links.push(['admin', 'Admin']);
+
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [route, isAuthed]);
+
+  const goTo = (key) => {
+    setMobileMenuOpen(false);
+    navigate(key);
+  };
+
+  const toggleTheme = () => setTheme(theme === 'dark' ? 'light' : 'dark');
 
   return (
     <header className="site-header">
@@ -867,7 +917,7 @@ function Header({ route, navigate, isAuthed, user, logout, theme, setTheme }) {
         ))}
       </nav>
       <div className="header-actions">
-        <Button variant="outline" size="sm" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
+        <Button variant="outline" size="sm" onClick={toggleTheme}>
           {theme === 'dark' ? 'Light' : 'Dark'}
         </Button>
         {isAuthed ? (
@@ -885,6 +935,56 @@ function Header({ route, navigate, isAuthed, user, logout, theme, setTheme }) {
           </>
         )}
       </div>
+      <button
+        className="mobile-menu-button"
+        type="button"
+        aria-label="Open navigation menu"
+        aria-expanded={mobileMenuOpen}
+        onClick={() => setMobileMenuOpen(true)}
+      >
+        <Menu size={22} />
+      </button>
+      {mobileMenuOpen && (
+        <div className="mobile-menu-layer" role="presentation" onClick={() => setMobileMenuOpen(false)}>
+          <aside className="mobile-menu-panel" role="dialog" aria-modal="true" aria-label="Navigation menu" onClick={(event) => event.stopPropagation()}>
+            <div className="mobile-menu-head">
+              <button className="brand-button" onClick={() => goTo('home')}>
+                <BrandMark />
+                <span><strong>Nav</strong></span>
+              </button>
+              <button className="mobile-menu-close" type="button" aria-label="Close navigation menu" onClick={() => setMobileMenuOpen(false)}>
+                <X size={22} />
+              </button>
+            </div>
+            <nav className="mobile-menu-nav">
+              {links.map(([key, label]) => (
+                <button key={key} className={routeKey(route) === key ? 'active' : ''} onClick={() => goTo(key)}>
+                  {label}
+                </button>
+              ))}
+            </nav>
+            <div className="mobile-menu-actions">
+              <Button variant="outline" size="sm" onClick={toggleTheme}>
+                {theme === 'dark' ? 'Light' : 'Dark'}
+              </Button>
+              {isAuthed ? (
+                <>
+                  <div className="user-pill">
+                    <KeyRound size={15} />
+                    <span>{user?.name || 'Signed in'}</span>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={() => { setMobileMenuOpen(false); logout(); }}>Sign out</Button>
+                </>
+              ) : (
+                <>
+                  <Button variant="ghost" size="sm" onClick={() => goTo('login')}>Log in</Button>
+                  <Button size="sm" onClick={() => goTo('signup')}>Sign up</Button>
+                </>
+              )}
+            </div>
+          </aside>
+        </div>
+      )}
     </header>
   );
 }
@@ -1063,43 +1163,251 @@ function InvitePage({ navigate, isAuthed }) {
   );
 }
 
-function HomePage() {
-  const installers = [
+function getInstallers() {
+  return [
     {
       name: 'Windows',
       logo: '/windows-applications-svgrepo-com.svg',
-      command: `irm ${API}/downloads/nav/install.ps1 | iex`
+      command: `irm ${API}/downloads/nav/install.ps1 | iex`,
+      detail: 'PowerShell installer for Windows 10 and later.'
     },
     {
       name: 'Linux',
       logo: '/linux-svgrepo-com.svg',
-      command: `curl -fsSL ${API}/downloads/nav/install.sh | sh`
+      command: `curl -fsSL ${API}/downloads/nav/install.sh | sh`,
+      detail: 'Shell installer for Linux distributions with curl.'
     },
     {
       name: 'macOS',
       logo: '/apple-logo-svgrepo-com.svg',
-      command: `curl -fsSL ${API}/downloads/nav/install.sh | sh`
+      command: `curl -fsSL ${API}/downloads/nav/install.sh | sh`,
+      detail: 'Shell installer for Apple Silicon and Intel Macs.'
     }
   ];
+}
+
+function HomePage({ stats, filteredPackages, filteredToolchainGroups, toolchainFilterOptions, navigate }) {
+  const boards = toolchainFilterOptions?.boards?.length || 0;
+  const platforms = toolchainFilterOptions?.platforms?.length || 0;
+  const packageCount = stats?.packages ?? filteredPackages?.length ?? 0;
+  const versionCount = stats?.package_versions ?? 0;
+  const toolchainCount = stats?.toolchains ?? filteredToolchainGroups?.length ?? 0;
+  const downloads = filteredPackages?.reduce((total, pkg) => total + Number(pkg.total_downloads || pkg.downloads || 0), 0) || 0;
+  const metrics = [
+    { label: 'Packages', value: packageCount, detail: 'Public firmware modules', icon: Package },
+    { label: 'Versions', value: versionCount, detail: 'Immutable releases', icon: Boxes },
+    { label: 'Boards', value: boards || '10+', detail: 'Board-aware targets', icon: CircuitBoard },
+    { label: 'Toolchains', value: toolchainCount, detail: 'Managed compilers and uploaders', icon: Wrench },
+    { label: 'Platforms', value: platforms || 3, detail: 'Windows, Linux, macOS', icon: Monitor },
+    { label: 'Downloads', value: downloads, detail: 'Verified archive pulls', icon: Download }
+  ];
+
+  const featureRows = [
+    {
+      title: 'Interactive CLI for firmware work',
+      eyebrow: 'From empty folder to board flash',
+      copy: 'Nav gives embedded teams the same flow developers expect from modern package managers: set up a project, add modules, build, upload, and monitor from the terminal.',
+      bullets: ['nav setup initializes the project', 'nav add resolves packages and tools', 'nav build and nav run use the project target'],
+      icon: Activity,
+      videoTitle: 'CLI install and build demo',
+      videoSrc: '/card%201.mp4'
+    },
+    {
+      title: 'Toolchains managed by the registry',
+      eyebrow: 'No manual compiler hunting',
+      copy: 'Packages can declare the compiler, uploader, board support, and platform artifacts they need. Nav installs the right version for the user’s OS and verifies it before use.',
+      bullets: ['Versioned compiler archives', 'SHA256 verification before extraction', 'OS and architecture aware installs'],
+      icon: Wrench,
+      videoTitle: 'Toolchain auto-install demo'
+    },
+    {
+      title: 'Reusable embedded modules',
+      eyebrow: 'Nav-style dependency graph',
+      copy: 'Publish HAL modules, board packages, drivers, and firmware helpers once. Projects consume them through Nav and keep dependency metadata in the project manifest.',
+      bullets: ['Module packages with ABI metadata', 'Dependency resolution across nested packages', 'Changelogs and immutable versions'],
+      icon: Package,
+      videoTitle: 'Package add and module demo'
+    },
+    {
+      title: 'Security built into publishing',
+      eyebrow: 'Safe before it reaches users',
+      copy: 'The registry stores package metadata separately from immutable blobs and validates uploads through workers before they become trusted install targets.',
+      bullets: ['Archive limits and checksum validation', 'Worker scan pipeline', 'Future-ready signatures, SBOM, and CVE checks'],
+      icon: ShieldCheck,
+      videoTitle: 'Publish validation demo'
+    }
+  ];
+
+  const footerLinks = [
+    ['Packages', 'packages'],
+    ['Toolchains', 'toolchains'],
+    ['Install CLI', 'install'],
+    ['Namespaces', 'namespaces'],
+    ['Privacy', 'privacy'],
+    ['Terms', 'terms']
+  ];
+  const socialLinks = [
+    { label: 'LinkedIn', href: 'https://www.linkedin.com/company/navrobotec/posts/?feedView=all', icon: LinkedInLogo },
+    { label: 'GitHub', href: 'https://github.com/ragnar-vallhala/nav', icon: GitHubLogo },
+    { label: 'Instagram', href: 'https://www.instagram.com/navrobotec', icon: InstagramLogo },
+    { label: 'X', href: 'https://x.com/NAVRobotec', icon: XLogo }
+  ];
+
   return (
-    <Page>
-      <section className="home-simple">
-        <h1>Nav Registry</h1>
-        <p>Packages and managed toolchains for embedded systems.</p>
-        <div className="install-grid">
-          {installers.map(installer => (
-            <Card className="install-card" key={installer.name}>
-              <div className="install-header">
-                <span className="os-logo-frame">
-                  <img className="os-logo" src={installer.logo} alt="" />
-                </span>
-                <h2>{installer.name}</h2>
-              </div>
-              <CommandLine command={installer.command} />
-            </Card>
-          ))}
+    <Page className="home-page">
+      <section className="home-hero">
+        <div className="home-hero-copy">
+          <p className="hero-kicker">Nav Registry</p>
+          <h1>Nav for embedded systems.</h1>
+          <p>
+            Install hardware packages, board support, compilers, uploaders, and reusable firmware modules from one registry.
+          </p>
+          <div className="hero-actions">
+            <Button onClick={() => navigate('install')}>Install Nav</Button>
+            <Button variant="outline" onClick={() => navigate('packages')}>Browse packages</Button>
+            <Button variant="ghost" onClick={() => navigate('toolchains')}>View toolchains</Button>
+          </div>
         </div>
+        <Card className="hero-terminal">
+          <div className="terminal-dots" aria-hidden="true"><span /><span /><span /></div>
+          <code>nav setup</code>
+          <code>nav add nav/blink-add</code>
+          <code>nav build</code>
+          <code>nav run</code>
+          <p>resolved packages, installed toolchains, built firmware, ready to flash</p>
+        </Card>
       </section>
+
+      <section className="home-metrics" aria-label="Registry metrics">
+        {metrics.map(metric => {
+          const Icon = metric.icon;
+          return (
+            <Card className="metric-card" key={metric.label}>
+              <Icon size={19} />
+              <span>{metric.label}</span>
+              <strong>{metric.value}</strong>
+              <p>{metric.detail}</p>
+            </Card>
+          );
+        })}
+      </section>
+
+      <section className="home-feature-stack">
+        {featureRows.map((feature, index) => {
+          const Icon = feature.icon;
+          return (
+            <article className="home-feature-row" key={feature.title} style={{ '--stack-index': index }}>
+              <div className="feature-copy">
+                <div className="feature-icon"><Icon size={20} /></div>
+                <p>{feature.eyebrow}</p>
+                <h2>{feature.title}</h2>
+                <span>{feature.copy}</span>
+                <ul>
+                  {feature.bullets.map(bullet => <li key={bullet}>{bullet}</li>)}
+                </ul>
+              </div>
+              <Card className="feature-video-card">
+                {feature.videoSrc ? (
+                  <video
+                    className="feature-video"
+                    src={feature.videoSrc}
+                    preload="auto"
+                    autoPlay
+                    muted
+                    loop
+                    playsInline
+                    aria-label={feature.videoTitle}
+                  />
+                ) : (
+                  <div className="video-placeholder">
+                    <span className="play-mark" aria-hidden="true" />
+                    <strong>{feature.videoTitle}</strong>
+                    <p>Video slot {index + 1}</p>
+                  </div>
+                )}
+              </Card>
+            </article>
+          );
+        })}
+      </section>
+
+      <footer className="home-footer">
+        <div className="home-footer-main">
+          <div className="footer-brand">
+            <div className="footer-brand-title">
+              <BrandMark />
+              <strong>Nav Registry</strong>
+            </div>
+            <p>Packages, modules, boards, and managed toolchains for embedded firmware teams.</p>
+          </div>
+          <div className="footer-columns">
+            <div className="footer-column">
+              <strong>Registry</strong>
+              <nav className="footer-link-grid" aria-label="Footer registry navigation">
+                {footerLinks.map(([label, target]) => (
+                  <button key={label} onClick={() => navigate(target)}>{label}</button>
+                ))}
+              </nav>
+            </div>
+            <div className="footer-column">
+              <strong>Social</strong>
+              <div className="footer-socials">
+                {socialLinks.map(({ label, href, icon: Icon }) => (
+                  <a className="social-link" key={label} href={href} target="_blank" rel="noreferrer" aria-label={label}>
+                    <Icon />
+                  </a>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="home-footer-bottom">
+          <span>Navrobotec</span>
+          <span>Development registry for embedded packages.</span>
+        </div>
+      </footer>
+    </Page>
+  );
+}
+
+function InstallPage() {
+  const installers = getInstallers();
+
+  return (
+    <Page className="install-page">
+      <section className="install-hero">
+        <p className="hero-kicker">Install Nav CLI</p>
+        <h1>Start building embedded projects from the terminal.</h1>
+        <p>
+          Pick your operating system, run the command, then use Nav to install packages, resolve toolchains, build firmware, and upload to boards.
+        </p>
+      </section>
+
+      <section className="install-grid install-page-grid">
+        {installers.map(installer => (
+          <Card className="install-card install-page-card" key={installer.name}>
+            <div className="install-header">
+              <span className="os-logo-frame">
+                <img className="os-logo" src={installer.logo} alt="" />
+              </span>
+              <div>
+                <h3>{installer.name}</h3>
+                <p>{installer.detail}</p>
+              </div>
+            </div>
+            <CommandLine command={installer.command} />
+          </Card>
+        ))}
+      </section>
+
+      <Card className="install-next-card">
+        <h2>After installation</h2>
+        <div className="install-next-grid">
+          <CommandLine command="nav login" />
+          <CommandLine command="nav setup" />
+          <CommandLine command="nav build" />
+        </div>
+      </Card>
     </Page>
   );
 }
@@ -1114,7 +1422,7 @@ function PackagesPage({ error, notice, query, setQuery, filteredPackages, downlo
   return (
     <Page title="Packages" description="Browse public packages and install them with Nav.">
       <PageAlerts error={error} notice={notice} />
-      <Card className="section-card">
+      <section className="catalog-section">
         <div className="section-heading">
           <div>
             <h2>Registry Packages</h2>
@@ -1132,7 +1440,7 @@ function PackagesPage({ error, notice, query, setQuery, filteredPackages, downlo
           {filteredPackages.length === 0 && <div className="empty-state">No packages match this search.</div>}
         </div>
         {filteredPackages.length > 0 && <Pagination page={page} pageCount={pageCount} onPageChange={setPage} />}
-      </Card>
+      </section>
     </Page>
   );
 }
@@ -1374,6 +1682,8 @@ function ToolchainsPage({
   stats,
   activeVendor,
   setActiveVendor,
+  toolchainQuery,
+  setToolchainQuery,
   filteredToolchainGroups,
   toolchainFilters,
   setToolchainFilters,
@@ -1390,7 +1700,7 @@ function ToolchainsPage({
     .filter(artifact => artifact.os && artifact.arch)
     .map(artifact => `${artifact.os}/${artifact.arch}`))).size;
   const vendorCount = new Set(filteredToolchainGroups.map(toolchain => toolchain.vendor)).size;
-  useEffect(() => setPage(1), [activeVendor, toolchainFilters.os, toolchainFilters.arch, toolchainFilters.board]);
+  useEffect(() => setPage(1), [activeVendor, toolchainQuery, toolchainFilters.os, toolchainFilters.arch, toolchainFilters.board]);
   useEffect(() => setPage(current => Math.min(current, pageCount)), [pageCount]);
   return (
     <Page title="Toolchains">
@@ -1421,13 +1731,17 @@ function ToolchainsPage({
           <strong>{vendorCount}</strong>
         </Card>
       </section>
-      <Card className="section-card">
+      <section className="catalog-section">
         <div className="section-heading">
           <div>
             <h2>Managed Toolchains</h2>
             <p>Grouped by toolchain version, with platform artifacts and official source links.</p>
           </div>
           <div className="toolbar-actions">
+            <div className="search-box">
+              <Search size={17} />
+              <Input value={toolchainQuery} onChange={event => setToolchainQuery(event.target.value)} placeholder="Search toolchains..." />
+            </div>
             <div className="tabs">
               {['all', 'nav', 'official', 'hardware'].map(vendor => (
                 <button key={vendor} className={activeVendor === vendor ? 'active' : ''} onClick={() => setActiveVendor(vendor)}>
@@ -1488,7 +1802,7 @@ function ToolchainsPage({
           {filteredToolchainGroups.length === 0 && <div className="empty-state">No toolchains match this filter.</div>}
         </div>
         {filteredToolchainGroups.length > 0 && <Pagination page={page} pageCount={pageCount} onPageChange={setPage} />}
-      </Card>
+      </section>
     </Page>
   );
 }
@@ -1829,13 +2143,123 @@ function AdminPage({
   );
 }
 
-function Page({ title, description, children }) {
+function LegalPage({ slug, request, user }) {
+  const [document, setDocument] = useState(null);
+  const [draft, setDraft] = useState({ title: '', body: '', effective_date: '' });
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const [editOpen, setEditOpen] = useState(false);
+  const canEdit = user?.system_role === 'root';
+
+  useEffect(() => {
+    let alive = true;
+    setError('');
+    setNotice('');
+    request(`/legal/${slug}`)
+      .then(data => {
+        if (!alive) return;
+        const doc = data.document;
+        setDocument(doc);
+        setDraft({
+          title: doc.title || '',
+          body: doc.body || '',
+          effective_date: String(doc.effective_date || '').slice(0, 10)
+        });
+      })
+      .catch(err => {
+        if (alive) setError(err.message);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [slug]);
+
+  async function saveLegalDocument(event) {
+    event.preventDefault();
+    setError('');
+    setNotice('');
+    try {
+      const data = await request(`/legal/${slug}`, {
+        method: 'PUT',
+        body: JSON.stringify(draft)
+      });
+      setDocument(data.document);
+      setDraft({
+        title: data.document.title || '',
+        body: data.document.body || '',
+        effective_date: String(data.document.effective_date || '').slice(0, 10)
+      });
+      setEditOpen(false);
+      setNotice(`${data.document.title} updated.`);
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
   return (
-    <section className="page">
+    <Page
+      title={document?.title || (slug === 'privacy' ? 'Privacy Policy' : 'Terms of Service')}
+      description={document ? `Effective ${formatDate(document.effective_date)} - updated ${formatDate(document.updated_at)}` : ''}
+      actions={canEdit ? (
+        <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
+          <Pencil size={15} />
+          Edit
+        </Button>
+      ) : null}
+    >
+      <PageAlerts error={error} notice={notice} />
+      <div className="legal-layout">
+        <Card className="section-card legal-document">
+          {renderLegalBody(document?.body || 'Loading document...')}
+        </Card>
+        {canEdit && editOpen && (
+          <div className="modal-backdrop" role="presentation" onMouseDown={() => setEditOpen(false)}>
+            <Card className="section-card legal-editor modal-card" role="dialog" aria-modal="true" aria-label={`Edit ${document?.title || 'document'}`} onMouseDown={event => event.stopPropagation()}>
+              <div className="modal-heading">
+                <div>
+                  <h2>Edit document</h2>
+                  <p>{document?.title || 'Legal document'}</p>
+                </div>
+                <Button variant="ghost" size="sm" type="button" onClick={() => setEditOpen(false)}>
+                  <X size={16} />
+                </Button>
+              </div>
+              <form className="stack-form" onSubmit={saveLegalDocument}>
+                <Label>
+                  Title
+                  <Input value={draft.title} onChange={event => setDraft({ ...draft, title: event.target.value })} />
+                </Label>
+                <Label>
+                  Effective date
+                  <Input type="date" value={draft.effective_date} onChange={event => setDraft({ ...draft, effective_date: event.target.value })} />
+                </Label>
+                <Label>
+                  Body
+                  <Textarea value={draft.body} onChange={event => setDraft({ ...draft, body: event.target.value })} rows={16} />
+                </Label>
+                <div className="button-row">
+                  <Button type="submit">Save document</Button>
+                  <Button type="button" variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
+                </div>
+              </form>
+            </Card>
+          </div>
+        )}
+      </div>
+    </Page>
+  );
+}
+
+function Page({ title, description, actions = null, children, className = '' }) {
+  return (
+    <section className={cn('page', className)}>
       {title && (
         <header className="page-header">
-          <h1>{title}</h1>
-          {description && <p>{description}</p>}
+          <div>
+            <h1>{title}</h1>
+            {description && <p>{description}</p>}
+          </div>
+          {actions && <div className="page-actions">{actions}</div>}
         </header>
       )}
       <div className="page-content">{children}</div>
@@ -2167,11 +2591,14 @@ function groupToolchains(toolchains) {
 function normalizeRoute(pathname) {
   if (pathname.includes('signup')) return 'signup';
   if (pathname.includes('login')) return 'login';
+  if (pathname.includes('privacy')) return 'privacy';
+  if (pathname.includes('terms')) return 'terms';
   if (pathname.includes('verify-email')) return 'verify-email';
   if (pathname.includes('forgot-password')) return 'forgot-password';
   if (pathname.includes('reset-password')) return 'reset-password';
   if (pathname.includes('invite')) return 'invite';
   if (pathname === '/settings') return 'settings';
+  if (pathname.includes('install')) return 'install';
   const namespaceMatch = pathname.match(/^\/namespaces\/([^/]+)\/settings/);
   if (namespaceMatch) return `namespace-settings:${decodeURIComponent(namespaceMatch[1])}`;
   if (pathname.includes('namespaces')) return 'namespaces';
@@ -2182,13 +2609,16 @@ function normalizeRoute(pathname) {
   if (pathname.includes('packages')) return 'packages';
   if (pathname.includes('toolchains')) return 'toolchains';
   if (pathname.includes('admin')) return 'admin';
-  if (pathname.includes('cli')) return 'home';
+  if (pathname.includes('cli')) return 'install';
   if (pathname.includes('security')) return 'toolchains';
   return 'home';
 }
 
 function routeToPath(route) {
   if (route === 'home') return '/';
+  if (route === 'install') return '/install';
+  if (route === 'privacy') return '/privacy';
+  if (route === 'terms') return '/terms';
   if (route === 'settings') return '/settings';
   if (route === 'verify-email') return '/verify-email';
   if (route === 'forgot-password') return '/forgot-password';
@@ -2225,6 +2655,28 @@ function formatBytes(value) {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function formatDate(value) {
+  if (!value) return 'not set';
+  return new Date(value).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+function renderLegalBody(body) {
+  const blocks = String(body || '').split(/\n{2,}/).filter(Boolean);
+  return blocks.map((block, index) => {
+    if (block.startsWith('# ')) return <h2 key={index}>{block.replace(/^#\s+/, '')}</h2>;
+    if (block.startsWith('## ')) return <h3 key={index}>{block.replace(/^##\s+/, '')}</h3>;
+    const lines = block.split('\n').filter(Boolean);
+    if (lines.every(line => line.trim().startsWith('- '))) {
+      return (
+        <ul key={index}>
+          {lines.map(line => <li key={line}>{line.trim().replace(/^-\s+/, '')}</li>)}
+        </ul>
+      );
+    }
+    return <p key={index}>{lines.join(' ')}</p>;
+  });
 }
 
 async function sha256Hex(arrayBuffer) {

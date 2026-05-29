@@ -198,13 +198,45 @@ spec:
     metadata:
       labels:
         app: nav-backend
+        nav.navrobotec.com/workload: stateless
     spec:
-      nodeSelector:
-        kubernetes.io/hostname: srv1237670
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: In
+                    values: [node2]
+            - weight: 40
+              preference:
+                matchExpressions:
+                  - key: phasicon.io/node-class
+                    operator: In
+                    values: [edge-worker]
+            - weight: 10
+              preference:
+                matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: In
+                    values: [srv1237670]
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 80
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: nav.navrobotec.com/workload
+                      operator: In
+                      values: [stateless]
+                topologyKey: kubernetes.io/hostname
+      imagePullSecrets:
+        - name: ghcr-pull-secret
       containers:
         - name: backend
-          image: nav-registry-backend:dev
-          imagePullPolicy: Never
+          image: ghcr.io/ragnar-vallhala/nav-backend:dev
+          imagePullPolicy: Always
           ports:
             - containerPort: 14000
           env:
@@ -377,17 +409,51 @@ spec:
   selector:
     matchLabels:
       app: nav-worker
+  strategy:
+    type: Recreate
   template:
     metadata:
       labels:
         app: nav-worker
+        nav.navrobotec.com/workload: stateless
     spec:
-      nodeSelector:
-        kubernetes.io/hostname: srv1237670
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: In
+                    values: [node0]
+            - weight: 40
+              preference:
+                matchExpressions:
+                  - key: phasicon.io/node-class
+                    operator: In
+                    values: [edge-worker]
+            - weight: 10
+              preference:
+                matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: In
+                    values: [srv1237670]
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 80
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: nav.navrobotec.com/workload
+                      operator: In
+                      values: [stateless]
+                topologyKey: kubernetes.io/hostname
+      imagePullSecrets:
+        - name: ghcr-pull-secret
       containers:
         - name: worker
-          image: nav-registry-worker:dev
-          imagePullPolicy: Never
+          image: ghcr.io/ragnar-vallhala/nav-worker:dev
+          imagePullPolicy: Always
           env:
             - name: NODE_ENV
               value: production
@@ -458,17 +524,51 @@ spec:
   selector:
     matchLabels:
       app: nav-frontend
+  strategy:
+    type: Recreate
   template:
     metadata:
       labels:
         app: nav-frontend
+        nav.navrobotec.com/workload: stateless
     spec:
-      nodeSelector:
-        kubernetes.io/hostname: srv1237670
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: In
+                    values: [node1]
+            - weight: 40
+              preference:
+                matchExpressions:
+                  - key: phasicon.io/node-class
+                    operator: In
+                    values: [edge-worker]
+            - weight: 10
+              preference:
+                matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: In
+                    values: [srv1237670]
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 80
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: nav.navrobotec.com/workload
+                      operator: In
+                      values: [stateless]
+                topologyKey: kubernetes.io/hostname
+      imagePullSecrets:
+        - name: ghcr-pull-secret
       containers:
         - name: frontend
-          image: nav-registry-frontend:dev
-          imagePullPolicy: Never
+          image: ghcr.io/ragnar-vallhala/nav-frontend:dev
+          imagePullPolicy: Always
           ports:
             - containerPort: 80
           readinessProbe:
