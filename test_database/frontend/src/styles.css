@@ -1852,10 +1852,20 @@ code {
 
   .home-feature-stack {
     margin-top: 44px;
+    display: grid;
+    gap: 0;
+    padding-bottom: 72px;
   }
 
   .home-feature-row {
+    position: sticky;
+    top: 70px;
+    z-index: calc(var(--stack-index) + 1);
+    min-height: calc(100svh - 86px);
+    margin-bottom: 74px;
     padding: 18px;
+    transform: translateY(calc(var(--stack-index) * -6px));
+    align-content: start;
   }
 
   .feature-copy h2 {

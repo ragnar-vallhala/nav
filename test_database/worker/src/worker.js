@@ -94,6 +94,35 @@ function sha256(value) {
   return crypto.createHash('sha256').update(value).digest('hex');
 }
 
+async function ensureWorkerSchema() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS scan_job_events (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      scan_job_id UUID REFERENCES scan_jobs(id) ON DELETE CASCADE,
+      phase TEXT NOT NULL,
+      level TEXT NOT NULL DEFAULT 'info',
+      message TEXT NOT NULL,
+      metadata JSONB NOT NULL DEFAULT '{}',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_scan_job_events_recent ON scan_job_events(created_at DESC)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_scan_job_events_job ON scan_job_events(scan_job_id, created_at)`);
+}
+
+async function logScanEvent(job, phase, message, level = 'info', metadata = {}) {
+  if (!job?.id) return;
+  try {
+    await pool.query(
+      `INSERT INTO scan_job_events (scan_job_id, phase, level, message, metadata)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [job.id, phase, level, message, metadata]
+    );
+  } catch (error) {
+    console.error(`[worker] scan event log failed: ${error.message}`);
+  }
+}
+
 function decodedBase64Size(value) {
   const input = String(value || '');
   if (!input) return 0;
@@ -644,9 +673,10 @@ async function scanAbiManifest(parsed, manifest, files) {
   return { findings, checks, rebuilds };
 }
 
-async function scanNavPackage(buffer) {
+async function scanNavPackage(buffer, emit = async () => {}) {
   const findings = [];
   const checks = [];
+  await emit('archive', 'checking archive byte limits', 'info', { bytes: buffer.length, max_bytes: config.maxArchiveBytes });
   if (buffer.length > config.maxArchiveBytes) {
     findings.push(`archive exceeds ${config.maxArchiveBytes} byte upload limit`);
   }
@@ -655,8 +685,10 @@ async function scanNavPackage(buffer) {
   try {
     parsed = JSON.parse(buffer.toString('utf8'));
     checks.push('navpkg-json-parse');
+    await emit('parse', 'parsed .navpkg JSON archive', 'success');
   } catch {
     findings.push('unsupported archive format: package uploads must be .navpkg JSON archives for this scanner');
+    await emit('parse', 'failed to parse package archive', 'error');
     return { passed: false, checks, findings, expandedBytes: 0, fileCount: 0 };
   }
 
@@ -667,11 +699,16 @@ async function scanNavPackage(buffer) {
     findings.push('missing package manifest');
   } else {
     checks.push('manifest-present');
+    await emit('manifest', 'manifest present and schema accepted', 'success', {
+      package: parsed.manifest?.package?.name || parsed.manifest?.name || null,
+      kind: parsed.manifest?.package?.kind || parsed.manifest?.kind || null
+    });
   }
   if (parsed.files?.length > config.maxFiles) {
     findings.push(`file count ${parsed.files.length} exceeds ${config.maxFiles}`);
   }
 
+  await emit('files', 'walking package file list safely', 'info', { files: parsed.files?.length || 0 });
   let expandedBytes = 0;
   const seen = new Set();
   for (const file of parsed.files || []) {
@@ -696,13 +733,23 @@ async function scanNavPackage(buffer) {
   }
 
   const compressionRatio = buffer.length ? expandedBytes / buffer.length : 0;
+  await emit('limits', 'validated expanded size and compression ratio', findings.length ? 'warn' : 'success', {
+    expanded_bytes: expandedBytes,
+    file_count: parsed.files?.length || 0,
+    compression_ratio: Number(compressionRatio.toFixed(2))
+  });
   if (compressionRatio > config.maxCompressionRatio) {
     findings.push(`expanded-to-archive ratio ${compressionRatio.toFixed(1)} exceeds ${config.maxCompressionRatio}`);
   }
 
+  await emit('abi', 'checking ABI manifest and module policy', 'info');
   const abiScan = await scanAbiManifest(parsed, parsed.manifest || {}, parsed.files || []);
   findings.push(...abiScan.findings);
   checks.push(...abiScan.checks);
+  await emit('rebuild', 'canonical target rebuild matrix completed', abiScan.findings.length ? 'warn' : 'success', {
+    targets: config.canonicalTargets,
+    rebuilds: abiScan.rebuilds || []
+  });
 
   checks.push('path-traversal-policy', 'file-count-limit', 'expanded-size-limit', 'secret-patterns');
   return {
@@ -848,6 +895,7 @@ async function failJob(job, error) {
 }
 
 async function processJob(job) {
+  await logScanEvent(job, 'claim', 'worker claimed scan job', 'info', { worker_id: config.workerId });
   const sessionResult = await pool.query(
     `SELECT ps.*, p.slug, ns.name AS namespace
      FROM publish_sessions ps
@@ -861,12 +909,20 @@ async function processJob(job) {
   }
   const session = sessionResult.rows[0];
   if (!['queued', 'uploaded'].includes(session.status)) {
+    await logScanEvent(job, 'skip', `skipped session in ${session.status} state`, 'warn');
     await pool.query(`UPDATE scan_jobs SET status = 'skipped', finished_at = now(), updated_at = now() WHERE id = $1`, [job.id]);
     return;
   }
+  await logScanEvent(job, 'quarantine', `fetching quarantine archive for ${session.namespace}/${session.slug}@${session.version}`, 'info', {
+    storage_key: session.quarantine_storage_key
+  });
   const buffer = await objectToBuffer(QUARANTINE_BUCKET, session.quarantine_storage_key);
   const actualSha = sha256(buffer);
   if (actualSha !== session.uploaded_sha256) {
+    await logScanEvent(job, 'sha256', 'quarantine checksum mismatch', 'error', {
+      expected: session.uploaded_sha256,
+      actual: actualSha
+    });
     await rejectPackage(job, session, {
       passed: false,
       checks: ['sha256'],
@@ -876,17 +932,30 @@ async function processJob(job) {
     });
     return;
   }
-  const scan = await scanNavPackage(buffer);
+  await logScanEvent(job, 'sha256', 'verified SHA256 before extraction', 'success', {
+    sha256: actualSha,
+    bytes: buffer.length
+  });
+  const scan = await scanNavPackage(buffer, (phase, message, level, metadata) => logScanEvent(job, phase, message, level, metadata));
   if (!scan.passed) {
     await rejectPackage(job, session, scan);
+    await logScanEvent(job, 'result', `rejected ${session.namespace}/${session.slug}@${session.version}`, 'error', {
+      findings: scan.findings
+    });
     console.log(`[worker] rejected ${session.namespace}/${session.slug}@${session.version}: ${scan.findings.join('; ')}`);
     return;
   }
   await promotePackage(job, session, buffer, scan);
+  await logScanEvent(job, 'result', `published ${session.namespace}/${session.slug}@${session.version}`, 'success', {
+    checks: scan.checks,
+    expanded_bytes: scan.expandedBytes,
+    file_count: scan.fileCount
+  });
   console.log(`[worker] published ${session.namespace}/${session.slug}@${session.version}`);
 }
 
 async function loop() {
+  await ensureWorkerSchema();
   console.log(`[worker] ${config.workerId} online`);
   for (;;) {
     const job = await claimJob();

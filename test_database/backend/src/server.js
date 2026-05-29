@@ -1073,6 +1073,19 @@ async function ensureSchema() {
     )
   `);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_scan_jobs_queue ON scan_jobs(status, priority, created_at)`);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS scan_job_events (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      scan_job_id UUID REFERENCES scan_jobs(id) ON DELETE CASCADE,
+      phase TEXT NOT NULL,
+      level TEXT NOT NULL DEFAULT 'info',
+      message TEXT NOT NULL,
+      metadata JSONB NOT NULL DEFAULT '{}',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_scan_job_events_recent ON scan_job_events(created_at DESC)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_scan_job_events_job ON scan_job_events(scan_job_id, created_at)`);
   await pool.query(`ALTER TABLE package_versions ADD COLUMN IF NOT EXISTS changelog TEXT`);
   await pool.query(`ALTER TABLE toolchain_artifacts ALTER COLUMN signature DROP NOT NULL`);
   await seedLegalDocuments();
@@ -1894,6 +1907,26 @@ echo "Nav installed. Open a new terminal, or run: . \\"$profile_file\\"; nav che
     res.json(result.rows[0]);
   });
 
+  app.get('/scan-events/recent', async (req, res) => {
+    const limit = Math.max(1, Math.min(60, Number(req.query.limit || 24)));
+    const result = await pool.query(
+      `SELECT e.id, e.scan_job_id, e.phase, e.level, e.message, e.metadata, e.created_at,
+              sj.status AS job_status,
+              ps.version,
+              p.slug AS package,
+              ns.name AS namespace
+       FROM scan_job_events e
+       LEFT JOIN scan_jobs sj ON sj.id = e.scan_job_id
+       LEFT JOIN publish_sessions ps ON sj.subject_type = 'publish_session' AND sj.subject_id = ps.id
+       LEFT JOIN packages p ON p.id = ps.package_id
+       LEFT JOIN namespaces ns ON ns.id = p.namespace_id
+       ORDER BY e.created_at DESC
+       LIMIT $1`,
+      [limit]
+    );
+    res.json({ events: result.rows.reverse() });
+  });
+
   app.get('/namespaces', authRequired, async (req, res) => {
     const result = await pool.query(`
       SELECT ns.id, ns.name, ns.kind, ns.created_at, nm.role,
@@ -2273,7 +2306,17 @@ echo "Nav installed. Open a new terminal, or run: . \\"$profile_file\\"; nav che
       [req.params.sessionId, req.user.sub]
     );
     if (result.rowCount === 0) return res.status(404).json({ error: 'Publish session not found' });
-    res.json({ session: result.rows[0] });
+    const scanJobId = result.rows[0].scan_job_id;
+    const events = scanJobId
+      ? await pool.query(
+          `SELECT id, phase, level, message, metadata, created_at
+           FROM scan_job_events
+           WHERE scan_job_id = $1
+           ORDER BY created_at ASC`,
+          [scanJobId]
+        )
+      : { rows: [] };
+    res.json({ session: result.rows[0], events: events.rows });
   });
 
   app.get('/packages/:namespace/:name/versions/:version/download', async (req, res) => {

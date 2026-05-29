@@ -234,6 +234,19 @@ CREATE TABLE IF NOT EXISTS scan_jobs (
 
 CREATE INDEX IF NOT EXISTS idx_scan_jobs_queue ON scan_jobs(status, priority, created_at);
 
+CREATE TABLE IF NOT EXISTS scan_job_events (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    scan_job_id UUID REFERENCES scan_jobs(id) ON DELETE CASCADE,
+    phase TEXT NOT NULL,
+    level TEXT NOT NULL DEFAULT 'info',
+    message TEXT NOT NULL,
+    metadata JSONB NOT NULL DEFAULT '{}',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_scan_job_events_recent ON scan_job_events(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_scan_job_events_job ON scan_job_events(scan_job_id, created_at);
+
 CREATE TABLE IF NOT EXISTS security_scans (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     subject_type TEXT NOT NULL,
