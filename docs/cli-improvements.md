@@ -178,12 +178,29 @@ whose include dirs and `NAV_DEPS_COMPILER` point into the cache; a `cmake -P`
 include of that file confirmed it is valid CMake and that the derived
 objcopy/size resolve to real cached binaries.
 
-Still open in Phase 2.3: `nav remove`; `nav update` re-resolve; an end-to-end
-firmware compile of a real NavHAL project through the cached toolchain (the
-generated CMake is verified valid, but a full cross-compile needs a scaffolded
-NavHAL project in CI). Known rough edge: `nav add`'s `nav.toml` round-trip via
-toml++ drops comments and reorders keys — goes away when `nav.toml` migrates to
-YAML.
+### Phase 2.3 (cont.) — end-to-end firmware build through the cached toolchain
+
+Proven that `nav build` cross-compiles a real firmware ELF using the toolchain
+resolved from the cache, not the one on `$PATH`. `scripts/e2e_firmware_build.sh`
+automates it against the dev stack:
+
+- Packages the host's `arm-none-eabi-*` tools into a real registry artifact
+  (`bin/` = symlinks to the installed tools), uploads it to MinIO, and points
+  the registry's `arm-none-eabi-gcc@13.2.0` manifest at it (real sha256).
+- `nav create fw` (clones NavHAL) → `nav add arm-none-eabi-gcc@13.2.0` →
+  `nav build`.
+- Asserts `src/main.c` was compiled by the **cached** `arm-none-eabi-gcc`
+  (checked via `compile_commands.json`) and that `build/fw` is an ARM ELF.
+
+Verified live: `main.c` and the NavHAL `hal` archive compiled with
+`<NAV_HOME>/packages/arm-none-eabi-gcc-13.2.0-<sha>/bin/arm-none-eabi-gcc`;
+`CMAKE_CXX_COMPILER`/`AR`/`RANLIB` all resolved into the cache; output was a
+Cortex-M4 `ELF 32-bit LSB executable, ARM, EABI5`. The script is the natural
+basis for a CI job (needs the compose stack + a host arm toolchain).
+
+Still open in Phase 2.3: `nav remove`; `nav update` re-resolve. Known rough
+edge: `nav add`'s `nav.toml` round-trip via toml++ drops comments and reorders
+keys — goes away when `nav.toml` migrates to YAML.
 
 ### Data-format policy (effective Phase 2.1 onward)
 
