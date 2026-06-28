@@ -1,7 +1,0 @@
-services:
-  generator:
-    image: node:20-alpine
-    volumes:
-      - .:/work
-    working_dir: /work
-    command: npx -y create-next-app@latest registry-ui --ts --no-tailwind --eslint --app --src-dir --import-alias "@/*" --use-npm

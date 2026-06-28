@@ -22,11 +22,8 @@ add_executable(nav_tests
     test_semver.cpp
     test_index.cpp
     test_lockfile.cpp
-    test_resolver.cpp
-    test_http_index.cpp
     test_platform.cpp
     test_cache.cpp
-    test_fetch.cpp
     test_deps.cpp
 )
 

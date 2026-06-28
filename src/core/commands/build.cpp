@@ -3,12 +3,11 @@
 #include "nav/core/command.hpp"
 #include "nav/core/config.hpp"
 #include "nav/core/deps.hpp"
-#include "nav/core/http_index.hpp"
-#include "nav/core/install.hpp"
 #include "nav/core/lockfile.hpp"
 #include "nav/core/platform.hpp"
 #include "nav/core/ui.hpp"
 
+#include <cstdlib>
 #include <filesystem>
 
 namespace fs = std::filesystem;
@@ -54,26 +53,27 @@ int BuildCommand::run(IExecutionContext& ctx, const std::vector<std::string>& /*
     }
     ui::info("Resolved board: " + board->id + " (" + board->arch + ")");
 
-    // Registry dependencies: ensure everything pinned in nav.lock is cached,
-    // then emit build/nav-deps.cmake so the generated CMake picks up library
-    // include/link inputs and any registry-provided toolchain compiler.
+    // Locked dependencies: emit build/nav-deps.cmake from nav.lock so the
+    // generated CMake picks up any cached library include/link inputs and the
+    // pinned toolchain compiler. Populating the cache is out of scope here — the
+    // registry fetch path has been removed; a git-based fetcher will replace it.
     if (auto lock = load_lockfile(*root / "nav.lock")) {
         const std::string platform = host_platform_key(ctx);
-        if (!lock->packages.empty()) {
-            ui::step("Dependencies", "Ensuring locked packages are cached...");
-            auto outcomes = ensure_locked_present(ctx, cache_root(), default_registry_url(),
-                                                  *lock, "", /*skip_cached=*/true, platform);
-            report_ensure_outcomes(outcomes);
-            if (!all_present(outcomes)) {
-                ui::error("Missing dependencies. Run 'nav fetch' once the registry is reachable.");
-                return 1;
-            }
-        }
         const fs::path deps_cmake = fs::path("build") / "nav-deps.cmake";
         if (!write_deps_cmake(*lock, cache_root(), platform, board->compiler, deps_cmake)) {
             ui::error("Failed to write " + deps_cmake.string() + ".");
             return 1;
         }
+    }
+
+    // NavHAL's Kconfig (extern/NavHAL/Kconfig) uses relative `source` globs that
+    // kconfiglib resolves against $srctree (default: cwd). NavHAL standalone runs
+    // cmake from its own root so cwd happens to match; we drive cmake from the
+    // project root, so point $srctree at the NavHAL clone explicitly. Child
+    // processes (cmake -> kconfig.py) inherit it.
+    const fs::path navhal_dir = *root / "extern" / "NavHAL";
+    if (fs::exists(navhal_dir)) {
+        ::setenv("srctree", navhal_dir.string().c_str(), /*overwrite=*/1);
     }
 
     ui::step("Configuring", "Initializing dynamic build system generator (CMake)...");

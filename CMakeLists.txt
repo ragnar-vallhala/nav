@@ -51,13 +51,9 @@ add_library(nav_core STATIC
     src/core/semver.cpp
     src/core/index.cpp
     src/core/lockfile.cpp
-    src/core/resolver.cpp
-    src/core/http_index.cpp
     src/core/platform.cpp
     src/core/cache.cpp
-    src/core/fetch.cpp
     src/core/deps.cpp
-    src/core/install.cpp
     src/core/commands/create.cpp
     src/core/commands/build.cpp
     src/core/commands/upload.cpp
@@ -65,7 +61,6 @@ add_library(nav_core STATIC
     src/core/commands/clean.cpp
     src/core/commands/check.cpp
     src/core/commands/update.cpp
-    src/core/commands/registry.cpp
     src/core/commands/board.cpp
 )
 

@@ -53,11 +53,6 @@ int main(int argc, char* argv[]) {
     commands["clean"]   = std::make_unique<nav::core::CleanCommand>();
     commands["check"]   = std::make_unique<nav::core::CheckCommand>();
     commands["update"]  = std::make_unique<nav::core::UpdateCommand>();
-    commands["add"]     = std::make_unique<nav::core::AddCommand>();
-    commands["search"]  = std::make_unique<nav::core::SearchCommand>();
-    commands["fetch"]   = std::make_unique<nav::core::FetchCommand>();
-    commands["login"]   = std::make_unique<nav::core::LoginCommand>();
-    commands["publish"] = std::make_unique<nav::core::PublishCommand>();
     commands["board"]   = std::make_unique<nav::core::BoardCommand>();
 
     // Each subcommand uses prefix_command() so anything after the verb name

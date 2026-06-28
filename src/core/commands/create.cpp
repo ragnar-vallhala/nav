@@ -111,8 +111,12 @@ int CreateCommand::run(IExecutionContext& ctx, const std::vector<std::string>& a
         return clone_res.exit_code;
     }
 
-    fs::remove_all(tmp_path / "extern" / "NavHAL" / "samples", ec);
-    ui::info("Dependency cleaned (purged samples).");
+    // NavHAL's top-level Kconfig unconditionally `source "samples/Kconfig"`, so
+    // the samples tree must stay in place or the configure step fails. Trim only
+    // the heavyweight sample artifacts (datasheets) to keep the dependency lean
+    // without breaking the Kconfig parse.
+    fs::remove_all(tmp_path / "extern" / "NavHAL" / "datasheets", ec);
+    ui::info("Dependency cleaned (trimmed datasheets).");
 
     // Now that the network step has succeeded, lay down the local files.
     std::ofstream(tmp_path / "nav.toml")        << substitute(templates::kNavToml, proj_name);
