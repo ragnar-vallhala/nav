@@ -9,6 +9,7 @@
 
 #include <cstdlib>
 #include <filesystem>
+#include <iostream>
 
 namespace fs = std::filesystem;
 
@@ -76,19 +77,24 @@ int BuildCommand::run(IExecutionContext& ctx, const std::vector<std::string>& /*
         ::setenv("srctree", navhal_dir.string().c_str(), /*overwrite=*/1);
     }
 
-    ui::step("Configuring", "Initializing dynamic build system generator (CMake)...");
-    auto conf_res = ctx.execute({"cmake", "-S", ".", "-B", "build"});
+    // Run cmake quietly (silent=true captures output without streaming it), so a
+    // successful build stays terse like a container build. On failure we replay
+    // the captured log so the diagnostics aren't lost.
+    ui::step("Configuring", "cmake");
+    auto conf_res = ctx.execute({"cmake", "-S", ".", "-B", "build"}, "", /*silent=*/true);
     if (conf_res.exit_code != 0) {
-        ui::error("Configuration sequence failed. Terminating build pipe.");
+        std::cerr << conf_res.output << std::endl;
+        ui::error("Configure failed.");
         return conf_res.exit_code;
     }
 
-    ui::step("Compiling", "Engaging native system builders...");
-    auto build_res = ctx.execute({"cmake", "--build", "build", "--parallel"});
+    ui::step("Compiling", "cmake --build");
+    auto build_res = ctx.execute({"cmake", "--build", "build", "--parallel"}, "", /*silent=*/true);
     if (build_res.exit_code == 0) {
-        ui::success("Compilation Successful! Binary artifacts successfully established in build/");
+        ui::success("Build complete. Artifacts in build/");
     } else {
-        ui::error("Builder reported non-recoverable compilation failure.");
+        std::cerr << build_res.output << std::endl;
+        ui::error("Build failed.");
     }
     return build_res.exit_code;
 }
