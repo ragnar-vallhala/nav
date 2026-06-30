@@ -1,0 +1,83 @@
+{
+  "schema": 1,
+  "tools": {
+    "arm-none-eabi-gcc": {
+      "binary": "arm-none-eabi-gcc",
+      "version": "13.3.1",
+      "packages": { "apt": "gcc-arm-none-eabi", "dnf": "arm-none-eabi-gcc-cs", "pacman": "arm-none-eabi-gcc", "brew": "gcc-arm-embedded", "winget": "Arm.GnuArmEmbeddedToolchain" },
+      "download": {
+        "windows-x86_64": {
+          "url": "https://github.com/xpack-dev-tools/arm-none-eabi-gcc-xpack/releases/download/v13.3.1-1.1/xpack-arm-none-eabi-gcc-13.3.1-1.1-win32-x64.zip",
+          "archive": "zip",
+          "bin_subdir": "xpack-arm-none-eabi-gcc-13.3.1-1.1/bin"
+        }
+      }
+    },
+    "st-flash": {
+      "binary": "st-flash",
+      "version": "1.8.0",
+      "packages": { "apt": "stlink-tools", "dnf": "stlink", "pacman": "stlink", "brew": "stlink" },
+      "download": {
+        "windows-x86_64": {
+          "url": "https://github.com/stlink-org/stlink/releases/download/v1.8.0/stlink-1.8.0-win32.zip",
+          "archive": "zip",
+          "bin_subdir": "stlink-1.8.0-win32/bin"
+        }
+      }
+    },
+    "avr-gcc": {
+      "binary": "avr-gcc",
+      "version": "15.2.0",
+      "packages": { "apt": "gcc-avr", "dnf": "avr-gcc", "pacman": "avr-gcc", "brew": "avr-gcc" },
+      "download": {
+        "windows-x86_64": {
+          "url": "https://github.com/ZakKemble/avr-gcc-build/releases/download/v15.2.0-1/avr-gcc-15.2.0-x64-windows.zip",
+          "archive": "zip",
+          "bin_subdir": "avr-gcc-15.2.0-x64-windows/bin"
+        }
+      }
+    },
+    "avrdude": {
+      "binary": "avrdude",
+      "version": "7.3",
+      "packages": { "apt": "avrdude", "dnf": "avrdude", "pacman": "avrdude", "brew": "avrdude" },
+      "download": {
+        "windows-x86_64": {
+          "url": "https://github.com/avrdudes/avrdude/releases/download/v7.3/avrdude-v7.3-windows-x64.zip",
+          "archive": "zip",
+          "bin_subdir": ""
+        }
+      }
+    }
+  },
+  "boards": {
+    "nucleo_f401re": {
+      "name": "STM32 Nucleo-F401RE",
+      "arch": "cortex-m4",
+      "vendor": "stm32",
+      "mcu": "stm32f401re",
+      "navhal_board": "nucleo_f401re",
+      "compiler": "arm-none-eabi-gcc",
+      "flash_tool": "st-flash",
+      "flash_address": "0x08000000",
+      "compile_flags": ["-mcpu=cortex-m4", "-mthumb", "-mfloat-abi=hard", "-mfpu=fpv4-sp-d16"],
+      "link_flags": ["-mcpu=cortex-m4", "-mthumb", "-mfloat-abi=hard", "-mfpu=fpv4-sp-d16"],
+      "default_framework": "navhal",
+      "supported_frameworks": ["navhal"]
+    },
+    "atmega328p": {
+      "name": "Arduino Uno (ATmega328P)",
+      "arch": "avr",
+      "vendor": "atmel",
+      "mcu": "atmega328p",
+      "navhal_board": "atmega328p",
+      "compiler": "avr-gcc",
+      "flash_tool": "avrdude",
+      "flash_address": "",
+      "compile_flags": ["-mmcu=atmega328p"],
+      "link_flags": ["-mmcu=atmega328p"],
+      "default_framework": "navhal",
+      "supported_frameworks": ["navhal"]
+    }
+  }
+}

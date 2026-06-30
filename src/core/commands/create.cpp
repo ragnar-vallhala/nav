@@ -1,4 +1,5 @@
 #include "nav/core/command.hpp"
+#include "nav/core/navhal.hpp"
 #include "nav/core/project_name.hpp"
 #include "nav/core/ui.hpp"
 #include "nav/templates/embedded.hpp"
@@ -6,12 +7,16 @@
 #include <chrono>
 #include <filesystem>
 #include <fstream>
-#include <iostream>
 #include <string>
 #include <string_view>
 #include <system_error>
-#include <unistd.h>
 #include <vector>
+
+#ifdef _WIN32
+#include <process.h>
+#else
+#include <unistd.h>
+#endif
 
 namespace fs = std::filesystem;
 
@@ -32,7 +37,12 @@ std::string substitute(std::string_view tpl, const std::string& project_name) {
 std::string unique_suffix() {
     using namespace std::chrono;
     auto ns = duration_cast<nanoseconds>(steady_clock::now().time_since_epoch()).count();
-    return std::to_string(::getpid()) + "-" + std::to_string(ns);
+#ifdef _WIN32
+    auto pid = ::_getpid();
+#else
+    auto pid = ::getpid();
+#endif
+    return std::to_string(pid) + "-" + std::to_string(ns);
 }
 
 } // namespace
@@ -45,15 +55,18 @@ int CreateCommand::run(IExecutionContext& ctx, const std::vector<std::string>& a
     // Trivial flag scan until the CLI11 restructure lands. Recognise --force/-f
     // and treat the first non-flag argument as the project name.
     bool force = false;
+    bool as_library = false;
     std::string proj_name;
     for (const auto& a : args) {
         if (a == "--force" || a == "-f") {
             force = true;
+        } else if (a == "--lib" || a == "--library") {
+            as_library = true;
         } else if (proj_name.empty()) {
             proj_name = a;
         }
     }
-    if (proj_name.empty()) proj_name = "my-project";
+    if (proj_name.empty()) proj_name = as_library ? "my-library" : "my-project";
 
     if (auto reason = nav::core::validate_project_name(proj_name); !reason.empty()) {
         ui::error("Invalid project name '" + proj_name + "': " + reason);
@@ -98,32 +111,39 @@ int CreateCommand::run(IExecutionContext& ctx, const std::vector<std::string>& a
         }
     }
 
-    ui::step("Cloning", "Pulling dependency: NavHAL Framework");
-    const std::string repo_url = "https://github.com/ragnar-vallhala/NavHAL.git";
-    auto clone_res = ctx.execute(
-        {"git", "clone", "--depth", "1", "--branch", "stable", "--progress", repo_url, "NavHAL"},
-        (tmp_path / "extern").string());
-
-    if (clone_res.exit_code != 0) {
-        ui::error("Clone failed. Aborting project creation; no files were placed in the working directory.");
-        std::cerr << clone_res.output << std::endl;
+    // Fetch NavHAL into the shared per-user cache (cloned at most once per ref,
+    // then reused by every project) and link it into the project rather than
+    // re-cloning a full copy here.
+    ui::step("Linking", "Resolving NavHAL " + std::string(kDefaultNavhalRef) + " from the shared cache");
+    const fs::path navhal_src = ensure_navhal_cached(ctx, kDefaultNavhalRef);
+    if (navhal_src.empty()) {
+        ui::error("Could not provision NavHAL. Aborting; no files were placed in the working directory.");
         cleanup_tmp();
-        return clone_res.exit_code;
+        return 1;
     }
+    if (!link_navhal(ctx, navhal_src, tmp_path / "extern" / "NavHAL")) {
+        ui::error("Failed to link NavHAL into the project.");
+        cleanup_tmp();
+        return 1;
+    }
+    ui::info("NavHAL ready (cache: " + navhal_src.string() + ").");
 
-    // NavHAL's top-level Kconfig unconditionally `source "samples/Kconfig"`, so
-    // the samples tree must stay in place or the configure step fails. Trim only
-    // the heavyweight sample artifacts (datasheets) to keep the dependency lean
-    // without breaking the Kconfig parse.
-    fs::remove_all(tmp_path / "extern" / "NavHAL" / "datasheets", ec);
-    ui::info("Dependency cleaned (trimmed datasheets).");
-
-    // Now that the network step has succeeded, lay down the local files.
-    std::ofstream(tmp_path / "nav.toml")        << substitute(templates::kNavToml, proj_name);
-    std::ofstream(tmp_path / ".config")         << templates::kDotConfig;
-    std::ofstream(tmp_path / "src" / "main.c")  << templates::kMainC;
-    std::ofstream(tmp_path / "CMakeLists.txt")  << substitute(templates::kCMakeLists, proj_name);
-    ui::info("Default config files and starter code populated.");
+    // Now that the network step has succeeded, lay down the local files. A
+    // library project gets a static-archive CMake + exported header/source and
+    // no main(); a firmware project gets the executable scaffold + .config.
+    if (as_library) {
+        std::ofstream(tmp_path / "nav.toml")                     << substitute(templates::kNavTomlLib, proj_name);
+        std::ofstream(tmp_path / "include" / (proj_name + ".h")) << substitute(templates::kLibHeader, proj_name);
+        std::ofstream(tmp_path / "src" / (proj_name + ".c"))     << substitute(templates::kLibSource, proj_name);
+        std::ofstream(tmp_path / "CMakeLists.txt")               << substitute(templates::kCMakeListsLib, proj_name);
+        ui::info("Library scaffold and starter code populated.");
+    } else {
+        std::ofstream(tmp_path / "nav.toml")        << substitute(templates::kNavToml, proj_name);
+        std::ofstream(tmp_path / ".config")         << templates::kDotConfig;
+        std::ofstream(tmp_path / "src" / "main.c")  << templates::kMainC;
+        std::ofstream(tmp_path / "CMakeLists.txt")  << substitute(templates::kCMakeLists, proj_name);
+        ui::info("Default config files and starter code populated.");
+    }
 
     // Atomic move into the final location. If anything went wrong above we
     // already returned without touching final_path.

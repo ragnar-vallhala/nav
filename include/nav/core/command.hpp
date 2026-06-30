@@ -27,7 +27,7 @@ public:
 class CreateCommand : public ICommand {
 public:
     int run(IExecutionContext& ctx, const std::vector<std::string>& args) override;
-    std::string help_text() const override { return "Create a new project directory with config."; }
+    std::string help_text() const override { return "Create a new project (--lib for a library) directory with config."; }
 };
 
 class BuildCommand : public ICommand {
@@ -69,7 +69,13 @@ public:
 class BoardCommand : public ICommand {
 public:
     int run(IExecutionContext& ctx, const std::vector<std::string>& args) override;
-    std::string help_text() const override { return "Inspect the board catalog (list, info)."; }
+    std::string help_text() const override { return "Boards: list [--all], info <id>, check <id>, install <id>."; }
+};
+
+class LibCommand : public ICommand {
+public:
+    int run(IExecutionContext& ctx, const std::vector<std::string>& args) override;
+    std::string help_text() const override { return "Library deps: add <path|git-url> [name] [--ref r], remove <name>, list."; }
 };
 
 } // namespace nav::core

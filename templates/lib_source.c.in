@@ -1,0 +1,12 @@
+/**
+ * @file {{PROJECT_NAME}}.c
+ * @brief Implementation for the {{PROJECT_NAME}} nav library.
+ *
+ * Sources under src/ are compiled into the static archive. They may include
+ * NavHAL ("navhal.h") just like firmware; consumers bring their own NavHAL.
+ */
+#include "{{PROJECT_NAME}}.h"
+
+int nav_lib_version(void) {
+    return 1;
+}

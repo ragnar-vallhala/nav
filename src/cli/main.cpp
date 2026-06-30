@@ -10,13 +10,37 @@
 
 #include "nav/core/command.hpp"
 #include "nav/core/execution_context.hpp"
+#include "nav/core/provision.hpp"
 #include "nav/core/ui.hpp"
+
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
 
 #ifndef NAV_VERSION
 #define NAV_VERSION "0.0.0-dev"
 #endif
 
 namespace {
+
+#ifdef _WIN32
+// Put the console into UTF-8 + ANSI-escape mode so the banner's box-drawing
+// glyphs and the ui:: color codes render instead of showing as mojibake.
+void enable_windows_console_vt() {
+    ::SetConsoleOutputCP(CP_UTF8);
+    HANDLE out = ::GetStdHandle(STD_OUTPUT_HANDLE);
+    DWORD mode = 0;
+    if (out != INVALID_HANDLE_VALUE && ::GetConsoleMode(out, &mode)) {
+        ::SetConsoleMode(out, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+    }
+}
+#endif
 
 void apply_color_mode(const std::string& mode) {
     using nav::core::ui::ColorMode;
@@ -28,6 +52,15 @@ void apply_color_mode(const std::string& mode) {
 } // namespace
 
 int main(int argc, char* argv[]) {
+#ifdef _WIN32
+    enable_windows_console_vt();
+#endif
+
+    // Make any nav-provisioned portable toolchains (~/.nav/toolchains/*) visible
+    // to this process and its children, so git/cmake/ninja/the cross compiler
+    // resolve even on a machine with nothing installed system-wide.
+    nav::core::inject_toolchains_into_path();
+
     CLI::App app{"Nav — embedded development orchestrator"};
     app.set_version_flag("--version,-V", NAV_VERSION);
     app.require_subcommand(1);
@@ -54,6 +87,7 @@ int main(int argc, char* argv[]) {
     commands["check"]   = std::make_unique<nav::core::CheckCommand>();
     commands["update"]  = std::make_unique<nav::core::UpdateCommand>();
     commands["board"]   = std::make_unique<nav::core::BoardCommand>();
+    commands["lib"]     = std::make_unique<nav::core::LibCommand>();
 
     // Each subcommand uses prefix_command() so anything after the verb name
     // is collected raw into remaining() — letting verbs that still parse their

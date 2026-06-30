@@ -57,6 +57,15 @@ endif()
 # 2. Add NavHAL Dependency Framework
 add_subdirectory(extern/NavHAL)
 
+# 2a. Nav library dependencies (from nav.toml [dependencies]). nav resolves the
+#     transitive graph and writes build/nav-deps-libs.cmake, which
+#     add_subdirectory()s each library and wires their link edges. Libraries
+#     compile their NavHAL-dependent sources against this include path.
+set(NAV_NAVHAL_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/extern/NavHAL/include")
+if(EXISTS "${CMAKE_BINARY_DIR}/nav-deps-libs.cmake")
+    include("${CMAKE_BINARY_DIR}/nav-deps-libs.cmake")
+endif()
+
 # 3. Inherit Dynamic Target Environment Variables (NavHAL exports BOARD,
 #    FLASHER, FLASH_ADDRESS for backward compatibility with its config flow).
 include("${CMAKE_BINARY_DIR}/config.cmake")
@@ -101,6 +110,12 @@ if(NAV_DEPS_LINK_DIRS)
 endif()
 if(NAV_DEPS_LIBRARIES)
     target_link_libraries(${PROJECT_NAME} PRIVATE ${NAV_DEPS_LIBRARIES})
+endif()
+
+# 8b. Nav library dependencies built from source (nav-deps-libs.cmake). Each is
+#     a static target whose PUBLIC include dirs propagate here automatically.
+if(NAV_DEP_TARGETS)
+    target_link_libraries(${PROJECT_NAME} PRIVATE ${NAV_DEP_TARGETS})
 endif()
 
 # 9. Flash target support. Prefer Nav-resolved flasher; fall back to NavHAL's

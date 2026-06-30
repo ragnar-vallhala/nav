@@ -13,4 +13,12 @@ constexpr std::string_view kMainC = R"NAVTPL(@NAV_TPL_MAIN_C@)NAVTPL";
 
 constexpr std::string_view kCMakeLists = R"NAVTPL(@NAV_TPL_CMAKELISTS@)NAVTPL";
 
+constexpr std::string_view kNavTomlLib = R"NAVTPL(@NAV_TPL_TOML_LIB@)NAVTPL";
+
+constexpr std::string_view kCMakeListsLib = R"NAVTPL(@NAV_TPL_CMAKELISTS_LIB@)NAVTPL";
+
+constexpr std::string_view kLibHeader = R"NAVTPL(@NAV_TPL_LIB_HEADER@)NAVTPL";
+
+constexpr std::string_view kLibSource = R"NAVTPL(@NAV_TPL_LIB_SOURCE@)NAVTPL";
+
 } // namespace nav::templates

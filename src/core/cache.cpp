@@ -1,6 +1,7 @@
 #include "nav/core/cache.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <cstdlib>
 
 namespace fs = std::filesystem;
@@ -16,14 +17,50 @@ const char* getenv_nonempty(const char* key) {
 
 } // namespace
 
-fs::path cache_root() {
+fs::path nav_home_base() {
     if (const char* nav_home = getenv_nonempty("NAV_HOME")) {
-        return fs::path(nav_home) / "packages";
+        return fs::path(nav_home);
     }
     if (const char* home = getenv_nonempty("HOME")) {
-        return fs::path(home) / ".nav" / "packages";
+        return fs::path(home) / ".nav";
     }
-    return fs::path(".nav") / "packages";
+#ifdef _WIN32
+    if (const char* up = getenv_nonempty("USERPROFILE")) {
+        return fs::path(up) / ".nav";
+    }
+#endif
+    return fs::path(".nav");
+}
+
+fs::path cache_root() {
+    return nav_home_base() / "packages";
+}
+
+fs::path navhal_cache_dir(const std::string& ref) {
+    return nav_home_base() / "navhal" / ref;
+}
+
+bool navhal_is_cached(const fs::path& dir) {
+    return is_installed(dir);
+}
+
+fs::path git_cache_dir(const std::string& url, const std::string& ref) {
+    // Derive a filesystem-safe slug from the URL's final path component.
+    std::string tail = url;
+    if (auto slash = tail.find_last_of("/\\"); slash != std::string::npos)
+        tail = tail.substr(slash + 1);
+    if (tail.size() >= 4 && tail.compare(tail.size() - 4, 4, ".git") == 0)
+        tail.resize(tail.size() - 4);
+    auto sanitize = [](std::string s) {
+        for (char& c : s)
+            if (!(std::isalnum(static_cast<unsigned char>(c)) || c == '-' || c == '_' || c == '.'))
+                c = '_';
+        if (s.empty()) s = "repo";
+        return s;
+    };
+    const std::string slug = sanitize(tail);
+    const std::string ref_key = ref.empty() ? "default" : sanitize(ref);
+    return nav_home_base() / "deps" / slug / ref_key;
 }
 
 fs::path package_dir(const fs::path& root, const std::string& name,

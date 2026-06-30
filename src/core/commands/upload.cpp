@@ -18,6 +18,13 @@ int UploadCommand::run(IExecutionContext& ctx, const std::vector<std::string>& /
     }
     fs::current_path(*root);
 
+    // A library produces an archive, not a flashable firmware image.
+    if (auto cfg = load_project_config(*root); cfg && cfg->is_library()) {
+        ui::error("This is a library project — nothing to flash. Build it ('nav build') or "
+                  "depend on it from a firmware project, then upload that.");
+        return 1;
+    }
+
     if (!fs::exists("build")) {
         ui::error("Missing binary context. Please execute 'nav build' prior to upload attempts.");
         return 1;

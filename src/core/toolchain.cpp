@@ -1,10 +1,15 @@
 #include "nav/core/toolchain.hpp"
 
+#include "nav/core/registry.hpp"
+
 #include <chrono>
 #include <filesystem>
 #include <sstream>
+#include <system_error>
 
+#ifndef _WIN32
 #include <unistd.h>
+#endif
 namespace fs = std::filesystem;
 
 namespace nav::core {
@@ -16,24 +21,47 @@ static bool find_binary_in_path(const std::string& name) {
     if (!path_env) return false;
 
     std::string path_str(path_env);
+#ifdef _WIN32
+    // Windows separates PATH with ';' and has no executable bit; a command is
+    // runnable if a file with one of the PATHEXT-style extensions exists.
+    const char sep = ';';
+    static const char* const exts[] = {"", ".exe", ".com", ".bat", ".cmd"};
+#else
+    const char sep = ':';
+#endif
     std::stringstream ss(path_str);
     std::string segment;
-    while (std::getline(ss, segment, ':')) {
+    while (std::getline(ss, segment, sep)) {
         if (segment.empty()) continue;
         try {
             fs::path full_path = fs::path(segment) / name;
+#ifdef _WIN32
+            for (const char* ext : exts) {
+                fs::path candidate = full_path;
+                candidate += ext;
+                std::error_code ec;
+                if (fs::is_regular_file(candidate, ec)) {
+                    return true;
+                }
+            }
+#else
             // access() resolves symlinks and tests the executable bit against
             // the current uid/gid, which is what we actually want.
             if (::access(full_path.c_str(), X_OK) == 0) {
                 return true;
             }
+#endif
         } catch(...) {}
     }
     return false;
 }
 
 std::optional<PackageManager> detect_package_manager() {
-#ifdef __APPLE__
+#if defined(_WIN32)
+    if (find_binary_in_path("winget")) return PackageManager::Winget;
+    if (find_binary_in_path("choco"))  return PackageManager::Choco;
+    if (find_binary_in_path("scoop"))  return PackageManager::Scoop;
+#elif defined(__APPLE__)
     if (find_binary_in_path("brew")) return PackageManager::Brew;
 #else
     if (find_binary_in_path("apt"))    return PackageManager::Apt;
@@ -51,6 +79,10 @@ std::vector<std::string> build_install_command(
         case PackageManager::Dnf:    cmd = {"sudo", "dnf", "install", "-y"}; break;
         case PackageManager::Pacman: cmd = {"sudo", "pacman", "-S", "--noconfirm"}; break;
         case PackageManager::Brew:   cmd = {"brew", "install"}; break;
+        case PackageManager::Winget: cmd = {"winget", "install", "--accept-package-agreements",
+                                            "--accept-source-agreements", "--disable-interactivity"}; break;
+        case PackageManager::Choco:  cmd = {"choco", "install", "-y"}; break;
+        case PackageManager::Scoop:  cmd = {"scoop", "install"}; break;
     }
     cmd.insert(cmd.end(), packages.begin(), packages.end());
     return cmd;
@@ -88,15 +120,39 @@ std::optional<std::string> map_binary_to_package(
             if (binary_name == "arm-none-eabi-gcc") return "gcc-arm-embedded";
             if (binary_name == "st-flash")          return "stlink";
             break;
+        case PackageManager::Winget:
+            if (binary_name == "cmake")             return "Kitware.CMake";
+            if (binary_name == "git")               return "Git.Git";
+            if (binary_name == "ninja")             return "Ninja-build.Ninja";
+            if (binary_name == "python3")           return "Python.Python.3.12";
+            if (binary_name == "arm-none-eabi-gcc") return "Arm.GnuArmEmbeddedToolchain";
+            break;
+        case PackageManager::Choco:
+            if (binary_name == "cmake")             return "cmake";
+            if (binary_name == "git")               return "git";
+            if (binary_name == "ninja")             return "ninja";
+            if (binary_name == "python3")           return "python";
+            if (binary_name == "arm-none-eabi-gcc") return "gcc-arm-embedded";
+            break;
+        case PackageManager::Scoop:
+            if (binary_name == "cmake")             return "cmake";
+            if (binary_name == "git")               return "git";
+            if (binary_name == "ninja")             return "ninja";
+            if (binary_name == "python3")           return "python";
+            if (binary_name == "arm-none-eabi-gcc") return "gcc-arm-none-eabi";
+            break;
     }
     return std::nullopt;
 }
 
 std::vector<ToolRequirement> ToolchainManager::get_system_requirements() const {
-    std::vector<ToolRequirement> system_tools = {
-        {"Build Orchestrator", "cmake", true},
-        {"VCS Driver", "git", true}
-    };
+    // Core, board-independent tools come from the registry (data/toolchain.json),
+    // so the list stays in sync with what `nav update` can actually provision.
+    std::vector<ToolRequirement> system_tools;
+    for (const auto& id : registry().core_tool_ids()) {
+        if (const ToolDef* t = registry().tool(id))
+            system_tools.push_back({id, t->binary, true});
+    }
 
     // Dynamic Environmental Path Discovery
 #ifdef __linux__

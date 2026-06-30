@@ -8,11 +8,21 @@
 #include <map>
 #include <string>
 
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#else
 #include <errno.h>
 #include <fcntl.h>
 #include <poll.h>
 #include <termios.h>
 #include <unistd.h>
+#endif
 
 namespace {
 
@@ -55,6 +65,94 @@ int MonitorCommand::run(IExecutionContext& /*ctx*/, const std::vector<std::strin
         }
     }
 
+#ifdef _WIN32
+    int baud_rate = 9600;
+    static const std::map<std::string, int> baud_map = {
+        {"9600", 9600}, {"19200", 19200}, {"38400", 38400},
+        {"57600", 57600}, {"115200", 115200}
+    };
+    if (auto it = baud_map.find(baud_str); it != baud_map.end()) {
+        baud_rate = it->second;
+    } else {
+        ui::warning("Unknown baud requested (" + baud_str + "). Falling back to 9600.");
+    }
+
+    ui::step("Monitoring", "Opening direct native pipe: [" + target_port + "] at " + baud_str + " baud...");
+
+    // COM10 and above require the \\.\ device-namespace prefix; it is harmless
+    // for COM1-9, so always apply it unless the caller gave a full path already.
+    std::string dev = target_port;
+    if (dev.rfind("\\\\.\\", 0) != 0) {
+        dev = "\\\\.\\" + dev;
+    }
+
+    HANDLE h = ::CreateFileA(dev.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr,
+                             OPEN_EXISTING, 0, nullptr);
+    if (h == INVALID_HANDLE_VALUE) {
+        ui::error("Kernel Access Denied! Permission denied or device already locked.");
+        return 1;
+    }
+
+    DCB dcb{};
+    dcb.DCBlength = sizeof(dcb);
+    if (!::GetCommState(h, &dcb)) {
+        ui::error("Hardware API Fault: Could not read serial port state.");
+        ::CloseHandle(h);
+        return 1;
+    }
+    dcb.BaudRate = static_cast<DWORD>(baud_rate);
+    dcb.ByteSize = 8;
+    dcb.Parity = NOPARITY;
+    dcb.StopBits = ONESTOPBIT;
+    dcb.fBinary = TRUE;
+    dcb.fParity = FALSE;
+    dcb.fOutxCtsFlow = FALSE;
+    dcb.fOutxDsrFlow = FALSE;
+    dcb.fDtrControl = DTR_CONTROL_ENABLE;
+    dcb.fRtsControl = RTS_CONTROL_ENABLE;
+    dcb.fOutX = FALSE;
+    dcb.fInX = FALSE;
+    if (!::SetCommState(h, &dcb)) {
+        ui::error("Hardware API Fault: Could not lock target baud configuration.");
+        ::CloseHandle(h);
+        return 1;
+    }
+
+    // Return from ReadFile after at most 100ms even with no data, so the loop
+    // can re-check g_running_monitor (set by the Ctrl+C handler).
+    COMMTIMEOUTS timeouts{};
+    timeouts.ReadIntervalTimeout = MAXDWORD;
+    timeouts.ReadTotalTimeoutMultiplier = 0;
+    timeouts.ReadTotalTimeoutConstant = 100;
+    ::SetCommTimeouts(h, &timeouts);
+
+    ui::success("Successfully latched interface. Capturing raw telemetry stream now...");
+    ui::info("System notice: [Press Ctrl+C to cleanly detach]");
+    std::cout << "-------------------------------------------------------------\n" << std::endl;
+
+    g_running_monitor = true;
+    auto old_handler = std::signal(SIGINT, handle_sigint);
+
+    char read_buffer[1024];
+    while (g_running_monitor) {
+        DWORD bytes_read = 0;
+        if (!::ReadFile(h, read_buffer, sizeof(read_buffer), &bytes_read, nullptr)) {
+            ui::error("\nCritical Link Failure: Connection severed by host kernel.");
+            break;
+        }
+        if (bytes_read > 0) {
+            std::cout.write(read_buffer, bytes_read);
+            std::cout.flush();
+        }
+    }
+
+    std::signal(SIGINT, old_handler);
+    ::CloseHandle(h);
+
+    std::cout << "\n\n";
+    ui::success("Link detached gracefully. Channel closed.");
+    return 0;
+#else
     speed_t baud_rate = B9600;
     static const std::map<std::string, speed_t> baud_map = {
         {"9600", B9600}, {"19200", B19200}, {"38400", B38400},
@@ -142,6 +240,7 @@ int MonitorCommand::run(IExecutionContext& /*ctx*/, const std::vector<std::strin
     std::cout << "\n\n";
     ui::success("Link detached gracefully. Channel closed.");
     return 0;
+#endif
 }
 
 } // namespace nav::core

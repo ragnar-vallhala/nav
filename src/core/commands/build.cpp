@@ -3,8 +3,12 @@
 #include "nav/core/command.hpp"
 #include "nav/core/config.hpp"
 #include "nav/core/deps.hpp"
+#include "nav/core/libdeps.hpp"
 #include "nav/core/lockfile.hpp"
+#include "nav/core/navhal.hpp"
 #include "nav/core/platform.hpp"
+#include "nav/core/provision.hpp"
+#include "nav/core/toolchain.hpp"
 #include "nav/core/ui.hpp"
 
 #include <cstdlib>
@@ -67,21 +71,78 @@ int BuildCommand::run(IExecutionContext& ctx, const std::vector<std::string>& /*
         }
     }
 
+    // Nav library dependencies (nav.toml [dependencies]): resolve the transitive
+    // graph (local paths + git clones into the shared cache) and emit
+    // build/nav-deps-libs.cmake so the generated CMake add_subdirectory()s and
+    // links each library against this project's board context.
+    const fs::path libdeps_cmake = fs::path("build") / "nav-deps-libs.cmake";
+    if (!cfg->dependencies.empty()) {
+        std::vector<std::string> direct;
+        auto libs = resolve_library_deps(ctx, *root, *cfg, &direct);
+        if (!libs) {
+            ui::error("Could not resolve library dependencies. See errors above.");
+            return 1;
+        }
+        if (!write_libdeps_cmake(*libs, direct, libdeps_cmake)) {
+            ui::error("Failed to write " + libdeps_cmake.string() + ".");
+            return 1;
+        }
+        ui::info("Linked " + std::to_string(libs->size()) + " library dependency(ies).");
+    } else {
+        // No deps now — clear any stale graph from an earlier build.
+        std::error_code rmec;
+        fs::remove(libdeps_cmake, rmec);
+    }
+
     // NavHAL's Kconfig (extern/NavHAL/Kconfig) uses relative `source` globs that
     // kconfiglib resolves against $srctree (default: cwd). NavHAL standalone runs
     // cmake from its own root so cwd happens to match; we drive cmake from the
     // project root, so point $srctree at the NavHAL clone explicitly. Child
     // processes (cmake -> kconfig.py) inherit it.
     const fs::path navhal_dir = *root / "extern" / "NavHAL";
+    // The project links extern/NavHAL into the shared cache; if that link is
+    // missing or dangling (cache cleared, fresh checkout), restore it before
+    // configuring rather than failing deep inside cmake.
+    if (!fs::exists(navhal_dir)) {
+        ui::warning("NavHAL missing at extern/NavHAL — restoring from the shared cache.");
+        const fs::path navhal_src = ensure_navhal_cached(ctx, kDefaultNavhalRef);
+        if (navhal_src.empty() || !link_navhal(ctx, navhal_src, navhal_dir)) {
+            ui::error("Could not restore NavHAL. Check your network connection and retry.");
+            return 1;
+        }
+    }
     if (fs::exists(navhal_dir)) {
+#ifdef _WIN32
+        ::_putenv_s("srctree", navhal_dir.string().c_str());
+#else
         ::setenv("srctree", navhal_dir.string().c_str(), /*overwrite=*/1);
+#endif
     }
 
     // Run cmake quietly (silent=true captures output without streaming it), so a
     // successful build stays terse like a container build. On failure we replay
     // the captured log so the diagnostics aren't lost.
+    // Self-heal the board's cross compiler: if it isn't on PATH, install it
+    // (package manager or nav's downloader) so a freshly-created project builds
+    // without a separate manual toolchain step. No-op once present.
+    if (!board->compiler.empty()) {
+        ToolchainManager tm;
+        ToolRequirement req{board->compiler, board->compiler, true};
+        if (!tm.probe_tool(ctx, req).is_found) {
+            ui::info("Cross compiler '" + board->compiler + "' not found — installing it.");
+            install_tools(ctx, {board->compiler});
+        }
+    }
+
+    // Windows ships no `make`, so drive cmake through Ninja (provisioned above).
+    std::vector<std::string> configure_cmd = {"cmake", "-S", ".", "-B", "build"};
+#ifdef _WIN32
+    configure_cmd.push_back("-G");
+    configure_cmd.push_back("Ninja");
+#endif
+
     ui::step("Configuring", "cmake");
-    auto conf_res = ctx.execute({"cmake", "-S", ".", "-B", "build"}, "", /*silent=*/true);
+    auto conf_res = ctx.execute(configure_cmd, "", /*silent=*/true);
     if (conf_res.exit_code != 0) {
         std::cerr << conf_res.output << std::endl;
         ui::error("Configure failed.");

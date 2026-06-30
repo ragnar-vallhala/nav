@@ -100,3 +100,61 @@ TEST(Config, LoadProjectConfig_ParseErrorPrintsLineColumn) {
     EXPECT_NE(err.find("nav.toml"), std::string::npos);
     EXPECT_NE(err.find(":3"), std::string::npos); // line 3
 }
+
+TEST(Config, LoadProjectConfig_DefaultsTypeToExecutable) {
+    TempDir td;
+    write_file(td.path() / "nav.toml", "[project]\nname = \"demo\"\n");
+    auto cfg = nav::core::load_project_config(td.path());
+    ASSERT_TRUE(cfg.has_value());
+    EXPECT_EQ(cfg->project_type, "executable");
+    EXPECT_FALSE(cfg->is_library());
+    EXPECT_TRUE(cfg->dependencies.empty());
+}
+
+TEST(Config, LoadProjectConfig_ReadsLibraryType) {
+    TempDir td;
+    write_file(td.path() / "nav.toml",
+               "[project]\nname = \"mylib\"\ntype = \"library\"\n");
+    auto cfg = nav::core::load_project_config(td.path());
+    ASSERT_TRUE(cfg.has_value());
+    EXPECT_EQ(cfg->project_type, "library");
+    EXPECT_TRUE(cfg->is_library());
+}
+
+TEST(Config, LoadProjectConfig_ParsesDependencies) {
+    TempDir td;
+    write_file(td.path() / "nav.toml", R"(
+[project]
+name = "app"
+
+[dependencies]
+local  = { path = "../local" }
+remote = { git = "https://example.com/remote.git", ref = "main" }
+bare   = "../bare"
+)");
+    auto cfg = nav::core::load_project_config(td.path());
+    ASSERT_TRUE(cfg.has_value());
+    ASSERT_EQ(cfg->dependencies.size(), 3u);
+
+    auto by_name = [&](const std::string& n) -> const nav::core::Dependency* {
+        for (const auto& d : cfg->dependencies) if (d.name == n) return &d;
+        return nullptr;
+    };
+
+    const auto* local = by_name("local");
+    ASSERT_NE(local, nullptr);
+    EXPECT_TRUE(local->is_path());
+    EXPECT_FALSE(local->is_git());
+    EXPECT_EQ(local->path, "../local");
+
+    const auto* remote = by_name("remote");
+    ASSERT_NE(remote, nullptr);
+    EXPECT_TRUE(remote->is_git());
+    EXPECT_EQ(remote->git, "https://example.com/remote.git");
+    EXPECT_EQ(remote->ref, "main");
+
+    const auto* bare = by_name("bare");
+    ASSERT_NE(bare, nullptr);
+    EXPECT_TRUE(bare->is_path());
+    EXPECT_EQ(bare->path, "../bare");
+}

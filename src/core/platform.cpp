@@ -5,6 +5,16 @@
 #include <chrono>
 #include <sstream>
 
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
+
 namespace nav::core {
 
 namespace {
@@ -46,6 +56,19 @@ std::string platform_key_from_uname(const std::string& sysname,
 }
 
 std::string host_platform_key(IExecutionContext& ctx) {
+#ifdef _WIN32
+    // No uname on Windows; resolve the arch natively instead of shelling out.
+    (void)ctx;
+    SYSTEM_INFO si{};
+    ::GetNativeSystemInfo(&si);
+    std::string machine;
+    switch (si.wProcessorArchitecture) {
+        case PROCESSOR_ARCHITECTURE_AMD64: machine = "x86_64"; break;
+        case PROCESSOR_ARCHITECTURE_ARM64: machine = "arm64"; break;
+        default:                           machine = "unknown"; break;
+    }
+    return platform_key_from_uname("windows", machine);
+#else
     auto res = ctx.execute({"uname", "-s", "-m"}, "", /*silent=*/true,
                            std::chrono::seconds(5));
     if (res.exit_code != 0) {
@@ -60,6 +83,7 @@ std::string host_platform_key(IExecutionContext& ctx) {
         return "unknown_unknown";
     }
     return platform_key_from_uname(sysname, machine);
+#endif
 }
 
 } // namespace nav::core

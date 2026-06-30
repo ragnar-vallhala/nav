@@ -10,16 +10,190 @@
 #include <thread>
 #include <vector>
 
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#else
 #include <errno.h>
 #include <fcntl.h>
 #include <poll.h>
 #include <signal.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#endif
 
 namespace nav::core {
 
 namespace {
+
+#ifdef _WIN32
+
+// Quote a single argument per the CommandLineToArgvW / MSVCRT parsing rules so
+// CreateProcess reconstructs the same argv we were handed. Backslashes are only
+// special immediately before a double-quote.
+std::string quote_arg(const std::string& arg) {
+    if (!arg.empty() && arg.find_first_of(" \t\n\v\"") == std::string::npos) {
+        return arg;
+    }
+    std::string out = "\"";
+    for (auto it = arg.begin();; ++it) {
+        unsigned backslashes = 0;
+        while (it != arg.end() && *it == '\\') {
+            ++it;
+            ++backslashes;
+        }
+        if (it == arg.end()) {
+            out.append(backslashes * 2, '\\');
+            break;
+        } else if (*it == '"') {
+            out.append(backslashes * 2 + 1, '\\');
+            out.push_back('"');
+        } else {
+            out.append(backslashes, '\\');
+            out.push_back(*it);
+        }
+    }
+    out.push_back('"');
+    return out;
+}
+
+std::string build_command_line(const std::vector<std::string>& cmd) {
+    std::string line;
+    for (std::size_t i = 0; i < cmd.size(); ++i) {
+        if (i) line.push_back(' ');
+        line += quote_arg(cmd[i]);
+    }
+    return line;
+}
+
+CommandResult run_raw_command(const std::vector<std::string>& cmd,
+                              const std::string& working_dir,
+                              bool silent,
+                              std::chrono::milliseconds timeout) {
+    CommandResult result{-1, ""};
+
+    if (cmd.empty()) {
+        return result;
+    }
+
+    SECURITY_ATTRIBUTES sa{};
+    sa.nLength = sizeof(sa);
+    sa.bInheritHandle = TRUE;
+    sa.lpSecurityDescriptor = nullptr;
+
+    HANDLE read_h = nullptr;
+    HANDLE write_h = nullptr;
+    if (!::CreatePipe(&read_h, &write_h, &sa, 0)) {
+        return result;
+    }
+    // The child must not inherit the read end, or it would keep the pipe open
+    // and the reader below would never see EOF.
+    ::SetHandleInformation(read_h, HANDLE_FLAG_INHERIT, 0);
+
+    STARTUPINFOA si{};
+    si.cb = sizeof(si);
+    si.dwFlags = STARTF_USESTDHANDLES;
+    si.hStdOutput = write_h;
+    si.hStdError = write_h; // merge stdout+stderr, matching the POSIX dup2 path
+    si.hStdInput = ::GetStdHandle(STD_INPUT_HANDLE);
+
+    std::string cmdline = build_command_line(cmd);
+    std::vector<char> cmdline_buf(cmdline.begin(), cmdline.end());
+    cmdline_buf.push_back('\0'); // CreateProcessA may write to this buffer
+
+    PROCESS_INFORMATION pi{};
+    const char* cwd = working_dir.empty() ? nullptr : working_dir.c_str();
+
+    BOOL ok = ::CreateProcessA(
+        /*lpApplicationName=*/nullptr,
+        cmdline_buf.data(),
+        /*lpProcessAttributes=*/nullptr,
+        /*lpThreadAttributes=*/nullptr,
+        /*bInheritHandles=*/TRUE,
+        /*dwCreationFlags=*/CREATE_NO_WINDOW,
+        /*lpEnvironment=*/nullptr,
+        cwd,
+        &si,
+        &pi);
+
+    // The parent never writes to the pipe; only the child's inherited copy of
+    // write_h should keep it alive. Close ours so EOF arrives when the child dies.
+    ::CloseHandle(write_h);
+
+    if (!ok) {
+        ::CloseHandle(read_h);
+        result.output = "<failed to launch '" + cmd[0] + "'>\n";
+        return result;
+    }
+
+    // Drain the pipe to EOF on a worker thread. The child closing its write end
+    // (on exit or kill) is what ends the read loop.
+    std::stringstream output;
+    constexpr std::size_t kSilentCap = 1u << 20; // 1 MiB; see P2-1.
+    std::thread reader([&]() {
+        std::array<char, 4096> buffer{};
+        std::size_t captured_bytes = 0;
+        bool truncated = false;
+        for (;;) {
+            DWORD count = 0;
+            BOOL r = ::ReadFile(read_h, buffer.data(),
+                                static_cast<DWORD>(buffer.size()), &count, nullptr);
+            if (!r || count == 0) break;
+            if (!silent) {
+                std::cout.write(buffer.data(), count);
+                std::cout.flush();
+                output.write(buffer.data(), count);
+            } else if (!truncated) {
+                std::size_t available = (captured_bytes < kSilentCap)
+                                      ? (kSilentCap - captured_bytes) : 0;
+                std::size_t to_keep = std::min<std::size_t>(static_cast<std::size_t>(count), available);
+                if (to_keep > 0) {
+                    output.write(buffer.data(), to_keep);
+                    captured_bytes += to_keep;
+                }
+                if (captured_bytes >= kSilentCap && !truncated) {
+                    output << "\n<output truncated>\n";
+                    truncated = true;
+                }
+            }
+        }
+    });
+
+    DWORD wait_ms = (timeout > std::chrono::milliseconds(0))
+                  ? static_cast<DWORD>(timeout.count()) : INFINITE;
+    bool timed_out = (::WaitForSingleObject(pi.hProcess, wait_ms) == WAIT_TIMEOUT);
+    if (timed_out) {
+        ::TerminateProcess(pi.hProcess, 1);
+        ::WaitForSingleObject(pi.hProcess, INFINITE);
+    }
+
+    if (reader.joinable()) reader.join();
+    ::CloseHandle(read_h);
+
+    DWORD exit_code = 0;
+    ::GetExitCodeProcess(pi.hProcess, &exit_code);
+    ::CloseHandle(pi.hProcess);
+    ::CloseHandle(pi.hThread);
+
+    if (timed_out) {
+        result.output = output.str()
+                      + "\n<command timed out after "
+                      + std::to_string(timeout.count()) + "ms>\n";
+        result.exit_code = -1;
+        return result;
+    }
+
+    result.exit_code = static_cast<int>(exit_code);
+    result.output = output.str();
+    return result;
+}
+
+#else // POSIX
 
 using steady_clock = std::chrono::steady_clock;
 
@@ -192,6 +366,8 @@ CommandResult run_raw_command(const std::vector<std::string>& cmd,
     result.output = output.str();
     return result;
 }
+
+#endif // _WIN32
 
 } // namespace
 

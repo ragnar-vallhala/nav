@@ -14,6 +14,10 @@ struct Board {
     std::string vendor;
     std::string mcu;
 
+    // NavHAL's board directory name (src/board/<navhal_board>/) used for the
+    // linker script path. Often equals id, but not always (id "atmega328p").
+    std::string navhal_board;
+
     std::vector<std::string> compile_flags;
     std::vector<std::string> link_flags;
 
@@ -32,9 +36,7 @@ struct Board {
 
 class BoardCatalog {
 public:
-    // Scan `dir` for *.toml entries and merge them in. First add wins on id
-    // collisions, so callers should add the highest-priority path first.
-    void add_search_path(const std::filesystem::path& dir);
+    void add(Board b) { boards_.push_back(std::move(b)); }
 
     std::optional<Board> find(const std::string& id) const;
     std::vector<Board> list() const { return boards_; }
@@ -43,18 +45,10 @@ private:
     std::vector<Board> boards_;
 };
 
-// Build a catalog populated with the standard search order, highest-priority
-// first:
-//   1. each colon-separated entry of $NAV_BOARD_PATH
-//   2. <project_root>/.nav/boards (when given)
-//   3. <exe_dir>/../share/nav/boards (the location an installed nav ships to)
-//   4. <exe_dir>/../../share/nav/boards (in-tree build layout)
-//   5. /usr/share/nav/boards
+// Build a catalog from the registry (data/boards.json, baked + the user's
+// ~/.nav/boards.json). `project_root` is accepted for API compatibility but no
+// longer used (board overrides now live in the user's boards.json).
 BoardCatalog default_catalog(const std::optional<std::filesystem::path>& project_root = std::nullopt);
-
-// Parse a single board TOML file. Returns nullopt on parse failure or when a
-// required field (id, arch) is missing.
-std::optional<Board> parse_board_file(const std::filesystem::path& path);
 
 // Render the board as CMake `set()` directives for inclusion at configure
 // time. Variables exposed (NAV_BOARD_ prefix to avoid collision with NavHAL's

@@ -26,7 +26,7 @@ struct ProbeResult {
     bool is_critical;
 };
 
-enum class PackageManager { Apt, Dnf, Pacman, Brew };
+enum class PackageManager { Apt, Dnf, Pacman, Brew, Winget, Choco, Scoop };
 
 // Returns the host's package manager if detected on PATH, else nullopt.
 std::optional<PackageManager> detect_package_manager();

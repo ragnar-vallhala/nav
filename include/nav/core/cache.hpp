@@ -5,11 +5,32 @@
 
 namespace nav::core {
 
+// Per-user nav home that hosts all shared caches:
+//   $NAV_HOME            when set (tests + sandboxes)
+//   $HOME/.nav           otherwise (and %USERPROFILE%\.nav on Windows)
+// Falls back to "./.nav" if none of those are set.
+std::filesystem::path nav_home_base();
+
 // Root of the content-addressed package cache, shared across all projects:
-//   $NAV_HOME/packages   when NAV_HOME is set (used by tests + sandboxes)
-//   $HOME/.nav/packages  otherwise
-// Falls back to "./.nav/packages" if neither env var is set.
+//   <nav_home_base>/packages
 std::filesystem::path cache_root();
+
+// Shared, version-keyed NavHAL clone location:
+//   <nav_home_base>/navhal/<ref>
+// where <ref> is the branch/tag the framework was cloned at. One clone per ref
+// is reused by every project instead of re-cloning into each project tree.
+std::filesystem::path navhal_cache_dir(const std::string& ref);
+
+// True when a NavHAL clone at `dir` exists and carries the completion marker
+// (i.e. a prior clone finished and wasn't interrupted).
+bool navhal_is_cached(const std::filesystem::path& dir);
+
+// Shared clone location for a git dependency, keyed by repo + ref so the same
+// dependency at the same ref is cloned once and reused by every project:
+//   <nav_home_base>/deps/<repo-slug>/<ref>
+// <repo-slug> is the URL's final path component minus a trailing ".git",
+// sanitised to a filesystem-safe token; <ref> defaults to "default" when empty.
+std::filesystem::path git_cache_dir(const std::string& url, const std::string& ref);
 
 // Per-package install directory under `root`:
 //   <root>/<name>-<version>-<sha12>

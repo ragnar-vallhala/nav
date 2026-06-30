@@ -18,6 +18,7 @@ add_executable(nav_tests
     test_execution_context.cpp
     test_ui.cpp
     test_board.cpp
+    test_registry.cpp
     test_serial.cpp
     test_semver.cpp
     test_index.cpp
@@ -25,6 +26,7 @@ add_executable(nav_tests
     test_platform.cpp
     test_cache.cpp
     test_deps.cpp
+    test_libdeps.cpp
 )
 
 target_include_directories(nav_tests PRIVATE

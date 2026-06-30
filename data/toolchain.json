@@ -1,0 +1,55 @@
+{
+  "schema": 1,
+  "core": ["cmake", "git", "ninja", "python"],
+  "tools": {
+    "cmake": {
+      "binary": "cmake",
+      "version": "3.30.5",
+      "packages": { "apt": "cmake", "dnf": "cmake", "pacman": "cmake", "brew": "cmake", "winget": "Kitware.CMake", "choco": "cmake", "scoop": "cmake" },
+      "download": {
+        "windows-x86_64": {
+          "url": "https://github.com/Kitware/CMake/releases/download/v3.30.5/cmake-3.30.5-windows-x86_64.zip",
+          "archive": "zip",
+          "bin_subdir": "cmake-3.30.5-windows-x86_64/bin"
+        }
+      }
+    },
+    "git": {
+      "binary": "git",
+      "version": "2.47.1",
+      "packages": { "apt": "git", "dnf": "git", "pacman": "git", "brew": "git", "winget": "Git.Git", "choco": "git", "scoop": "git" },
+      "download": {
+        "windows-x86_64": {
+          "url": "https://github.com/git-for-windows/git/releases/download/v2.47.1.windows.1/MinGit-2.47.1-64-bit.zip",
+          "archive": "zip",
+          "bin_subdir": "cmd"
+        }
+      }
+    },
+    "ninja": {
+      "binary": "ninja",
+      "version": "1.12.1",
+      "packages": { "apt": "ninja-build", "dnf": "ninja-build", "pacman": "ninja", "brew": "ninja", "winget": "Ninja-build.Ninja", "choco": "ninja", "scoop": "ninja" },
+      "download": {
+        "windows-x86_64": {
+          "url": "https://github.com/ninja-build/ninja/releases/download/v1.12.1/ninja-win.zip",
+          "archive": "zip",
+          "bin_subdir": ""
+        }
+      }
+    },
+    "python": {
+      "binary": "python3",
+      "version": "3.12.7",
+      "packages": { "apt": "python3", "dnf": "python3", "pacman": "python", "brew": "python@3", "winget": "Python.Python.3.12", "choco": "python", "scoop": "python" },
+      "download": {
+        "windows-x86_64": {
+          "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20241016/cpython-3.12.7+20241016-x86_64-pc-windows-msvc-install_only.tar.gz",
+          "archive": "targz",
+          "bin_subdir": "python",
+          "post": ["alias:python.exe=python3.exe", "pip:kconfiglib"]
+        }
+      }
+    }
+  }
+}

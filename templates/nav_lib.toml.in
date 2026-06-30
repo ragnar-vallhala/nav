@@ -1,0 +1,20 @@
+# Nav Configuration File
+[project]
+name = "{{PROJECT_NAME}}"
+version = "0.1.0"
+# This project builds a static library other nav projects can depend on.
+type = "library"
+
+# Board used when building this library standalone (`nav build` here). When a
+# firmware project depends on it, the library is rebuilt for that project's board.
+[target]
+arch = "cortex-m4"
+vendor = "stm32"
+board = "nucleo_f401re"
+
+[build]
+backend = "cmake"
+
+# Libraries this library itself depends on:
+# [dependencies]
+# other = { path = "../other" }

@@ -1,0 +1,85 @@
+cmake_minimum_required(VERSION 3.20)
+
+# Nav library project. Builds a static archive ({{PROJECT_NAME}}) that other nav
+# projects consume via nav.toml [dependencies]. It works two ways:
+#   * standalone   (`nav build` in this directory) — sets up its own board /
+#     NavHAL / toolchain context, then builds the archive.
+#   * as a dependency (a consumer add_subdirectory()'s it) — inherits the
+#     consumer's compiler, flags and NavHAL include path, so the archive is
+#     ABI-compatible with the firmware that links it.
+
+# Reset explicitly: add_subdirectory() child scopes inherit the parent's
+# variables, so a library pulled in as a dependency would otherwise see the
+# consumer's NAV_LIB_STANDALONE=TRUE and wrongly re-run project().
+set(NAV_LIB_STANDALONE FALSE)
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    set(NAV_LIB_STANDALONE TRUE)
+endif()
+
+if(NAV_LIB_STANDALONE)
+    # Board / toolchain context — mirrors the executable template, minus the
+    # firmware link/flash steps a library never needs.
+    if(EXISTS "${CMAKE_BINARY_DIR}/nav-board.cmake")
+        include("${CMAKE_BINARY_DIR}/nav-board.cmake")
+    endif()
+
+    set(CMAKE_SYSTEM_NAME Generic)
+    if(NAV_BOARD_ARCH)
+        set(CMAKE_SYSTEM_PROCESSOR ${NAV_BOARD_ARCH})
+    endif()
+
+    if(NAV_BOARD_COMPILER)
+        set(CMAKE_C_COMPILER   ${NAV_BOARD_COMPILER})
+        set(CMAKE_ASM_COMPILER ${NAV_BOARD_COMPILER})
+    endif()
+
+    if(EXISTS "${CMAKE_BINARY_DIR}/nav-deps.cmake")
+        include("${CMAKE_BINARY_DIR}/nav-deps.cmake")
+    endif()
+    if(NAV_DEPS_COMPILER)
+        set(CMAKE_C_COMPILER   ${NAV_DEPS_COMPILER})
+        set(CMAKE_ASM_COMPILER ${NAV_DEPS_COMPILER})
+    endif()
+
+    set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
+
+    project({{PROJECT_NAME}} C CXX ASM)
+    set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+    # NavHAL headers (the linked-in framework clone) for standalone compilation.
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/extern/NavHAL/include")
+        set(NAV_NAVHAL_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/extern/NavHAL/include")
+    endif()
+
+    # Transitive library dependencies of this library (when built standalone).
+    if(EXISTS "${CMAKE_BINARY_DIR}/nav-deps-libs.cmake")
+        include("${CMAKE_BINARY_DIR}/nav-deps-libs.cmake")
+    endif()
+endif()
+
+# Library sources: everything under src/ (a library has no main()).
+file(GLOB_RECURSE NAV_LIB_SOURCES CONFIGURE_DEPENDS
+     "${CMAKE_CURRENT_SOURCE_DIR}/src/*.c"
+     "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
+     "${CMAKE_CURRENT_SOURCE_DIR}/src/*.S")
+
+add_library({{PROJECT_NAME}} STATIC ${NAV_LIB_SOURCES})
+
+# Public headers propagate to consumers; NavHAL headers are an implementation
+# include (consumers bring their own NavHAL).
+target_include_directories({{PROJECT_NAME}} PUBLIC
+    "${CMAKE_CURRENT_SOURCE_DIR}/include")
+if(NAV_NAVHAL_INCLUDE_DIR)
+    target_include_directories({{PROJECT_NAME}} PRIVATE "${NAV_NAVHAL_INCLUDE_DIR}")
+endif()
+
+# Board-derived compile flags (inherited from the consumer / standalone board).
+if(NAV_BOARD_COMPILE_FLAGS)
+    target_compile_options({{PROJECT_NAME}} PRIVATE ${NAV_BOARD_COMPILE_FLAGS})
+endif()
+
+# Link this library's own dependencies when built standalone (PUBLIC so headers
+# stay visible). Consumers wire these edges themselves via nav-deps-libs.cmake.
+if(NAV_LIB_STANDALONE AND NAV_DEP_TARGETS)
+    target_link_libraries({{PROJECT_NAME}} PUBLIC ${NAV_DEP_TARGETS})
+endif()
