@@ -42,6 +42,13 @@ struct ProjectConfig {
     // Declared [dependencies] (nav library projects this one links against).
     std::vector<Dependency> dependencies;
 
+    // [library].navhal_submodule — a library that owns the NavHAL-ceded CPU
+    // vectors (SysTick/PendSV/SVCall/HardFault), e.g. an RTOS like vaios. When a
+    // firmware project depends on such a library, nav builds NavHAL with
+    // -DSUBMODULE so NavHAL yields those handlers instead of emitting its own
+    // (which would collide at link).
+    bool navhal_submodule = false;
+
     bool is_library() const { return project_type == "library"; }
 };
 

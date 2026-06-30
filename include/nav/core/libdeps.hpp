@@ -21,6 +21,9 @@ struct ResolvedLib {
     std::vector<std::string> deps;
     // CMake "KEY=VALUE" options to set before this library's add_subdirectory().
     std::vector<std::string> options;
+    // True when this library owns the NavHAL-ceded CPU vectors (see
+    // ProjectConfig::navhal_submodule).
+    bool navhal_submodule = false;
 };
 
 // Resolve the full transitive set of library dependencies of the project at

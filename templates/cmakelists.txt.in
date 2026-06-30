@@ -54,6 +54,14 @@ else()
     message(WARNING "[Nav] Master '.config' not detected in project root! Utilizing ambient internal repository defaults.")
 endif()
 
+# 1b. Pre-NavHAL dependency hooks. A vector-owning library (e.g. the vaios RTOS)
+#     needs NavHAL built with -DSUBMODULE so it cedes the SysTick/PendSV/SVCall/
+#     HardFault handlers. nav emits this when such a dependency is present; it
+#     MUST run before NavHAL is added.
+if(EXISTS "${CMAKE_BINARY_DIR}/nav-deps-pre.cmake")
+    include("${CMAKE_BINARY_DIR}/nav-deps-pre.cmake")
+endif()
+
 # 2. Add NavHAL Dependency Framework
 add_subdirectory(extern/NavHAL)
 

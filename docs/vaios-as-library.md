@@ -5,6 +5,19 @@ nav `[dependencies]` library, so a firmware project can `nav lib add ../vaios &&
 and link `libvaios.a`. Builds on the library-project support already in nav
 (`type = "library"`, `[dependencies]`, `nav lib`, `add_subdirectory`-based linking).
 
+## Status
+
+- **Tier A — DONE.** `nav lib add <vaios> --option NAVHAL=ON` then `nav build` configures,
+  compiles `libvaios.a` against the consumer's NavHAL, and exports vaios's headers. Delivered:
+  per-dependency `options` in nav (`config`/`libdeps`/`nav lib`), and on the vaios side a
+  `nav.toml`, the `if(NOT TARGET hal)` NavHAL-reuse guard, and `include/` exported PUBLIC.
+- **Tier B — vector ownership DONE; config-ownership + on-target boot remain.** A library may
+  declare `[library].navhal_submodule = true` (vaios does); nav then writes `nav-deps-pre.cmake`
+  (`add_compile_definitions(SUBMODULE)`) included **before** NavHAL is added, so NavHAL cedes
+  SysTick/PendSV/SVCall/HardFault. A firmware depending on vaios now **links a complete ARM ELF**
+  — `SysTick_Handler`/`PendSV_Handler` resolve once (from vaios), `v_init`/`v_start` linked in.
+  Still open: B2 (whose NavHAL `.config` driver set wins) and B4 (boot on hardware/QEMU).
+
 ## Background — what vaios is
 
 vaios is **not a leaf library**; it is a NavHAL-based RTOS:

@@ -45,6 +45,7 @@ std::optional<ProjectConfig> load_project_config(const fs::path& project_root) {
     cfg.target_vendor = tbl["target"]["vendor"].value_or<std::string>("");
     cfg.target_board  = tbl["target"]["board"].value_or<std::string>("");
     cfg.build_backend = tbl["build"]["backend"].value_or<std::string>("");
+    cfg.navhal_submodule = tbl["library"]["navhal_submodule"].value_or(false);
 
     // [dependencies] — each value is an inline table: { path = "..." } or
     // { git = "...", ref = "..." }. A bare string value is treated as a path.

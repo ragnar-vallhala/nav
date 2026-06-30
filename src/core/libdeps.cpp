@@ -77,7 +77,8 @@ struct Resolver {
         on_stack.erase(canonical);
 
         done.insert(canonical);
-        out.push_back(ResolvedLib{canonical, src, std::move(child_names), dep.options});
+        out.push_back(ResolvedLib{canonical, src, std::move(child_names), dep.options,
+                                  depcfg->navhal_submodule});
         return canonical;
     }
 };

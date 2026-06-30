@@ -159,6 +159,23 @@ bare   = "../bare"
     EXPECT_EQ(bare->path, "../bare");
 }
 
+TEST(Config, LoadProjectConfig_NavhalSubmoduleDefaultsFalse) {
+    TempDir td;
+    write_file(td.path() / "nav.toml", "[project]\nname = \"x\"\ntype = \"library\"\n");
+    auto cfg = nav::core::load_project_config(td.path());
+    ASSERT_TRUE(cfg.has_value());
+    EXPECT_FALSE(cfg->navhal_submodule);
+}
+
+TEST(Config, LoadProjectConfig_ReadsNavhalSubmodule) {
+    TempDir td;
+    write_file(td.path() / "nav.toml",
+               "[project]\nname = \"vaios\"\ntype = \"library\"\n[library]\nnavhal_submodule = true\n");
+    auto cfg = nav::core::load_project_config(td.path());
+    ASSERT_TRUE(cfg.has_value());
+    EXPECT_TRUE(cfg->navhal_submodule);
+}
+
 TEST(Config, LoadProjectConfig_ParsesDependencyOptions) {
     TempDir td;
     write_file(td.path() / "nav.toml", R"(
