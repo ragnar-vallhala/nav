@@ -5,6 +5,7 @@
 #include "nav/core/deps.hpp"
 #include "nav/core/libdeps.hpp"
 #include "nav/core/lockfile.hpp"
+#include "nav/core/navconfig.hpp"
 #include "nav/core/navhal.hpp"
 #include "nav/core/platform.hpp"
 #include "nav/core/provision.hpp"
@@ -91,6 +92,29 @@ int BuildCommand::run(IExecutionContext& ctx, const std::vector<std::string>& /*
         if (!write_libdeps_cmake(*libs, direct, libdeps_cmake)) {
             ui::error("Failed to write " + libdeps_cmake.string() + ".");
             return 1;
+        }
+
+        // Capability check: the app's .config is the single authority that
+        // configures NavHAL. Every dependency that ships a NavHAL config
+        // declares the capabilities it needs; the app .config must satisfy them
+        // all (they are unioned in at `nav lib add`). Fail early and specifically
+        // rather than deep inside a missing-symbol link error.
+        const fs::path app_config = *root / ".config";
+        if (fs::exists(app_config)) {
+            const auto have = parse_kconfig(app_config);
+            std::vector<std::string> problems;
+            for (const auto& lib : *libs) {
+                auto lc = find_navhal_config(lib.src);
+                if (!lc) continue;
+                for (const auto& miss : unmet_requirements(have, parse_kconfig(*lc)))
+                    problems.push_back(lib.name + " needs " + miss);
+            }
+            if (!problems.empty()) {
+                ui::error("Your .config is missing capabilities required by dependencies:");
+                for (const auto& p : problems) ui::error("  " + p);
+                ui::error("Add them to .config (or re-run 'nav lib add' to union them in) and rebuild.");
+                return 1;
+            }
         }
 
         std::error_code rmec;

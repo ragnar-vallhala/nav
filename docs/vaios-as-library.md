@@ -11,12 +11,18 @@ and link `libvaios.a`. Builds on the library-project support already in nav
   compiles `libvaios.a` against the consumer's NavHAL, and exports vaios's headers. Delivered:
   per-dependency `options` in nav (`config`/`libdeps`/`nav lib`), and on the vaios side a
   `nav.toml`, the `if(NOT TARGET hal)` NavHAL-reuse guard, and `include/` exported PUBLIC.
-- **Tier B — vector ownership DONE; config-ownership + on-target boot remain.** A library may
-  declare `[library].navhal_submodule = true` (vaios does); nav then writes `nav-deps-pre.cmake`
-  (`add_compile_definitions(SUBMODULE)`) included **before** NavHAL is added, so NavHAL cedes
-  SysTick/PendSV/SVCall/HardFault. A firmware depending on vaios now **links a complete ARM ELF**
-  — `SysTick_Handler`/`PendSV_Handler` resolve once (from vaios), `v_init`/`v_start` linked in.
-  Still open: B2 (whose NavHAL `.config` driver set wins) and B4 (boot on hardware/QEMU).
+- **Tier B — vector ownership + config-ownership DONE; on-target boot remains.**
+  - *Vectors:* a library may declare `[library].navhal_submodule = true` (vaios does); nav writes
+    `nav-deps-pre.cmake` (`add_compile_definitions(SUBMODULE)`) included **before** NavHAL is added,
+    so NavHAL cedes SysTick/PendSV/SVCall/HardFault. A firmware depending on vaios **links a
+    complete ARM ELF** — handlers resolve once (from vaios), `v_init`/`v_start` linked in.
+  - *Config (B2):* the `.config` is a capability set. NavHAL needs none; a library ships its own
+    (`.config` or `navhal.config`) to declare what it needs; the app's `.config` is the single
+    authority that configures NavHAL. `nav lib add` **unions** a path-dep's requirements into the
+    app `.config` (missing keys only; the user's values win, conflicts warned). `nav build`
+    **enforces** that the app `.config` satisfies every dependency's needs across the transitive
+    graph, failing early with the exact `lib needs KEY=VALUE` lines. (`navconfig.{hpp,cpp}`.)
+  - Still open: B4 (boot on hardware/QEMU).
 
 ## Background — what vaios is
 

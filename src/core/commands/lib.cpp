@@ -1,5 +1,6 @@
 #include "nav/core/command.hpp"
 #include "nav/core/config.hpp"
+#include "nav/core/navconfig.hpp"
 #include "nav/core/project_name.hpp"
 #include "nav/core/ui.hpp"
 
@@ -168,6 +169,31 @@ int lib_add(const fs::path& root, std::string name, const std::string& source,
             ui::warning("Added, but no nav.toml found at " + dep_dir.string() + " yet.");
         } else if (auto dcfg = load_project_config(dep_dir); dcfg && !dcfg->is_library()) {
             ui::warning("Added, but '" + source + "' is not a library project (type != \"library\").");
+        }
+        // Union the library's NavHAL capability requirements into the app's
+        // .config (the single authority). Append only what's missing — the
+        // user's existing values win (final authority); conflicts are flagged.
+        // git deps are unioned at build time once cloned.
+        const fs::path app_cfg = root / ".config";
+        if (auto lc = find_navhal_config(dep_dir); lc && fs::exists(app_cfg, ec)) {
+            const auto have = parse_kconfig(app_cfg);
+            const auto req  = parse_kconfig(*lc);
+            std::vector<std::string> added, conflicts;
+            for (const auto& [k, v] : req) {
+                auto it = have.find(k);
+                if (it == have.end()) added.push_back(k + "=" + v);
+                else if (it->second != v)
+                    conflicts.push_back(k + " (have " + it->second + ", " + name + " needs " + v + ")");
+            }
+            if (!added.empty()) {
+                std::ofstream f(app_cfg, std::ios::app);
+                f << "\n# Required by '" << name << "' (added by nav lib add)\n";
+                for (const auto& a : added) f << a << "\n";
+                ui::info("Unioned " + std::to_string(added.size()) +
+                         " capability requirement(s) from '" + name + "' into .config.");
+            }
+            for (const auto& c : conflicts)
+                ui::warning(".config conflict: " + c + " — kept your value; edit if required.");
         }
     }
 
