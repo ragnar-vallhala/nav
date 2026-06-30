@@ -165,3 +165,20 @@ TEST(LibDeps, RenderEmitsSubdirsEdgesAndTargets) {
     // core's add_subdirectory must precede sensors's (dependencies first).
     EXPECT_LT(out.find("deps/core"), out.find("deps/sensors"));
 }
+
+TEST(LibDeps, RenderEmitsDependencyOptionsBeforeSubdir) {
+    std::vector<ResolvedLib> libs = {
+        {"vaios", "/abs/vaios", {}, {"NAVHAL=ON", "VAIOS_FPU=ON"}},
+    };
+    std::string out = nav::core::render_libdeps_cmake(libs, {"vaios"});
+
+    const auto navhal = out.find("set(NAVHAL \"ON\" CACHE STRING \"nav dep option\" FORCE)");
+    const auto fpu    = out.find("set(VAIOS_FPU \"ON\" CACHE STRING \"nav dep option\" FORCE)");
+    const auto subdir = out.find("add_subdirectory(\"/abs/vaios\"");
+    ASSERT_NE(navhal, std::string::npos);
+    ASSERT_NE(fpu, std::string::npos);
+    ASSERT_NE(subdir, std::string::npos);
+    // Options must be forced into the cache before the library is added.
+    EXPECT_LT(navhal, subdir);
+    EXPECT_LT(fpu, subdir);
+}

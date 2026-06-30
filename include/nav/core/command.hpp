@@ -75,7 +75,7 @@ public:
 class LibCommand : public ICommand {
 public:
     int run(IExecutionContext& ctx, const std::vector<std::string>& args) override;
-    std::string help_text() const override { return "Library deps: add <path|git-url> [name] [--ref r], remove <name>, list."; }
+    std::string help_text() const override { return "Library deps: add <path|git-url> [name] [--ref r] [--option K=V], remove <name>, list."; }
 };
 
 } // namespace nav::core

@@ -19,6 +19,8 @@ struct ResolvedLib {
     std::filesystem::path src;
     // Canonical names of this library's own direct dependencies (graph edges).
     std::vector<std::string> deps;
+    // CMake "KEY=VALUE" options to set before this library's add_subdirectory().
+    std::vector<std::string> options;
 };
 
 // Resolve the full transitive set of library dependencies of the project at

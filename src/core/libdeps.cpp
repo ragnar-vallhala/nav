@@ -77,7 +77,7 @@ struct Resolver {
         on_stack.erase(canonical);
 
         done.insert(canonical);
-        out.push_back(ResolvedLib{canonical, src, std::move(child_names)});
+        out.push_back(ResolvedLib{canonical, src, std::move(child_names), dep.options});
         return canonical;
     }
 };
@@ -111,8 +111,17 @@ std::string render_libdeps_cmake(const std::vector<ResolvedLib>& libs,
     os << "# Do not edit; re-run `nav build` to regenerate.\n\n";
 
     // Add every library subtree first (dependencies-first order), so later
-    // target_link_libraries() edges can reference any of them.
+    // target_link_libraries() edges can reference any of them. A library's
+    // declared CMake options are forced into the cache just before its
+    // add_subdirectory() so option-gated builds (e.g. vaios needs NAVHAL=ON)
+    // configure without a manual cmake invocation.
     for (const auto& lib : libs) {
+        for (const auto& opt : lib.options) {
+            const auto eq = opt.find('=');
+            const std::string key = eq == std::string::npos ? opt : opt.substr(0, eq);
+            const std::string val = eq == std::string::npos ? "ON" : opt.substr(eq + 1);
+            os << "set(" << key << " \"" << val << "\" CACHE STRING \"nav dep option\" FORCE)\n";
+        }
         os << "add_subdirectory(" << q(lib.src)
            << " \"${CMAKE_BINARY_DIR}/deps/" << lib.name << "\")\n";
     }

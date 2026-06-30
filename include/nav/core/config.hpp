@@ -18,6 +18,12 @@ struct Dependency {
     std::string git;
     std::string ref;
 
+    // CMake options passed to this dependency's build, each "KEY=VALUE" (e.g.
+    // "NAVHAL=ON"). nav emits `set(KEY VALUE CACHE … FORCE)` before the
+    // dependency's add_subdirectory() so option-gated libraries configure
+    // correctly without a manual cmake invocation.
+    std::vector<std::string> options;
+
     bool is_git() const { return !git.empty(); }
     bool is_path() const { return !path.empty(); }
 };

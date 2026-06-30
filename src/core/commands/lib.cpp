@@ -80,16 +80,23 @@ int lib_list(const fs::path& root) {
     }
     ui::step("Dependencies", cfg->project_name);
     for (const auto& d : cfg->dependencies) {
+        std::string opts;
+        if (!d.options.empty()) {
+            opts = "  [";
+            for (size_t i = 0; i < d.options.size(); ++i) { if (i) opts += ", "; opts += d.options[i]; }
+            opts += "]";
+        }
         if (d.is_git())
-            ui::info("  " + d.name + "  (git: " + d.git + (d.ref.empty() ? "" : " @ " + d.ref) + ")");
+            ui::info("  " + d.name + "  (git: " + d.git + (d.ref.empty() ? "" : " @ " + d.ref) + ")" + opts);
         else
-            ui::info("  " + d.name + "  (path: " + d.path + ")");
+            ui::info("  " + d.name + "  (path: " + d.path + ")" + opts);
     }
     return 0;
 }
 
 int lib_add(const fs::path& root, std::string name, const std::string& source,
-            const std::string& ref, bool force_git, bool force_path) {
+            const std::string& ref, bool force_git, bool force_path,
+            const std::vector<std::string>& options) {
     if (source.empty()) {
         ui::error("Usage: nav lib add <path|git-url> [name] [--ref <ref>]");
         return 1;
@@ -128,6 +135,14 @@ int lib_add(const fs::path& root, std::string name, const std::string& source,
         if (!ref.empty()) entry += ", ref = \"" + ref + "\"";
     } else {
         entry += "path = \"" + source + "\"";
+    }
+    if (!options.empty()) {
+        entry += ", options = [";
+        for (size_t i = 0; i < options.size(); ++i) {
+            if (i) entry += ", ";
+            entry += "\"" + options[i] + "\"";
+        }
+        entry += "]";
     }
     entry += " }";
 
@@ -200,6 +215,7 @@ int LibCommand::run(IExecutionContext& /*ctx*/, const std::vector<std::string>& 
 
     std::string ref, flag_source, flag_name;
     bool force_git = false, force_path = false;
+    std::vector<std::string> options;
     std::vector<std::string> pos;
     for (size_t i = 0; i < args.size(); ++i) {
         const std::string& a = args[i];
@@ -207,6 +223,7 @@ int LibCommand::run(IExecutionContext& /*ctx*/, const std::vector<std::string>& 
         else if (a == "--name" && i + 1 < args.size()) { flag_name = args[++i]; }
         else if (a == "--git" && i + 1 < args.size()) { flag_source = args[++i]; force_git = true; }
         else if (a == "--path" && i + 1 < args.size()) { flag_source = args[++i]; force_path = true; }
+        else if ((a == "--option" || a == "-D") && i + 1 < args.size()) { options.push_back(args[++i]); }
         else pos.push_back(a);
     }
     const std::string sub = pos.empty() ? "" : pos[0];
@@ -224,7 +241,7 @@ int LibCommand::run(IExecutionContext& /*ctx*/, const std::vector<std::string>& 
         } else if (name.empty() && !rest.empty()) {
             name = rest[0];
         }
-        return lib_add(*root, name, source, ref, force_git, force_path);
+        return lib_add(*root, name, source, ref, force_git, force_path, options);
     }
 
     if (sub == "remove" || sub == "rm") {

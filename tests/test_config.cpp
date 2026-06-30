@@ -158,3 +158,19 @@ bare   = "../bare"
     EXPECT_TRUE(bare->is_path());
     EXPECT_EQ(bare->path, "../bare");
 }
+
+TEST(Config, LoadProjectConfig_ParsesDependencyOptions) {
+    TempDir td;
+    write_file(td.path() / "nav.toml", R"(
+[project]
+name = "app"
+
+[dependencies]
+vaios = { path = "../vaios", options = ["NAVHAL=ON", "VAIOS_FPU=ON"] }
+)");
+    auto cfg = nav::core::load_project_config(td.path());
+    ASSERT_TRUE(cfg.has_value());
+    ASSERT_EQ(cfg->dependencies.size(), 1u);
+    EXPECT_EQ(cfg->dependencies[0].options,
+              (std::vector<std::string>{"NAVHAL=ON", "VAIOS_FPU=ON"}));
+}

@@ -56,6 +56,10 @@ std::optional<ProjectConfig> load_project_config(const fs::path& project_root) {
                 dep.path = (*sub)["path"].value_or<std::string>("");
                 dep.git  = (*sub)["git"].value_or<std::string>("");
                 dep.ref  = (*sub)["ref"].value_or<std::string>("");
+                if (const auto* opts = (*sub)["options"].as_array()) {
+                    for (const auto& o : *opts)
+                        if (auto s = o.value<std::string>()) dep.options.push_back(*s);
+                }
             } else if (const auto* str = node.as_string()) {
                 dep.path = str->get();
             }
