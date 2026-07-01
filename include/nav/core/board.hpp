@@ -30,6 +30,15 @@ struct Board {
     std::string flash_tool;
     std::string flash_address;
 
+    // Post-flash reset. Some flashers leave the core halted after writing (e.g.
+    // st-flash on a Nucleo whose NRST isn't wired to the debugger), so the new
+    // image never starts until the board is reset. When reset_after_flash is
+    // true, `nav upload` runs reset_command (argv) after a successful flash.
+    // Both come from the board registry (data/boards.json, user-overridable in
+    // ~/.nav/boards.json), so no reset behaviour is hardcoded.
+    bool reset_after_flash = false;
+    std::vector<std::string> reset_command;
+
     std::string default_framework;
     std::vector<std::string> supported_frameworks;
 };

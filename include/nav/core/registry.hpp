@@ -59,6 +59,15 @@ private:
 // the baked defaults and by tests. Malformed JSON is ignored.
 Registry registry_from_json(const std::string& toolchain_json, const std::string& boards_json);
 
+// Overlay user tool/board JSON onto an existing registry — the merge
+// build_registry() applies to ~/.nav/{toolchain,boards}.json. Boards merge
+// FIELD-LEVEL: only keys present in `boards_json` override; omitted keys keep
+// the registry's current value, so new baked fields (e.g. reset_after_flash)
+// reach users whose materialized ~/.nav files predate them. Malformed JSON is
+// ignored.
+void merge_json(Registry& r, const std::string& toolchain_json,
+                const std::string& boards_json);
+
 // Lazily built singleton: baked defaults, written to ~/.nav/ on first run and
 // merged with any user overrides found there.
 const Registry& registry();

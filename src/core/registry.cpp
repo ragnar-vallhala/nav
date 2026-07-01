@@ -63,20 +63,27 @@ void load_boards(const json& j, Registry& r) {
     load_tools(j, r); // board-specific tools (compilers, flashers)
     if (!j.contains("boards")) return;
     for (auto& [id, b] : j["boards"].items()) {
-        Board board;
+        // Field-level overlay: start from any existing (baked) board so a user
+        // file that omits a key inherits the baked value rather than clearing
+        // it. This lets new baked fields (e.g. reset_after_flash) reach users
+        // whose materialized ~/.nav/boards.json predates them; only keys present
+        // in this JSON override.
+        Board board = r.board(id) ? *r.board(id) : Board{};
         board.id = id;
-        board.name = b.value("name", std::string{});
-        board.arch = b.value("arch", std::string{});
-        board.vendor = b.value("vendor", std::string{});
-        board.mcu = b.value("mcu", std::string{});
-        board.navhal_board = b.value("navhal_board", id);
-        board.compiler = b.value("compiler", std::string{});
-        board.flash_tool = b.value("flash_tool", std::string{});
-        board.flash_address = b.value("flash_address", std::string{});
-        board.compile_flags = str_array(b, "compile_flags");
-        board.link_flags = str_array(b, "link_flags");
-        board.default_framework = b.value("default_framework", std::string{});
-        board.supported_frameworks = str_array(b, "supported_frameworks");
+        if (b.contains("name"))                board.name = b.value("name", std::string{});
+        if (b.contains("arch"))                board.arch = b.value("arch", std::string{});
+        if (b.contains("vendor"))              board.vendor = b.value("vendor", std::string{});
+        if (b.contains("mcu"))                 board.mcu = b.value("mcu", std::string{});
+        if (b.contains("navhal_board"))        board.navhal_board = b.value("navhal_board", id);
+        if (b.contains("compiler"))            board.compiler = b.value("compiler", std::string{});
+        if (b.contains("flash_tool"))          board.flash_tool = b.value("flash_tool", std::string{});
+        if (b.contains("flash_address"))       board.flash_address = b.value("flash_address", std::string{});
+        if (b.contains("reset_after_flash"))   board.reset_after_flash = b.value("reset_after_flash", false);
+        if (b.contains("reset_command"))       board.reset_command = str_array(b, "reset_command");
+        if (b.contains("compile_flags"))       board.compile_flags = str_array(b, "compile_flags");
+        if (b.contains("link_flags"))          board.link_flags = str_array(b, "link_flags");
+        if (b.contains("default_framework"))   board.default_framework = b.value("default_framework", std::string{});
+        if (b.contains("supported_frameworks")) board.supported_frameworks = str_array(b, "supported_frameworks");
         r.add_board(std::move(board));
     }
 }
@@ -112,9 +119,9 @@ Registry build_registry() {
     if (!fs::exists(tc, ec)) std::ofstream(tc) << config::kBakedToolchainJson;
     if (!fs::exists(bd, ec)) std::ofstream(bd) << config::kBakedBoardsJson;
 
-    // 3. Merge user overrides/additions (entries override baked by id).
-    if (fs::exists(tc, ec)) parse_into(read_file(tc), r, /*is_boards=*/false);
-    if (fs::exists(bd, ec)) parse_into(read_file(bd), r, /*is_boards=*/true);
+    // 3. Merge user overrides/additions (field-level for boards).
+    merge_json(r, fs::exists(tc, ec) ? read_file(tc) : std::string{},
+               fs::exists(bd, ec) ? read_file(bd) : std::string{});
 
     return r;
 }
@@ -126,6 +133,12 @@ Registry registry_from_json(const std::string& toolchain_json, const std::string
     parse_into(toolchain_json, r, /*is_boards=*/false);
     parse_into(boards_json, r, /*is_boards=*/true);
     return r;
+}
+
+void merge_json(Registry& r, const std::string& toolchain_json,
+                const std::string& boards_json) {
+    if (!toolchain_json.empty()) parse_into(toolchain_json, r, /*is_boards=*/false);
+    if (!boards_json.empty())    parse_into(boards_json, r, /*is_boards=*/true);
 }
 
 std::string host_platform_key() {

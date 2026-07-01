@@ -94,3 +94,24 @@ TEST(Registry, UserOverrideWins) {
     ASSERT_NE(r.board("my_board"), nullptr);
     EXPECT_EQ(r.board("my_board")->name, "Custom");
 }
+
+TEST(Registry, BoardMergeIsFieldLevel) {
+    // Baked board carries the reset config.
+    Registry r = registry_from_json(
+        "{}",
+        R"({"boards":{"b1":{"name":"B1","flash_tool":"st-flash","flash_address":"0x0",
+            "reset_after_flash":true,"reset_command":["st-flash","reset"]}}})");
+    ASSERT_NE(r.board("b1"), nullptr);
+    EXPECT_TRUE(r.board("b1")->reset_after_flash);
+
+    // A stale user file re-declares the board but predates the reset fields and
+    // only tweaks flash_address. Field-level merge: flash_address overrides,
+    // reset_* are INHERITED from baked (not cleared).
+    merge_json(r, "{}", R"({"boards":{"b1":{"flash_address":"0x8000000"}}})");
+    const Board* b = r.board("b1");
+    ASSERT_NE(b, nullptr);
+    EXPECT_EQ(b->flash_address, "0x8000000");   // overridden
+    EXPECT_TRUE(b->reset_after_flash);          // inherited, not reset to false
+    EXPECT_EQ(b->reset_command, (std::vector<std::string>{"st-flash", "reset"}));
+    EXPECT_EQ(b->name, "B1");                   // untouched keys preserved
+}
