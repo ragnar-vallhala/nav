@@ -56,4 +56,18 @@ std::vector<std::string> unmet_requirements(
     return unmet;
 }
 
+RequirementDiff diff_requirements(
+    const std::map<std::string, std::string>& have,
+    const std::map<std::string, std::string>& required) {
+    RequirementDiff d;
+    // `required` is a std::map, so iteration is already key-sorted — both output
+    // lists inherit that ordering without a further sort.
+    for (const auto& [key, val] : required) {
+        auto it = have.find(key);
+        if (it == have.end()) d.missing.push_back(key + "=" + val);
+        else if (it->second != val) d.conflicts.push_back({key, it->second, val});
+    }
+    return d;
+}
+
 } // namespace nav::core

@@ -32,4 +32,21 @@ std::vector<std::string> unmet_requirements(
     const std::map<std::string, std::string>& have,
     const std::map<std::string, std::string>& required);
 
+// A capability required by a dependency but not satisfied by the app config,
+// split by kind so callers can treat them differently: a `missing` key can be
+// safely unioned in (append), whereas a `conflict` (key present with a value
+// the dependency can't use) must be reconciled by a human.
+struct RequirementDiff {
+    struct Conflict { std::string key, have, need; };
+    std::vector<std::string> missing;    // "KEY=VALUE" — absent from `have`, append-safe
+    std::vector<Conflict>    conflicts;  // present in `have` with a differing value
+};
+
+// Classify how `required` (a dependency's config) fails against `have` (the
+// app's), separating append-safe missing keys from human-reconcile conflicts.
+// Both lists are sorted by key for stable, deterministic output.
+RequirementDiff diff_requirements(
+    const std::map<std::string, std::string>& have,
+    const std::map<std::string, std::string>& required);
+
 } // namespace nav::core

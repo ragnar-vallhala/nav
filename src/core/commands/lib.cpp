@@ -1,6 +1,7 @@
 #include "nav/core/command.hpp"
 #include "nav/core/config.hpp"
 #include "nav/core/navconfig.hpp"
+#include "nav/core/navhal.hpp"
 #include "nav/core/project_name.hpp"
 #include "nav/core/ui.hpp"
 
@@ -95,9 +96,9 @@ int lib_list(const fs::path& root) {
     return 0;
 }
 
-int lib_add(const fs::path& root, std::string name, const std::string& source,
-            const std::string& ref, bool force_git, bool force_path,
-            const std::vector<std::string>& options) {
+int lib_add(IExecutionContext& ctx, const fs::path& root, std::string name,
+            const std::string& source, const std::string& ref, bool force_git,
+            bool force_path, const std::vector<std::string>& options) {
     if (source.empty()) {
         ui::error("Usage: nav lib add <path|git-url> [name] [--ref <ref>]");
         return 1;
@@ -161,43 +162,51 @@ int lib_add(const fs::path& root, std::string name, const std::string& source,
         return 1;
     }
 
-    // Best-effort sanity check for path deps (git deps resolve at build time).
-    if (!is_git) {
-        std::error_code ec;
-        const fs::path dep_dir = (root / source).lexically_normal();
-        if (!fs::exists(dep_dir / "nav.toml", ec)) {
-            ui::warning("Added, but no nav.toml found at " + dep_dir.string() + " yet.");
-        } else if (auto dcfg = load_project_config(dep_dir); dcfg && !dcfg->is_library()) {
-            ui::warning("Added, but '" + source + "' is not a library project (type != \"library\").");
+    // Resolve where the dependency lives on disk so we can union its NavHAL
+    // capability requirements into the app's .config *now* — the app config is
+    // the single authority and must already satisfy every dep at build time.
+    // Path deps live in-tree; git deps are cloned into the shared cache on add
+    // (not deferred to build) so their shipped .config is available here.
+    std::error_code ec;
+    fs::path dep_dir;
+    if (is_git) {
+        ui::step("Fetching", source + (ref.empty() ? "" : " @ " + ref));
+        dep_dir = ensure_git_cached(ctx, source, ref);
+        if (dep_dir.empty()) {
+            ui::warning("Added, but could not fetch " + source +
+                        " to union its capabilities. They'll be checked on the next 'nav build'.");
+            ui::success("Added dependency '" + name + "'.");
+            return 0;
         }
-        // Union the library's NavHAL capability requirements into the app's
-        // .config (the single authority). Append only what's missing — the
-        // user's existing values win (final authority); conflicts are flagged.
-        // git deps are unioned at build time once cloned.
-        const fs::path app_cfg = root / ".config";
-        if (auto lc = find_navhal_config(dep_dir); lc && fs::exists(app_cfg, ec)) {
-            const auto have = parse_kconfig(app_cfg);
-            const auto req  = parse_kconfig(*lc);
-            std::vector<std::string> added, conflicts;
-            for (const auto& [k, v] : req) {
-                auto it = have.find(k);
-                if (it == have.end()) added.push_back(k + "=" + v);
-                else if (it->second != v)
-                    conflicts.push_back(k + " (have " + it->second + ", " + name + " needs " + v + ")");
-            }
-            if (!added.empty()) {
-                std::ofstream f(app_cfg, std::ios::app);
-                f << "\n# Required by '" << name << "' (added by nav lib add)\n";
-                for (const auto& a : added) f << a << "\n";
-                ui::info("Unioned " + std::to_string(added.size()) +
-                         " capability requirement(s) from '" + name + "' into .config.");
-            }
-            for (const auto& c : conflicts)
-                ui::warning(".config conflict: " + c + " — kept your value; edit if required.");
-        }
+    } else {
+        dep_dir = (root / source).lexically_normal();
     }
 
-    ui::success("Added dependency '" + name + "'. It will be fetched/built on the next 'nav build'.");
+    if (!fs::exists(dep_dir / "nav.toml", ec)) {
+        ui::warning("Added, but no nav.toml found at " + dep_dir.string() + " yet.");
+    } else if (auto dcfg = load_project_config(dep_dir); dcfg && !dcfg->is_library()) {
+        ui::warning("Added, but '" + source + "' is not a library project (type != \"library\").");
+    }
+
+    // Union the library's NavHAL capability requirements into the app's .config.
+    // Append only what's missing — the user's existing values win (final
+    // authority); differing values are surfaced as conflicts, not overwritten.
+    const fs::path app_cfg = root / ".config";
+    if (auto lc = find_navhal_config(dep_dir); lc && fs::exists(app_cfg, ec)) {
+        const auto diff = diff_requirements(parse_kconfig(app_cfg), parse_kconfig(*lc));
+        if (!diff.missing.empty()) {
+            std::ofstream f(app_cfg, std::ios::app);
+            f << "\n# Required by '" << name << "' (added by nav lib add)\n";
+            for (const auto& a : diff.missing) f << a << "\n";
+            ui::info("Unioned " + std::to_string(diff.missing.size()) +
+                     " capability requirement(s) from '" + name + "' into .config.");
+        }
+        for (const auto& c : diff.conflicts)
+            ui::warning(".config conflict: " + c.key + " (have " + c.have + ", " + name +
+                        " needs " + c.need + ") — kept your value; edit if required.");
+    }
+
+    ui::success("Added dependency '" + name + "'. It will be built on the next 'nav build'.");
     return 0;
 }
 
@@ -232,7 +241,7 @@ int lib_remove(const fs::path& root, const std::string& name) {
 
 } // namespace
 
-int LibCommand::run(IExecutionContext& /*ctx*/, const std::vector<std::string>& args) {
+int LibCommand::run(IExecutionContext& ctx, const std::vector<std::string>& args) {
     auto root = find_project_root();
     if (!root) {
         ui::error("No nav.toml found in this directory or any parent.");
@@ -267,7 +276,7 @@ int LibCommand::run(IExecutionContext& /*ctx*/, const std::vector<std::string>& 
         } else if (name.empty() && !rest.empty()) {
             name = rest[0];
         }
-        return lib_add(*root, name, source, ref, force_git, force_path, options);
+        return lib_add(ctx, *root, name, source, ref, force_git, force_path, options);
     }
 
     if (sub == "remove" || sub == "rm") {

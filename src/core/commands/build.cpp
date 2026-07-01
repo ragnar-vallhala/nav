@@ -97,23 +97,38 @@ int BuildCommand::run(IExecutionContext& ctx, const std::vector<std::string>& /*
         // Capability check: the app's .config is the single authority that
         // configures NavHAL. Every dependency that ships a NavHAL config
         // declares the capabilities it needs; the app .config must satisfy them
-        // all (they are unioned in at `nav lib add`). Fail early and specifically
-        // rather than deep inside a missing-symbol link error.
+        // all. They are unioned in at `nav lib add`, but self-heal here too so a
+        // dep added before this existed (or a hand-edited .config) still builds:
+        // append any purely-missing capabilities, and hard-error only on a
+        // genuine value conflict (the app sets a key to something a dep can't use).
         const fs::path app_config = *root / ".config";
         if (fs::exists(app_config)) {
-            const auto have = parse_kconfig(app_config);
-            std::vector<std::string> problems;
+            auto have = parse_kconfig(app_config);
+            std::vector<std::string> missing, conflicts;
             for (const auto& lib : *libs) {
                 auto lc = find_navhal_config(lib.src);
                 if (!lc) continue;
-                for (const auto& miss : unmet_requirements(have, parse_kconfig(*lc)))
-                    problems.push_back(lib.name + " needs " + miss);
+                auto diff = diff_requirements(have, parse_kconfig(*lc));
+                for (const auto& m : diff.missing) {
+                    missing.push_back(m);
+                    have[m.substr(0, m.find('='))] = m.substr(m.find('=') + 1); // seen now
+                }
+                for (const auto& c : diff.conflicts)
+                    conflicts.push_back(lib.name + " needs " + c.key + "=" + c.need +
+                                        " but .config has " + c.have);
             }
-            if (!problems.empty()) {
-                ui::error("Your .config is missing capabilities required by dependencies:");
-                for (const auto& p : problems) ui::error("  " + p);
-                ui::error("Add them to .config (or re-run 'nav lib add' to union them in) and rebuild.");
+            if (!conflicts.empty()) {
+                ui::error("Your .config conflicts with capabilities required by dependencies:");
+                for (const auto& c : conflicts) ui::error("  " + c);
+                ui::error("Reconcile the value(s) in .config (nav config) and rebuild.");
                 return 1;
+            }
+            if (!missing.empty()) {
+                std::ofstream f(app_config, std::ios::app);
+                f << "\n# Unioned by nav build from dependency requirements\n";
+                for (const auto& m : missing) f << m << "\n";
+                ui::info("Unioned " + std::to_string(missing.size()) +
+                         " capability requirement(s) from dependencies into .config.");
             }
         }
 

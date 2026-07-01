@@ -80,3 +80,36 @@ TEST(NavConfig, UnmetEmptyWhenSatisfied) {
     std::map<std::string, std::string> required = {{"A", "y"}, {"B", "1"}};
     EXPECT_TRUE(nav::core::unmet_requirements(have, required).empty());
 }
+
+TEST(NavConfig, DiffSeparatesMissingFromConflicts) {
+    std::map<std::string, std::string> have = {
+        {"CONFIG_DRV_UART", "y"},
+        {"CONFIG_BOARD", "\"nucleo_f401re\""},
+    };
+    std::map<std::string, std::string> required = {
+        {"CONFIG_DRV_UART", "y"},        // satisfied
+        {"CONFIG_DRV_UART_DMA", "y"},    // missing -> append-safe
+        {"CONFIG_FAMILY", "\"stm32f4\""},// missing -> append-safe
+        {"CONFIG_BOARD", "\"pico\""},    // conflict: have differs
+    };
+    auto d = nav::core::diff_requirements(have, required);
+
+    // Missing keys are exactly the two absent ones, sorted, in KEY=VALUE form.
+    ASSERT_EQ(d.missing.size(), 2u);
+    EXPECT_EQ(d.missing[0], "CONFIG_DRV_UART_DMA=y");
+    EXPECT_EQ(d.missing[1], "CONFIG_FAMILY=\"stm32f4\"");
+
+    // The satisfied key is neither missing nor a conflict; the differing key is.
+    ASSERT_EQ(d.conflicts.size(), 1u);
+    EXPECT_EQ(d.conflicts[0].key, "CONFIG_BOARD");
+    EXPECT_EQ(d.conflicts[0].have, "\"nucleo_f401re\"");
+    EXPECT_EQ(d.conflicts[0].need, "\"pico\"");
+}
+
+TEST(NavConfig, DiffEmptyWhenSatisfied) {
+    std::map<std::string, std::string> have = {{"A", "y"}, {"B", "1"}, {"C", "z"}};
+    std::map<std::string, std::string> required = {{"A", "y"}, {"B", "1"}};
+    auto d = nav::core::diff_requirements(have, required);
+    EXPECT_TRUE(d.missing.empty());
+    EXPECT_TRUE(d.conflicts.empty());
+}
