@@ -86,4 +86,5 @@ make -j$(nproc)
 ---
 
 ## License
-Empowered for autonomous builders and robotics enthusiasts everywhere. Crafted by engineering excellence. 
+nav is licensed under the **Apache License, Version 2.0** — see [`LICENSE`](LICENSE).
+Copyright 2026 NAVRobotec Pvt Ltd. 

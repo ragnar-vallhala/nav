@@ -9,10 +9,9 @@ permissions:
   contents: write
 
 jobs:
-  release:
-    name: Create Deb Package and Release
+  linux:
+    name: Linux (.deb)
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -44,11 +43,49 @@ jobs:
           body: |
             # Nav — Embedded Development Orchestrator
 
-            Nav is a unified embedded systems development tool focused on robotics, firmware, and hardware deployment workflows.
-            
-            **Release Highlights:**
-            - Dynamic path-based hardware validation.
-            - Integrated native POSIX serial bridge.
-            - Fault-tolerant workspace synchronization.
+            Nav is a unified embedded systems development tool focused on
+            robotics, firmware, and hardware deployment workflows.
+
+            **Downloads**
+            - Linux (Debian/Ubuntu): `nav-*.deb`
+            - Windows: `nav-*-win64.exe` (installer) or `nav-*-win64.zip` (portable)
+
+            **Highlights in this release**
+            - Native Windows support: self-contained `nav.exe` + NSIS installer.
+            - JSON-driven toolchain/board registry (user-extensible under `~/.nav`).
+            - Library projects and dependencies (path + git), with NavHAL
+              capability requirements unioned into the app `.config`.
+            - `nav config`: a Kconfig menuconfig TUI over the project `.config`.
+            - Registry-driven reset-after-flash.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  windows:
+    name: Windows (installer + zip)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # Self-contained: the script downloads its own MinGW-w64 (WinLibs), NSIS,
+      # and Ninja, reusing the runner's preinstalled CMake and Git. Produces a
+      # static nav.exe plus an NSIS installer and a portable ZIP under build/.
+      - name: Build + package (MinGW, static)
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: .\scripts\windows\ci-build.ps1 -SourceDir "${{ github.workspace }}"
+
+      - name: Deploy to GitHub Releases
+        uses: softprops/action-gh-release@v1
+        with:
+          name: Release ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          files: |
+            build/nav-*-win64.exe
+            build/nav-*-win64.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

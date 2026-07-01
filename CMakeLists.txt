@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(Nav VERSION 1.1.0 LANGUAGES CXX)
+project(Nav VERSION 1.2.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -135,6 +135,8 @@ set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
 set(CPACK_PACKAGE_VENDOR "NAVROBOTEC PRIVATE LIMITED")
 set(CPACK_PACKAGE_CONTACT "support@navrobotec.com")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Embedded Development Orchestrator for firmware and hardware deployment")
+# Licence shown as the NSIS installer's agreement page (and recorded in the .deb).
+set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
 
 if(WIN32)
     # Windows analogue of the .deb: an NSIS Setup.exe that installs nav.exe +
