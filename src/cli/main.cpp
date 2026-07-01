@@ -88,6 +88,7 @@ int main(int argc, char* argv[]) {
     commands["update"]  = std::make_unique<nav::core::UpdateCommand>();
     commands["board"]   = std::make_unique<nav::core::BoardCommand>();
     commands["lib"]     = std::make_unique<nav::core::LibCommand>();
+    commands["config"]  = std::make_unique<nav::core::ConfigCommand>();
 
     // Each subcommand uses prefix_command() so anything after the verb name
     // is collected raw into remaining() — letting verbs that still parse their

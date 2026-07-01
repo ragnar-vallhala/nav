@@ -78,4 +78,10 @@ public:
     std::string help_text() const override { return "Library deps: add <path|git-url> [name] [--ref r] [--option K=V], remove <name>, list."; }
 };
 
+class ConfigCommand : public ICommand {
+public:
+    int run(IExecutionContext& ctx, const std::vector<std::string>& args) override;
+    std::string help_text() const override { return "Edit this project's .config in the NavHAL Kconfig menuconfig TUI."; }
+};
+
 } // namespace nav::core

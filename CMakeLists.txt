@@ -85,6 +85,7 @@ add_library(nav_core STATIC
     src/core/commands/update.cpp
     src/core/commands/board.cpp
     src/core/commands/lib.cpp
+    src/core/commands/config.cpp
 )
 
 target_include_directories(nav_core PUBLIC
