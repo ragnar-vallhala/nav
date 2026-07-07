@@ -1,82 +1,66 @@
-# Nav — Embedded Development Orchestrator 
+# nav — build tooling for NavHAL firmware
 
-**Nav** is a specialized, unified system orchestrator purpose-built for managing high-performance embedded workflows. Engineered natively in C++, it seamlessly connects source repositories, hardware drivers, and binary toolchains into one highly optimized, fault-tolerant command-line toolkit.
+`nav` is a command-line tool for NavHAL-based Cortex-M firmware projects. It scaffolds a
+project, resolves dependencies from git, cross-compiles with the ARM toolchain, flashes the
+result to hardware, and opens a serial monitor — so a normal edit / build / flash / debug loop
+is a few short commands.
 
-Designed for advanced Robotics, systems and low-level Firmware integration.
-
----
-
-## Core Capabilities
-
-| Feature | Engine Description |
-| :--- | :--- |
-| **Instant Scaffolding** | One-command initialization of standard hardware workspace trees. |
-| **Cross-Compile Engine** | Automated injection of Cortex-M target architecture directives & hardware linker mapping. |
-| **Auto-Provisioning** | Dynamic `$PATH` discovery & adaptive auto-installation of system packages. |
-| **Native POSIX Monitor** | Direct kernel file descriptor telemetry streaming without heavy subprocess overlays. |
-| **CI/CD Ready** | Native Debian `.deb` packaging framework for seamless workstation deployment. |
+Written in C++. Dependencies are pulled directly from GitHub via git; no package registry is
+required.
 
 ---
 
-## Instant Quick Start
+## Features
 
-Kick off a pristine development cycle in seconds. Drop these commands sequentially to verify a full operational loop:
+- Project scaffolding with NavHAL pulled in as a dependency
+- Cross-compilation for Cortex-M targets via `arm-none-eabi-gcc`
+- Kconfig-based configuration — `nav config` opens a menuconfig-style TUI over the project `.config`
+- Flashing to hardware (e.g. `st-flash`) with a post-flash target reset, plus a built-in serial monitor
+- Toolchain/environment checks and best-effort installation of missing tools
+- JSON board and toolchain registry
+- Ships as a Debian `.deb`; builds on Linux and Windows
+
+---
+
+## Quick start
 
 ```bash
-# 1. Initialize absolute workspace
-nav create my_project
-
-# 2. Enter working context
+nav create my_project       # scaffold a project, pull NavHAL, generate .config
 cd my_project
-
-# 3. Cross-compile the firmware
-nav build
-
-# 4. Deploy to physical hardware
-nav upload
-
-# 5. Real-time telemetry
-nav monitor --baud 115200
+nav build                   # cross-compile with arm-none-eabi
+nav upload                  # flash the connected board
+nav monitor --baud 115200   # open the serial monitor
 ```
 
 ---
 
-## Operational Commands
+## Commands
 
-Nav exposes a clean, robust orchestration layer:
-
-### `nav create <project_name>`
-Creates a master hardware workspace, pulls dependency frameworks (like NavHAL), and bootstraps the root `.config` and dynamic makefiles.
-
-### `nav build`
-Fires up the `arm-none-eabi` cross-compiler stack. Automatically invalidates caching context whenever root configurations are mutated.
-
-### `nav upload`
-Connects direct to physical link interfaces (like `st-flash`) delivering atomic payload injection and hardware reset verification.
-
-### `nav monitor`
-Attaches direct to raw telemetry streams on active devices with auto-port negotiation logic.
-```bash
-nav monitor --baud 115200
-```
-
-### `nav check`
-Performs continuous environmental audits, confirming validity of compiler toolchains, package managers, and flasher drivers.
-
-### `nav update`
-Heals broken dependency nodes and runs the adaptive package-acquisition routine to secure any missing local tools.
+| Command | Description |
+| :--- | :--- |
+| `nav create <name>` | Scaffold a project, pull NavHAL, and bootstrap `.config` and the build files. |
+| `nav build` | Cross-compile with the `arm-none-eabi` toolchain. Rebuilds when `.config` changes. |
+| `nav config` | Edit NavHAL Kconfig options through a menuconfig-style TUI over the project `.config`. |
+| `nav upload` | Flash the firmware to the board and reset the target. |
+| `nav monitor` | Open a serial monitor (auto-detects the port; `--baud` sets the rate). |
+| `nav board` | Manage the board / toolchain registry. |
+| `nav lib` | Work with library-type projects. |
+| `nav check` | Verify the toolchain, package manager, and flasher are present and working. |
+| `nav update` | Install missing local tools. |
+| `nav clean` | Remove build artifacts. |
 
 ---
 
-## Installation & Setup
+## Install
 
-Download the official compiled `.deb` package from the **GitHub Releases** tab, and install via native packet manager:
+Download the `.deb` from the [GitHub Releases](../../releases) page and install it:
 
 ```bash
 sudo dpkg -i nav-X.X.X-Linux.deb
 ```
 
-*Alternatively, to build from source locally:*
+Or build from source:
+
 ```bash
 mkdir build && cd build
 cmake ..
@@ -85,6 +69,13 @@ make -j$(nproc)
 
 ---
 
+## Dependencies
+
+`nav` pulls NavHAL and other dependencies directly from GitHub via git. Earlier versions used a
+self-hosted package registry; it was removed in favor of the simpler git-based approach.
+
+---
+
 ## License
-nav is licensed under the **Apache License, Version 2.0** — see [`LICENSE`](LICENSE).
-Copyright 2026 NAVRobotec Pvt Ltd. 
+
+Apache License 2.0 — see [`LICENSE`](LICENSE). Copyright 2026 NAVRobotec Pvt Ltd.
