@@ -87,8 +87,20 @@ if(NAV_BOARD_COMPILE_FLAGS)
 endif()
 
 # 6. Hardware-Bound Linker Directives.
+#
+# The board's linker script is taken from NavHAL by name, never by path. NavHAL
+# publishes NAVHAL_LINKER_SCRIPT and carries the -L its INCLUDE needs on the
+# `hal` target, so which file describes this board's memory stays NavHAL's
+# business -- naming the path here made every generated project depend on
+# NavHAL's directory layout.
+if(NOT NAVHAL_LINKER_SCRIPT)
+    message(FATAL_ERROR
+        "extern/NavHAL does not export NAVHAL_LINKER_SCRIPT: it predates that "
+        "support. Update the submodule -- the alternative is naming the script "
+        "by path here, which is what depending on NavHAL's layout looked like.")
+endif()
 target_link_options(${PROJECT_NAME} PRIVATE
-  "-T" "${CMAKE_CURRENT_SOURCE_DIR}/extern/NavHAL/src/board/${BOARD}/linker.ld"
+  "-T" "${NAVHAL_LINKER_SCRIPT}"
   "-nostdlib"
   "--specs=nosys.specs"
   ${NAV_BOARD_LINK_FLAGS}
