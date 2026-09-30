@@ -88,19 +88,31 @@ endif()
 
 # 6. Hardware-Bound Linker Directives.
 #
-# The board's linker script is taken from NavHAL by name, never by path. NavHAL
-# publishes NAVHAL_LINKER_SCRIPT and carries the -L its INCLUDE needs on the
-# `hal` target, so which file describes this board's memory stays NavHAL's
+# The board's linker script comes from NavHAL by name where NavHAL offers it.
+# NavHAL publishes NAVHAL_LINKER_SCRIPT and carries the -L its INCLUDE needs on
+# the `hal` target, so which file describes this board's memory stays NavHAL's
 # business -- naming the path here made every generated project depend on
-# NavHAL's directory layout.
-if(NOT NAVHAL_LINKER_SCRIPT)
-    message(FATAL_ERROR
-        "extern/NavHAL does not export NAVHAL_LINKER_SCRIPT: it predates that "
-        "support. Update the submodule -- the alternative is naming the script "
-        "by path here, which is what depending on NavHAL's layout looked like.")
+# NavHAL's directory layout. The path is kept only as a fallback for older
+# NavHAL, and should go when the resolved ref always exports the variable.
+if(NAVHAL_LINKER_SCRIPT)
+    set(NAV_LINKER_SCRIPT "${NAVHAL_LINKER_SCRIPT}")
+else()
+    # Deprecated fallback for a NavHAL that predates the export: name the path,
+    # the way this template used to. Kept only so a project built against an
+    # older NavHAL still links -- delete it once the NavHAL ref nav resolves
+    # publishes the variable, since the whole point is not knowing this layout.
+    set(NAV_LINKER_SCRIPT
+        "${CMAKE_CURRENT_SOURCE_DIR}/extern/NavHAL/src/board/${BOARD}/linker.ld")
+    if(NOT EXISTS "${NAV_LINKER_SCRIPT}")
+        # Failing here beats passing no -T at all: ld would quietly fall back to
+        # its own default script and produce an image that does not boot.
+        message(FATAL_ERROR
+            "No linker script: extern/NavHAL exports no NAVHAL_LINKER_SCRIPT and "
+            "${NAV_LINKER_SCRIPT} does not exist. Update NavHAL.")
+    endif()
 endif()
 target_link_options(${PROJECT_NAME} PRIVATE
-  "-T" "${NAVHAL_LINKER_SCRIPT}"
+  "-T" "${NAV_LINKER_SCRIPT}"
   "-nostdlib"
   "--specs=nosys.specs"
   ${NAV_BOARD_LINK_FLAGS}
