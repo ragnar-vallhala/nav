@@ -106,6 +106,14 @@ if(NAV_APP_C_STANDARD)
         C_STANDARD ${NAV_APP_C_STANDARD} C_STANDARD_REQUIRED ON)
 endif()
 
+# 4a. App-level Kconfig hook. Only present when the app ships a root Kconfig:
+#     nav writes build/nav-app-kconfig.cmake (CONFIG_* CMake variables and
+#     NAV_APP_AUTOCONF) and force-includes app_autoconf.h into the app's sources.
+if(EXISTS "${CMAKE_BINARY_DIR}/nav-app-kconfig.cmake")
+    include("${CMAKE_BINARY_DIR}/nav-app-kconfig.cmake")
+    target_compile_options(${PROJECT_NAME} PRIVATE "SHELL:-include ${NAV_APP_AUTOCONF}")
+endif()
+
 # 5. Apply board-derived compilation flags.
 if(NAV_BOARD_COMPILE_FLAGS)
     target_compile_options(${PROJECT_NAME} PRIVATE ${NAV_BOARD_COMPILE_FLAGS})

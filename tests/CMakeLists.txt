@@ -33,6 +33,7 @@ add_executable(nav_tests
     test_board_config.cpp
     test_runner.cpp
     test_appbuild.cpp
+    test_appkconfig.cpp
 )
 
 target_include_directories(nav_tests PRIVATE

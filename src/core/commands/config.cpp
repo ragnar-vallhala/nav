@@ -1,3 +1,4 @@
+#include "nav/core/appkconfig.hpp"
 #include "nav/core/command.hpp"
 #include "nav/core/config.hpp"    // find_project_root
 #include "nav/core/kconfig_python.hpp"
@@ -7,6 +8,7 @@
 
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <string>
 
 namespace fs = std::filesystem;
@@ -54,6 +56,22 @@ int ConfigCommand::run(IExecutionContext& ctx, const std::vector<std::string>& /
         return 1;
     }
 
+    // An app that ships its own Kconfig edits one merged tree (NavHAL's, the
+    // dependencies' and the app's), so its symbols show up here too.
+    fs::path menu_kconfig = kconfig;
+    if (app_has_kconfig(*root)) {
+        auto cfg = load_project_config(*root);
+        std::vector<ResolvedLib> libs;
+        if (cfg && !cfg->dependencies.empty()) {
+            auto r = resolve_library_deps(ctx, *root, *cfg);
+            if (!r) { ui::error("Could not resolve library dependencies."); return 1; }
+            libs = *r;
+        }
+        menu_kconfig = cfg ? write_merged_kconfig(*root, *cfg, libs, navhal_dir) : fs::path{};
+        if (menu_kconfig.empty()) { ui::error("Could not write build/nav-Kconfig."); return 1; }
+        { std::ofstream(*root / "build" / "nav-empty.Kconfig") << "# empty\n"; set_env("NAVHAL_KCONFIG", fs::absolute(*root / "build" / "nav-empty.Kconfig").string()); } // NavHAL is sourced directly; see appkconfig.cpp
+    }
+
     const fs::path dotconfig = *root / ".config";
 
     // kconfiglib's menuconfig resolves `source` globs against $srctree and
@@ -97,7 +115,7 @@ int ConfigCommand::run(IExecutionContext& ctx, const std::vector<std::string>& /
 
     // A full-screen curses TUI must own the real terminal, so launch it directly
     // (not through the captured execute()).
-    const std::string cmd = q(python) + " -m menuconfig " + q(kconfig);
+    const std::string cmd = q(python) + " -m menuconfig " + q(menu_kconfig);
     int rc = std::system(cmd.c_str());
     if (rc != 0) {
         ui::error("menuconfig exited with an error (" + python + " -m menuconfig).");

@@ -53,6 +53,8 @@ struct ResolvedLib {
     // The library's CMakeLists.txt reads NAVHAL_DIR, which nav sets to the
     // project's NavHAL — so a NavHAL submodule it bundles is not used.
     bool uses_navhal_dir = false;
+    // The library ships a root Kconfig (see appkconfig.hpp).
+    bool has_kconfig = false;
 };
 
 // One place in the graph that asks for a library: the source it names and the
@@ -152,12 +154,19 @@ GitLockResult reconcile_git_lock(Lockfile& lock, const std::vector<ResolvedLib>&
 // libraries build against it, not a bundled copy), add_subdirectory() each resolved library,
 // wire inter-library link edges, and set NAV_DEP_TARGETS to the consumer's
 // direct dependencies for the top-level CMake to link.
+//
+// With `merged_kconfig`, a library that ships a root Kconfig is handed the app's
+// resolved config: <NAME>_CONFIG (the library's name upper-cased, e.g.
+// VAIOS_CONFIG) is set to ${CMAKE_BINARY_DIR}/nav.config unless the dependency's
+// own options already set it.
 std::string render_libdeps_cmake(const std::vector<ResolvedLib>& libs,
-                                 const std::vector<std::string>& direct);
+                                 const std::vector<std::string>& direct,
+                                 bool merged_kconfig = false);
 
 // Write render_libdeps_cmake() to `out_path`, creating parent dirs. True on success.
 bool write_libdeps_cmake(const std::vector<ResolvedLib>& libs,
                          const std::vector<std::string>& direct,
-                         const std::filesystem::path& out_path);
+                         const std::filesystem::path& out_path,
+                         bool merged_kconfig = false);
 
 } // namespace nav::core

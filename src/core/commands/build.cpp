@@ -1,4 +1,5 @@
 #include "nav/core/appbuild.hpp"
+#include "nav/core/appkconfig.hpp"
 #include "nav/core/board.hpp"
 #include "nav/core/board_config.hpp"
 #include "nav/core/cache.hpp"
@@ -159,6 +160,9 @@ int BuildCommand::run(IExecutionContext& ctx, const std::vector<std::string>& /*
     // vector-owning library like vaios takes the SysTick/PendSV handlers).
     const fs::path libdeps_pre_cmake = fs::path("build") / "nav-deps-pre.cmake";
     std::vector<ResolvedLib> resolved; // kept for the HAL API check below
+    // App-level Kconfig (appkconfig.hpp): opt-in by shipping a root Kconfig.
+    const bool app_kconfig = app_has_kconfig(*root);
+    std::vector<ResolvedLib> app_libs;
     if (!cfg->dependencies.empty()) {
         std::vector<std::string> direct;
         auto libs = resolve_library_deps(ctx, *root, *cfg, &direct);
@@ -198,10 +202,12 @@ int BuildCommand::run(IExecutionContext& ctx, const std::vector<std::string>& /*
         // is built; say so when the bundled copy is a different commit.
         for (const auto& w : check_bundled_copies(*libs, kNavhalRepoUrl, git_head_commit(ctx, navhal_dir)))
             ui::warning(w);
-        if (!write_libdeps_cmake(*libs, direct, libdeps_cmake)) {
+        if (!write_libdeps_cmake(*libs, direct, libdeps_cmake, app_kconfig)) {
             ui::error("Failed to write " + libdeps_cmake.string() + ".");
             return 1;
         }
+
+        app_libs = *libs;
 
         // Capability check: the app's .config is the single authority that
         // configures NavHAL. Every dependency that ships a NavHAL config
@@ -298,6 +304,27 @@ int BuildCommand::run(IExecutionContext& ctx, const std::vector<std::string>& /*
 #else
         ::setenv("srctree", navhal_dir.string().c_str(), /*overwrite=*/1);
 #endif
+    }
+
+    // App-level Kconfig: merge NavHAL's, the dependencies' and the app's Kconfig,
+    // validate .config against it, and generate app_autoconf.h + nav.config.
+    // Without a root Kconfig nothing here runs and any stale output is removed.
+    {
+        std::error_code kec;
+        const fs::path app_cmake = fs::path("build") / "nav-app-kconfig.cmake";
+        if (!app_kconfig) {
+            fs::remove(app_cmake, kec);
+        } else {
+            std::string err;
+            std::vector<std::string> warns;
+            if (!prepare_app_kconfig(ctx, *root, *cfg, app_libs, navhal_dir, &err, &warns)) {
+                ui::error("App Kconfig: " + err);
+                return 1;
+            }
+            for (const auto& w : warns) ui::warning(w);
+            ui::info("App Kconfig merged (NavHAL + " + std::to_string(app_libs.size()) +
+                     " dependency(ies) + app); wrote build/app_autoconf.h.");
+        }
     }
 
     // Run cmake quietly (silent=true captures output without streaming it), so a
