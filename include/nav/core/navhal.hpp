@@ -61,6 +61,10 @@ bool pin_navhal(Lockfile& lock, const NavhalSpec& spec, const std::string& commi
 // `git ls-remote --tags`) whose commit is `commit`; empty if none.
 std::string tag_at_commit(const std::string& ls_remote_tags, const std::string& commit);
 
+// True for a git URL or ref that starts with '-': passed to git it would be read
+// as an option. nav refuses such values (and also puts "--" before URLs).
+bool is_unsafe_git_arg(const std::string& s);
+
 // Re-fetch a git dependency's shared cache entry <url>@<ref> from upstream and
 // swap it in (a branch ref otherwise never moves once cached). Returns the
 // commit now cached, or empty on failure.

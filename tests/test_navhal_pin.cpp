@@ -345,6 +345,41 @@ TEST_F(Pin, RefreshGitCacheReplacesAStaleBranchClone) {
     EXPECT_TRUE(nav::core::is_installed(nav::core::git_cache_dir(url, "main")));
 }
 
+// ---- option-injection hardening --------------------------------------------
+
+TEST(GitArgs, DashPrefixIsUnsafe) {
+    EXPECT_TRUE(nav::core::is_unsafe_git_arg("--upload-pack=touch /tmp/x"));
+    EXPECT_TRUE(nav::core::is_unsafe_git_arg("-c"));
+    EXPECT_FALSE(nav::core::is_unsafe_git_arg(""));
+    EXPECT_FALSE(nav::core::is_unsafe_git_arg("https://example.com/lib.git"));
+    EXPECT_FALSE(nav::core::is_unsafe_git_arg("v1.0-rc1"));
+}
+
+TEST_F(Pin, DashUrlOrRefIsRefusedBeforeAnyGitCall) {
+    EXPECT_TRUE(nav::core::ensure_git_cached(mock, "--upload-pack=evil", "main").empty());
+    EXPECT_TRUE(nav::core::ensure_git_cached(mock, "https://example.com/lib.git", "--evil").empty());
+    EXPECT_TRUE(nav::core::refresh_git_cache(mock, "-oProxyCommand=evil", "main").empty());
+    EXPECT_TRUE(nav::core::refresh_git_cache(mock, "https://example.com/lib.git", "-x").empty());
+    NavhalSpec spec;
+    spec.git = "--upload-pack=evil";
+    EXPECT_FALSE(nav::core::resolve_navhal(mock, spec, ""));
+    spec.git = "https://example.com/NavHAL.git";
+    spec.ref = "-x";
+    EXPECT_FALSE(nav::core::resolve_navhal(mock, spec, ""));
+    EXPECT_TRUE(mock.calls.empty());
+}
+
+TEST_F(Pin, CloneSeparatesTheUrlFromOptions) {
+    const std::string url = "https://example.com/lib.git";
+    tips[url + "@main"] = kA;
+    ASSERT_FALSE(nav::core::ensure_git_cached(mock, url, "main").empty());
+    ASSERT_FALSE(mock.calls.empty());
+    const auto& a = mock.calls.front().argv;
+    ASSERT_GE(a.size(), 4u);
+    EXPECT_EQ(a[a.size() - 3], "--");
+    EXPECT_EQ(a[a.size() - 2], url);
+}
+
 TEST_F(Pin, RefreshGitCacheKeepsTheCacheWhenTheFetchFails) {
     const std::string url = "https://example.com/lib.git";
     tips[url + "@main"] = kA;

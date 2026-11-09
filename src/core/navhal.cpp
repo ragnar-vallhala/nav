@@ -27,6 +27,19 @@ namespace nav::core {
 
 namespace {
 
+// Reports (and returns false for) a git URL or ref that starts with '-'.
+bool check_git_args(const std::string& url, const std::string& ref) {
+    if (is_unsafe_git_arg(url)) {
+        ui::error("Refusing git URL '" + url + "': it starts with '-' and would be read as a git option.");
+        return false;
+    }
+    if (is_unsafe_git_arg(ref)) {
+        ui::error("Refusing git ref '" + ref + "': it starts with '-' and would be read as a git option.");
+        return false;
+    }
+    return true;
+}
+
 // Per-run unique suffix so a partial clone never collides with another run.
 std::string unique_suffix() {
     using namespace std::chrono;
@@ -51,6 +64,7 @@ fs::path clone_into_cache(IExecutionContext& ctx, const std::string& url,
                           const std::string& ref, const fs::path& dir,
                           const std::string& label, bool trim_datasheets,
                           bool recurse_submodules) {
+    if (!check_git_args(url, ref)) return {};
     if (is_installed(dir)) {
         return dir; // already present — no clone, no network.
     }
@@ -70,6 +84,7 @@ fs::path clone_into_cache(IExecutionContext& ctx, const std::string& url,
         cmd.push_back("--shallow-submodules");
     }
     cmd.push_back("--progress");
+    cmd.push_back("--");
     cmd.push_back(url);
     cmd.push_back(tmp.string());
     auto res = ctx.execute(cmd);
@@ -154,17 +169,17 @@ bool fetch_ref_into(IExecutionContext& ctx, const std::string& url, const std::s
     fs::remove_all(tmp, ec);
     ui::step("Caching", "Fetching " + label + " into the shared cache");
     if (!looks_like_commit(ref)) {
-        return ctx.execute({"git", "clone", "--depth", "1", "--branch", ref, "--progress", url,
-                            tmp.string()}).exit_code == 0;
+        return ctx.execute({"git", "clone", "--depth", "1", "--branch", ref, "--progress", "--",
+                            url, tmp.string()}).exit_code == 0;
     }
     if ((ref.size() == 40 || ref.size() == 64) &&
         ctx.execute({"git", "init", "-q", tmp.string()}, "", true).exit_code == 0 &&
-        ctx.execute({"git", "-C", tmp.string(), "fetch", "-q", "--depth", "1", url, ref}).exit_code == 0 &&
+        ctx.execute({"git", "-C", tmp.string(), "fetch", "-q", "--depth", "1", "--", url, ref}).exit_code == 0 &&
         ctx.execute({"git", "-C", tmp.string(), "checkout", "-q", "--detach", "FETCH_HEAD"}, "", true)
                 .exit_code == 0)
         return true;
     fs::remove_all(tmp, ec);
-    return ctx.execute({"git", "clone", "--progress", url, tmp.string()}).exit_code == 0 &&
+    return ctx.execute({"git", "clone", "--progress", "--", url, tmp.string()}).exit_code == 0 &&
            ctx.execute({"git", "-C", tmp.string(), "checkout", "-q", "--detach", ref}, "", true)
                    .exit_code == 0;
 }
@@ -172,6 +187,7 @@ bool fetch_ref_into(IExecutionContext& ctx, const std::string& url, const std::s
 // Fetch `spec` into a temp sibling and move it to its per-commit cache dir
 // (kept as is if that commit is already cached).
 std::optional<ResolvedNavhal> fetch_navhal(IExecutionContext& ctx, const NavhalSpec& spec) {
+    if (!check_git_args(spec.git, spec.ref)) return std::nullopt;
     const fs::path tmp = navhal_commit_dir(spec.git, ".tmp-" + unique_suffix());
     std::error_code ec;
     fs::create_directories(tmp.parent_path(), ec);
@@ -204,6 +220,10 @@ std::optional<ResolvedNavhal> fetch_navhal(IExecutionContext& ctx, const NavhalS
 }
 
 } // namespace
+
+bool is_unsafe_git_arg(const std::string& s) {
+    return !s.empty() && s[0] == '-';
+}
 
 NavhalSpec navhal_spec(const ProjectConfig& cfg) {
     NavhalSpec s;
@@ -358,6 +378,7 @@ std::string tag_at_commit(const std::string& ls_remote_tags, const std::string& 
 }
 
 std::string refresh_git_cache(IExecutionContext& ctx, const std::string& url, const std::string& ref) {
+    if (!check_git_args(url, ref)) return {};
     const fs::path dir = git_cache_dir(url, ref);
     std::error_code ec;
     fs::create_directories(dir.parent_path(), ec);
@@ -368,7 +389,7 @@ std::string refresh_git_cache(IExecutionContext& ctx, const std::string& url, co
     ui::step("Caching", "Refreshing " + url + (ref.empty() ? "" : "@" + ref));
     std::vector<std::string> cmd = {"git", "clone", "--depth", "1"};
     if (!ref.empty()) { cmd.push_back("--branch"); cmd.push_back(ref); }
-    cmd.insert(cmd.end(), {"--recurse-submodules", "--shallow-submodules", "--progress", url, tmp.string()});
+    cmd.insert(cmd.end(), {"--recurse-submodules", "--shallow-submodules", "--progress", "--", url, tmp.string()});
     if (ctx.execute(cmd).exit_code != 0) {
         fs::remove_all(tmp, ec);
         ui::error("Failed to refresh " + url + (ref.empty() ? "" : "@" + ref) + ".");

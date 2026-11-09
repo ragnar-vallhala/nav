@@ -160,7 +160,7 @@ int CreateCommand::run(IExecutionContext& ctx, const std::vector<std::string>& a
     // default ref points at when there is one (immutable), else the ref itself.
     // nav.lock pins the exact commit either way.
     {
-        auto tags = ctx.execute({"git", "ls-remote", "--tags", navhal.git}, "", /*silent=*/true);
+        auto tags = ctx.execute({"git", "ls-remote", "--tags", "--", navhal.git}, "", /*silent=*/true);
         if (tags.exit_code == 0) {
             const std::string tag = tag_at_commit(tags.output, resolved->commit);
             if (!tag.empty()) navhal.ref = tag;
