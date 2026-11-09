@@ -44,6 +44,10 @@ struct ProjectConfig {
 
     // Declared [dependencies] (nav library projects this one links against).
     std::vector<Dependency> dependencies;
+    // [overrides] — the source to use for a library wherever it appears in the
+    // dependency graph, settling a conflict between requirers. Same form as a
+    // dependency. Only the project being built applies its overrides.
+    std::vector<Dependency> overrides;
 
     // [library].navhal_submodule — a library that owns the NavHAL-ceded CPU
     // vectors (SysTick/PendSV/SVCall/HardFault), e.g. an RTOS like vaios. When a

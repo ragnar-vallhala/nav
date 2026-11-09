@@ -44,7 +44,7 @@ nav monitor --baud 115200   # open the serial monitor
 | `nav upload` | Flash the firmware with the board's runner (`st-flash`, `openocd`, `avrdude`). `--runner <name>` picks another, `--port <dev>` sets the serial port (auto-detected when one is attached), `--set <name>=<value>` fills a runner variable, `--dry-run` prints the commands, `--list` shows the board's runners. |
 | `nav monitor` | Open a serial monitor (auto-detects the port; `--baud` sets the rate). |
 | `nav board` | Manage the board / toolchain registry. `nav board use <id>` switches the project's board: it updates `[target]` in `nav.toml` and regenerates `.config` (the old one is kept as `.config.old`). `nav build` stops if `.config` selects a different board from `nav.toml`. |
-| `nav lib` | Work with library-type projects. |
+| `nav lib` | Work with library dependencies: `add`, `remove`, `list`, and `tree`, which prints the whole dependency graph and marks conflicts (one library requested from two sources, reported with the chain of projects behind each request). `[overrides]` in `nav.toml` picks one source for the whole project. |
 | `nav check` | Verify the toolchain, package manager, and flasher are present and working. |
 | `nav update` | Install missing local tools. |
 | `nav clean` | Remove build artifacts. |

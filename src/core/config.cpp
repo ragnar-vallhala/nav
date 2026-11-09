@@ -51,8 +51,10 @@ std::optional<ProjectConfig> load_project_config(const fs::path& project_root) {
 
     // [dependencies] — each value is an inline table: { path = "..." } or
     // { git = "...", ref = "..." }. A bare string value is treated as a path.
-    if (auto deps = tbl["dependencies"].as_table()) {
-        for (const auto& [key, node] : *deps) {
+    // [overrides] uses the same form.
+    auto read_deps = [](const toml::table* t, std::vector<Dependency>& into) {
+        if (!t) return;
+        for (const auto& [key, node] : *t) {
             Dependency dep;
             dep.name = std::string(key.str());
             if (const auto* sub = node.as_table()) {
@@ -66,9 +68,11 @@ std::optional<ProjectConfig> load_project_config(const fs::path& project_root) {
             } else if (const auto* str = node.as_string()) {
                 dep.path = str->get();
             }
-            if (dep.is_path() || dep.is_git()) cfg.dependencies.push_back(std::move(dep));
+            if (dep.is_path() || dep.is_git()) into.push_back(std::move(dep));
         }
-    }
+    };
+    read_deps(tbl["dependencies"].as_table(), cfg.dependencies);
+    read_deps(tbl["overrides"].as_table(), cfg.overrides);
     return cfg;
 }
 

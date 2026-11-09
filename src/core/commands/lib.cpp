@@ -1,12 +1,14 @@
 #include "nav/core/board_config.hpp"
 #include "nav/core/command.hpp"
 #include "nav/core/config.hpp"
+#include "nav/core/libdeps.hpp"
 #include "nav/core/navconfig.hpp"
 #include "nav/core/navhal.hpp"
 #include "nav/core/project_name.hpp"
 #include "nav/core/ui.hpp"
 
 #include <fstream>
+#include <iostream>
 #include <string>
 #include <system_error>
 #include <vector>
@@ -72,6 +74,20 @@ int dependencies_header(const std::vector<std::string>& lines) {
         if (t == "[dependencies]") return static_cast<int>(i);
     }
     return -1;
+}
+
+// `nav lib tree`: the whole dependency graph, with conflicts and bundled
+// submodule copies marked. Exits 1 when the graph has errors or conflicts.
+int lib_tree(IExecutionContext& ctx, const fs::path& root) {
+    auto cfg = load_project_config(root);
+    if (!cfg) { ui::error("Could not parse nav.toml."); return 1; }
+    DepGraph g = resolve_dep_graph(ctx, root, *cfg);
+    std::cout << render_dep_tree(g, cfg->project_name.empty() ? root.filename().string() : cfg->project_name);
+    const fs::path navhal_dir = root / "extern" / "NavHAL";
+    const std::string navhal_commit = fs::exists(navhal_dir) ? git_head_commit(ctx, navhal_dir) : "";
+    for (const auto& w : check_bundled_copies(g.libs, kNavhalRepoUrl, navhal_commit)) ui::warning(w);
+    report_dep_graph(g);
+    return g.ok() ? 0 : 1;
 }
 
 int lib_list(const fs::path& root) {
@@ -284,12 +300,14 @@ int LibCommand::run(IExecutionContext& ctx, const std::vector<std::string>& args
         return lib_add(ctx, *root, name, source, ref, force_git, force_path, options);
     }
 
+    if (sub == "tree") return lib_tree(ctx, *root);
+
     if (sub == "remove" || sub == "rm") {
         const std::string name = !flag_name.empty() ? flag_name : (rest.empty() ? "" : rest[0]);
         return lib_remove(*root, name);
     }
 
-    ui::error("Unknown subcommand 'lib " + sub + "'. Use: add <path|git-url> [name] [--ref r] | remove <name> | list.");
+    ui::error("Unknown subcommand 'lib " + sub + "'. Use: add <path|git-url> [name] [--ref r] | remove <name> | list | tree.");
     return 1;
 }
 

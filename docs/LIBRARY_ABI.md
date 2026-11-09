@@ -302,9 +302,37 @@ vaios   = { git = "https://github.com/ragnar-vallhala/vaios", ref = "v0.2.0", op
   a SHA mismatch and fails the build.
 * The graph is walked transitively (git deps clone into the shared cache) and
   resolved with a topological sort. Cycles fail with a path-trace.
-* **Diamond conflicts are an error**: two paths naming the same library (same
-  URL) at different refs fail, naming both paths. No version unification. Two
-  different URLs with the same manifest `name` also fail.
+* **The graph is one DAG with one copy of each library.** nav builds the whole
+  graph first, recording every request and the chain of projects that made it
+  (`app -> radio -> crc`), then checks it. Two requests agree when they name the
+  same `path`, or the same Git URL (cosmetic differences such as `.git`, a
+  trailing `/` or `git@host:` vs `https://host/` ignored) with the same `ref` or
+  the same resolved commit. Anything else is a **conflict**. All conflicts,
+  cycles and fetch errors are reported together, each with its chains; no
+  version unification is attempted.
+* The app settles a conflict with `[overrides]`, which picks the source for a
+  library everywhere in the graph (same entry form as `[dependencies]`). Only
+  the project being built applies its overrides; a library's own
+  `[overrides]` are ignored. nav prints which requests each override replaced.
+
+  ```toml
+  [overrides]
+  crc = { git = "https://github.com/jane/nav-crc", ref = "v2.1.0" }
+  ```
+* **Submodules are bundled copies, not graph nodes.** A library may keep
+  shared code (NavHAL, another library) as a Git submodule for its standalone
+  build. In a nav build the project provides one copy: the library must use the
+  provided CMake target (`if(NOT TARGET hal) add_subdirectory(${NAVHAL_DIR})
+  endif()`) and get NavHAL headers **only by linking `hal`**
+  (`target_link_libraries(mylib PRIVATE hal)`, or PUBLIC when its public headers
+  include NavHAL's), never from an include path into a NavHAL tree. Non-header
+  files (Kconfig, linker scripts, arch CMake fragments) are read from
+  `${NAVHAL_DIR}`, a cache variable defaulting to the submodule, which nav sets
+  to the project's NavHAL.
+  nav reads each library's `.gitmodules` and warns when a bundled copy's commit
+  differs from the copy the build uses.
+* `nav lib tree` prints the graph with conflicts, overrides and bundled copies
+  marked, and exits non-zero when the graph has a conflict or error.
 * The manifest `version` is semver (§9) and is informational for resolution in
   v1: nav does not search for "a compatible version", it builds the ref asked
   for. Range resolution (`^1.2`) over a repository's tags via `git ls-remote

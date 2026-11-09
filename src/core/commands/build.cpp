@@ -152,6 +152,11 @@ int BuildCommand::run(IExecutionContext& ctx, const std::vector<std::string>& /*
             ui::error("Failed to write nav.lock.");
             return 1;
         }
+        // A library may carry its own copy of something the build provides
+        // once (NavHAL, or another library) as a git submodule. Only one copy
+        // is built; say so when the bundled copy is a different commit.
+        for (const auto& w : check_bundled_copies(*libs, kNavhalRepoUrl, git_head_commit(ctx, navhal_dir)))
+            ui::warning(w);
         if (!write_libdeps_cmake(*libs, direct, libdeps_cmake)) {
             ui::error("Failed to write " + libdeps_cmake.string() + ".");
             return 1;
