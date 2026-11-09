@@ -384,3 +384,54 @@ TEST(AppBuildLink, RenderDefaultsAreNone) {
     EXPECT_NE(out.find("set(NAV_APP_LINKER_FRAGMENT)"), std::string::npos);
     EXPECT_NE(out.find("set(NAV_APP_LIBC \"none\")"), std::string::npos);
 }
+
+// --- link order / syscalls --------------------------------------------------
+
+TEST(AppBuildSyscalls, ParsesAndValidates) {
+    TempDir td;
+    write_toml(td.path(), "[build]\nlibc = \"newlib\"\nsyscalls = \"none\"\n");
+    auto cfg = load_project_config(td.path());
+    ASSERT_TRUE(cfg);
+    EXPECT_EQ(cfg->build.syscalls, "none");
+
+    TempDir def;
+    write_toml(def.path(), "");
+    auto d = load_project_config(def.path());
+    ASSERT_TRUE(d);
+    EXPECT_TRUE(d->build.syscalls.empty());
+
+    TempDir bad;
+    write_toml(bad.path(), "[build]\nsyscalls = \"stubs\"\n");
+    EXPECT_FALSE(load_project_config(bad.path()));
+}
+
+TEST(AppBuildSyscalls, PlanDefaultsToNosysAndRenders) {
+    TempDir td;
+    touch(td.path(), "src/main.c");
+    ProjectConfig cfg;
+    cfg.root = td.path();
+    std::string err;
+    auto plan = plan_app_build(cfg, err);
+    ASSERT_TRUE(plan) << err;
+    EXPECT_EQ(plan->syscalls, "nosys");
+    EXPECT_NE(render_app_cmake(*plan).find("set(NAV_APP_SYSCALLS \"nosys\")"), std::string::npos);
+    cfg.build.syscalls = "none";
+    plan = plan_app_build(cfg, err);
+    ASSERT_TRUE(plan) << err;
+    EXPECT_NE(render_app_cmake(*plan).find("set(NAV_APP_SYSCALLS \"none\")"), std::string::npos);
+}
+
+TEST(AppBuildTemplate, SystemLibsComeAfterDependencyArchives) {
+    const std::string t = render_app_cmakelists("p");
+    // One link call: hal and every dependency archive in a group, then the
+    // system libraries (-lc -lm, libs, -lnosys) in a group of their own.
+    const auto hal = t.find("-Wl,--whole-archive hal");
+    ASSERT_NE(hal, std::string::npos);
+    const auto deps = t.find("${NAV_DEP_TARGETS}", hal);
+    const auto sys = t.find("${NAV_APP_SYS_LIBS}", hal);
+    ASSERT_NE(deps, std::string::npos);
+    ASSERT_NE(sys, std::string::npos);
+    EXPECT_LT(deps, sys);
+    // -lnosys is only added for syscalls != "none".
+    EXPECT_NE(t.find("NOT NAV_APP_SYSCALLS STREQUAL \"none\""), std::string::npos);
+}

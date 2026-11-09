@@ -96,6 +96,7 @@ set(NAV_APP_LINKER_FRAGMENT)
 set(NAV_APP_LIBC none)
 set(NAV_APP_OUTPUT)
 set(NAV_APP_LIBS)
+set(NAV_APP_SYSCALLS nosys)
 if(EXISTS "${CMAKE_BINARY_DIR}/nav-app.cmake")
     include("${CMAKE_BINARY_DIR}/nav-app.cmake")
 endif()
@@ -168,28 +169,32 @@ if(NAV_APP_LINKER_FRAGMENT)
 endif()
 list(APPEND NAV_APP_LINK_OPTIONS "SHELL:-T \"${NAV_LINKER_SCRIPT}\"")
 # [build] libc: "none" is freestanding (-nostdlib); "newlib" drops it and links
-# the C library through nosys stubs.
-set(NAV_APP_SYS_LIBS -lgcc)
+# the C library. The system libraries are collected here and emitted LAST on the
+# link line (step 7), after the app, hal and every dependency archive, so a
+# dependency's own _sbrk/_write/... beat the library's stubs. [build] syscalls =
+# "none" leaves out -lnosys altogether.
+set(NAV_APP_SYS_LIBS)
 if(NAV_APP_LIBC STREQUAL "newlib")
-    set(NAV_APP_SYS_LIBS -lc -lm -lnosys -lgcc)
+    list(APPEND NAV_APP_SYS_LIBS -lc -lm)
 else()
     list(APPEND NAV_APP_LINK_OPTIONS "-nostdlib")
 endif()
 foreach(_nav_lib ${NAV_APP_LIBS})
     list(APPEND NAV_APP_SYS_LIBS "-l${_nav_lib}")
 endforeach()
+if(NAV_APP_LIBC STREQUAL "newlib" AND NOT NAV_APP_SYSCALLS STREQUAL "none")
+    list(APPEND NAV_APP_SYS_LIBS -lnosys)
+endif()
+list(APPEND NAV_APP_SYS_LIBS -lgcc)
+# nosys.specs makes gcc itself append -lnosys, so syscalls = "none" must drop it.
+set(NAV_APP_SPECS "--specs=nosys.specs")
+if(NAV_APP_LIBC STREQUAL "newlib" AND NAV_APP_SYSCALLS STREQUAL "none")
+    set(NAV_APP_SPECS)
+endif()
 target_link_options(${PROJECT_NAME} PRIVATE
   ${NAV_APP_LINK_OPTIONS}
-  "--specs=nosys.specs"
+  ${NAV_APP_SPECS}
   ${NAV_BOARD_LINK_FLAGS}
-)
-
-# 7. Inherit linkage rules (Whole Archive mandatory for static HAL exports)
-target_link_libraries(${PROJECT_NAME} PRIVATE
-  -Wl,--start-group
-    -Wl,--whole-archive hal -Wl,--no-whole-archive
-    ${NAV_APP_SYS_LIBS}
-  -Wl,--end-group
 )
 
 # 8. Bind includes. The app's own directories are ordinary includes; NavHAL and
@@ -230,15 +235,21 @@ endif()
 if(NAV_DEPS_LINK_DIRS)
     target_link_directories(${PROJECT_NAME} PRIVATE ${NAV_DEPS_LINK_DIRS})
 endif()
-if(NAV_DEPS_LIBRARIES)
-    target_link_libraries(${PROJECT_NAME} PRIVATE ${NAV_DEPS_LIBRARIES})
-endif()
-
-# 8b. Nav library dependencies built from source (nav-deps-libs.cmake). Each is
-#     a static target whose PUBLIC include dirs propagate here automatically.
-if(NAV_DEP_TARGETS)
-    target_link_libraries(${PROJECT_NAME} PRIVATE ${NAV_DEP_TARGETS})
-endif()
+# 7. Link line. The app's objects come first, then one group holding hal (Whole
+#    Archive mandatory for static HAL exports), the resolved registry archives
+#    and every nav library dependency, then the system libraries in their own
+#    group. Keeping the system libraries last is what makes a dependency's
+#    syscalls win over newlib's / nosys' stubs.
+target_link_libraries(${PROJECT_NAME} PRIVATE
+  -Wl,--start-group
+    -Wl,--whole-archive hal -Wl,--no-whole-archive
+    ${NAV_DEPS_LIBRARIES}
+    ${NAV_DEP_TARGETS}
+  -Wl,--end-group
+  -Wl,--start-group
+    ${NAV_APP_SYS_LIBS}
+  -Wl,--end-group
+)
 
 # 8c. Print the image size after every link.
 if(CMAKE_BINARY_SIZE)

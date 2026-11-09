@@ -62,13 +62,14 @@ c_flags      = ["-O2", "-Wall"]
 c_standard   = 11                       # optional: 90, 99, 11, 17, 23
 linker_fragment = "app.ld"              # extra linker script, added to NavHAL's board script
 libc         = "newlib"                 # default "none" (freestanding, -nostdlib)
+syscalls     = "nosys"                  # with newlib: "nosys" (default) or "none" (no -lnosys)
 libs         = ["m"]                    # extra -l libraries
 
 [[build.file_flags]]                    # extra flags for matching sources, in order
 match = ["src/est/*.c", "src/control/**/*.c"]
 flags = ["-Wextra", "-Wconversion", "-Werror"]
 ```
-`*` and `?` stay inside a path segment, `**` spans directories. `nav build` expands the globs (sorted) into `build/nav-app.cmake` each time, and fails if a `sources` pattern or a `file_flags` rule matches nothing. `linker_fragment` should use `INSERT AFTER .text;`; `libc = "newlib"` links `-lc -lm -lnosys -lgcc`. NavHAL and dependency headers reach the app as system includes, so they never trip the app's `-Werror`. After linking, nav prints the image size.
+`*` and `?` stay inside a path segment, `**` spans directories. `nav build` expands the globs (sorted) into `build/nav-app.cmake` each time, and fails if a `sources` pattern or a `file_flags` rule matches nothing. `linker_fragment` should use `INSERT AFTER .text;`; `libc = "newlib"` drops `-nostdlib` and links `-lc -lm`, your `libs`, `-lnosys` and `-lgcc` in a group that is always placed after the app, NavHAL and every dependency archive, so a dependency's own `_sbrk`/`_write`/... win over newlib's and nosys' stubs. `syscalls = "none"` leaves out `-lnosys` (and `--specs=nosys.specs`, which would add it), so a library or the app must provide the syscalls. NavHAL and dependency headers reach the app as system includes, so they never trip the app's `-Werror`. After linking, nav prints the image size.
 
 These keys need a `CMakeLists.txt` from the current template. A project made by an older nav keeps building as before, but if `nav.toml` uses `[build]` keys, `nav build` says so; run `nav regen` to rewrite `CMakeLists.txt` (the old one is kept as `CMakeLists.txt.old`).
 

@@ -27,6 +27,7 @@ struct AppBuildPlan {
     std::string output;                     // firmware file name; empty = project name
     std::string linker_fragment;            // absolute, '/'-separated; empty = none
     std::string libc = "none";
+    std::string syscalls = "nosys";
     std::vector<std::string> libs;
     struct FileFlags {
         std::vector<std::string> files;     // absolute, '/'-separated, sorted

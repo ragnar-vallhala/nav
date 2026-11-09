@@ -167,6 +167,15 @@ bool parse_build_settings(const toml::table& tbl, BuildSettings& b) {
         b.libc = *v;
         any = true;
     }
+    if (const toml::node* n = bt->get("syscalls")) {
+        auto v = n->value<std::string>();
+        if (!v || (*v != "nosys" && *v != "none")) {
+            std::cerr << "nav.toml: [build].syscalls must be \"nosys\" or \"none\"\n";
+            return false;
+        }
+        b.syscalls = *v;
+        any = true;
+    }
     if (const toml::node* n = bt->get("file_flags")) {
         if (!parse_file_flags(*n, "[build]", b.file_flags)) return false;
         any = true;
