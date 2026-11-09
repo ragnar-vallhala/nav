@@ -287,9 +287,7 @@ int BuildCommand::run(IExecutionContext& ctx, const std::vector<std::string>& ar
                 return 1;
             }
             if (!missing.empty()) {
-                std::ofstream f(app_config, std::ios::app);
-                f << "\n# Unioned by nav build from dependency requirements\n";
-                for (const auto& m : missing) f << m << "\n";
+                update_config_file(app_config, missing, "# Unioned by nav build from dependency requirements");
                 ui::info("Unioned " + std::to_string(missing.size()) +
                          " capability requirement(s) from dependencies into .config.");
             }

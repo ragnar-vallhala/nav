@@ -214,9 +214,7 @@ int lib_add(IExecutionContext& ctx, const fs::path& root, std::string name,
         // Never let a dependency select a second board / arch / family.
         hold_target_choices(diff, scan_navhal_targets(root / "extern" / "NavHAL").choice_symbols);
         if (!diff.missing.empty()) {
-            std::ofstream f(app_cfg, std::ios::app);
-            f << "\n# Required by '" << name << "' (added by nav lib add)\n";
-            for (const auto& a : diff.missing) f << a << "\n";
+            update_config_file(app_cfg, diff.missing, "# Required by '" + name + "' (added by nav lib add)");
             ui::info("Unioned " + std::to_string(diff.missing.size()) +
                      " capability requirement(s) from '" + name + "' into .config.");
         }

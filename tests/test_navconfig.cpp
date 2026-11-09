@@ -113,3 +113,33 @@ TEST(NavConfig, DiffEmptyWhenSatisfied) {
     EXPECT_TRUE(d.missing.empty());
     EXPECT_TRUE(d.conflicts.empty());
 }
+
+TEST(NavConfig, ApplyReplacesInPlaceAndAppendsNew) {
+    const std::string text = "CONFIG_A=y\n# CONFIG_B is not set\nCONFIG_C=1\n";
+    const std::string out = nav::core::apply_config_assignments(
+        text, {"CONFIG_B=y", "CONFIG_C=2", "CONFIG_D=y"}, "# added");
+    EXPECT_EQ(out, "CONFIG_A=y\nCONFIG_B=y\nCONFIG_C=2\n\n# added\nCONFIG_D=y\n");
+}
+
+TEST(NavConfig, ApplyHandlesNotSetAndDropsDuplicates) {
+    const std::string text = "CONFIG_A=y\nCONFIG_B=y\nCONFIG_A=n\n";
+    const std::string out = nav::core::apply_config_assignments(text, {"# CONFIG_A is not set"});
+    EXPECT_EQ(out, "# CONFIG_A is not set\nCONFIG_B=y\n");
+}
+
+TEST(NavConfig, ApplyNoChangeAndRepeatedCallsAreStable) {
+    const std::string text = "CONFIG_A=y\n";
+    EXPECT_EQ(nav::core::apply_config_assignments(text, {"CONFIG_A=y"}), text);
+    const std::string once = nav::core::apply_config_assignments(text, {"CONFIG_X=1"}, "# h");
+    EXPECT_EQ(nav::core::apply_config_assignments(once, {"CONFIG_X=1"}, "# h"), once);
+}
+
+TEST(NavConfig, UpdateConfigFileRewritesFile) {
+    TempDir td;
+    const fs::path p = td.path() / ".config";
+    write_file(p, "CONFIG_A=y\n# CONFIG_B is not set\n");
+    ASSERT_TRUE(nav::core::update_config_file(p, {"CONFIG_B=y", "CONFIG_B=n"}));
+    std::ifstream in(p);
+    std::string all((std::istreambuf_iterator<char>(in)), {});
+    EXPECT_EQ(all, "CONFIG_A=y\nCONFIG_B=n\n");
+}

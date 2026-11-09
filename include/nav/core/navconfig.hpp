@@ -49,4 +49,19 @@ RequirementDiff diff_requirements(
     const std::map<std::string, std::string>& have,
     const std::map<std::string, std::string>& required);
 
+// Apply Kconfig assignments to .config text. Each entry is "CONFIG_X=value" or
+// "# CONFIG_X is not set". A line for a symbol already in `text` (in either
+// form) is replaced in place; further duplicate lines for it are dropped.
+// Symbols not present are appended after a blank line and `header` comment
+// (omitted when empty). Later entries in `assignments` win over earlier ones.
+std::string apply_config_assignments(const std::string& text,
+                                     const std::vector<std::string>& assignments,
+                                     const std::string& header = "");
+
+// File form of apply_config_assignments; rewrites `path` only on change.
+// Returns false if the file cannot be written.
+bool update_config_file(const std::filesystem::path& path,
+                        const std::vector<std::string>& assignments,
+                        const std::string& header = "");
+
 } // namespace nav::core
