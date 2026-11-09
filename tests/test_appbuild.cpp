@@ -545,3 +545,8 @@ TEST(AppBuildFragmentPosition, TemplatePlacesFragmentAroundBoardScript) {
     EXPECT_LT(before, board);
     EXPECT_LT(board, after);
 }
+
+TEST(AppBuildTemplate, DetectsTemplateWithLinkSettings) {
+    EXPECT_TRUE(cmakelists_supports_dep_opts(render_app_cmakelists("p")));
+    EXPECT_FALSE(cmakelists_supports_dep_opts("include(\"nav-app.cmake\")"));
+}
