@@ -287,7 +287,7 @@ bme280  = { git = "https://github.com/jane/nav-bme280", ref = "v1.2.0" }
 # Local checkout, for developing a library alongside an app. Not publishable.
 mylib   = { path = "../mylib" }
 # Per-dependency CMake options (e.g. a library that needs a feature switched on).
-vaios   = { git = "https://github.com/ragnar-vallhala/vaios", ref = "v0.2.0", options = ["NAVHAL=ON"] }
+vaios   = { git = "https://github.com/ragnar-vallhala/vaios", ref = "v0.2.2", options = ["NAVHAL=ON"] }
 ```
 
 * Exactly one of `git` or `path` per entry. `ref` is a tag, branch or commit;
