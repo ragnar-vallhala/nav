@@ -468,6 +468,13 @@ std::string render_libdeps_cmake(const std::vector<ResolvedLib>& libs,
     // NAVHAL_DIR and build against the project's instead.
     os << "set(NAVHAL_DIR \"${CMAKE_SOURCE_DIR}/extern/NavHAL\" CACHE PATH "
           "\"NavHAL tree libraries build against (set by nav)\" FORCE)\n\n";
+    // The board's CPU/FPU flags (-mcpu, -mfloat-abi, ...) are otherwise only on
+    // the app target, and NavHAL's arch flags stay in NavHAL's directory scope,
+    // so a library that does not link `hal` would compile for the toolchain's
+    // default ABI and fail to link ("uses VFP register arguments").
+    os << "if(NAV_BOARD_COMPILE_FLAGS)\n"
+          "    add_compile_options(${NAV_BOARD_COMPILE_FLAGS})\n"
+          "endif()\n\n";
 
     // Add every library subtree first (dependencies-first order), so later
     // target_link_libraries() edges can reference any of them. A library's

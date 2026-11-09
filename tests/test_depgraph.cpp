@@ -267,3 +267,13 @@ TEST(DepGraphHelpers, RenderSetsNavhalDirBeforeLibraries) {
     ASSERT_NE(set, std::string::npos) << out;
     EXPECT_LT(set, out.find("add_subdirectory("));
 }
+
+TEST(DepGraphHelpers, RenderAppliesBoardFlagsToLibraries) {
+    ResolvedLib l;
+    l.name = "navlink";
+    l.src = "/x/navlink";
+    const std::string out = nav::core::render_libdeps_cmake({l}, {"navlink"});
+    const auto flags = out.find("add_compile_options(${NAV_BOARD_COMPILE_FLAGS})");
+    ASSERT_NE(flags, std::string::npos) << out;
+    EXPECT_LT(flags, out.find("add_subdirectory("));
+}
