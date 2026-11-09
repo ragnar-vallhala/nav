@@ -51,6 +51,11 @@ configure_file(
 # must NOT contain the literal sequence )NAVCFG".
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/data/toolchain.json" NAV_CFG_TOOLCHAIN)
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/data/boards.json"    NAV_CFG_BOARDS)
+# file(READ) is not a configure dependency by itself: without this, editing
+# the JSON left the old copy baked into nav until a manual re-configure.
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/data/toolchain.json"
+    "${CMAKE_CURRENT_SOURCE_DIR}/data/boards.json")
 configure_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/templates/embedded_config.hpp.in"
     "${CMAKE_CURRENT_BINARY_DIR}/generated/include/nav/config/embedded_config.hpp"

@@ -117,6 +117,27 @@
       "default_framework": "navhal",
       "supported_frameworks": ["navhal"]
     },
+    "navixdev": {
+      "name": "NAVIXDEV",
+      "arch": "cortex-m4",
+      "vendor": "stm32",
+      "mcu": "stm32f401re",
+      "navhal_board": "navixdev",
+      "compiler": "arm-none-eabi-gcc",
+      "flash_tool": "st-flash",
+      "flash_address": "0x08000000",
+      "runner": "st-flash",
+      "runners": {
+        "st-flash": {},
+        "openocd": { "target": "target/stm32f4x.cfg" }
+      },
+      "reset_after_flash": true,
+      "reset_command": ["st-flash", "reset"],
+      "compile_flags": ["-mcpu=cortex-m4", "-mthumb", "-mfloat-abi=hard", "-mfpu=fpv4-sp-d16"],
+      "link_flags": ["-mcpu=cortex-m4", "-mthumb", "-mfloat-abi=hard", "-mfpu=fpv4-sp-d16"],
+      "default_framework": "navhal",
+      "supported_frameworks": ["navhal"]
+    },
     "atmega328p": {
       "name": "Arduino Uno (ATmega328P)",
       "arch": "avr",
