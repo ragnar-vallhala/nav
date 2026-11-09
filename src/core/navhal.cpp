@@ -3,8 +3,11 @@
 #include "nav/core/cache.hpp"
 #include "nav/core/ui.hpp"
 
+#include <cctype>
 #include <chrono>
 #include <fstream>
+#include <optional>
+#include <regex>
 #include <string>
 #include <system_error>
 #include <vector>
@@ -38,10 +41,13 @@ std::string unique_suffix() {
 // be empty (clone the default branch). On success the completion marker is
 // written and `dir` is returned; on failure an empty path is returned (unless a
 // concurrent run already populated `dir`). `trim_datasheets` drops NavHAL's
-// heavyweight datasheets dir. Returns the cache dir or {} on failure.
+// heavyweight datasheets dir. `recurse_submodules` also fetches the repo's
+// submodules (shallow), so a library that vendors e.g. NavHAL arrives complete.
+// Returns the cache dir or {} on failure.
 fs::path clone_into_cache(IExecutionContext& ctx, const std::string& url,
                           const std::string& ref, const fs::path& dir,
-                          const std::string& label, bool trim_datasheets) {
+                          const std::string& label, bool trim_datasheets,
+                          bool recurse_submodules) {
     if (is_installed(dir)) {
         return dir; // already present — no clone, no network.
     }
@@ -56,6 +62,10 @@ fs::path clone_into_cache(IExecutionContext& ctx, const std::string& url,
     ui::step("Caching", "Fetching " + label + " into the shared cache (one-time)");
     std::vector<std::string> cmd = {"git", "clone", "--depth", "1"};
     if (!ref.empty()) { cmd.push_back("--branch"); cmd.push_back(ref); }
+    if (recurse_submodules) {
+        cmd.push_back("--recurse-submodules");
+        cmd.push_back("--shallow-submodules");
+    }
     cmd.push_back("--progress");
     cmd.push_back(url);
     cmd.push_back(tmp.string());
@@ -88,14 +98,39 @@ fs::path clone_into_cache(IExecutionContext& ctx, const std::string& url,
 
 fs::path ensure_navhal_cached(IExecutionContext& ctx, const std::string& ref) {
     return clone_into_cache(ctx, kNavhalRepoUrl, ref, navhal_cache_dir(ref),
-                            "NavHAL " + ref, /*trim_datasheets=*/true);
+                            "NavHAL " + ref, /*trim_datasheets=*/true,
+                            /*recurse_submodules=*/false);
 }
 
 fs::path ensure_git_cached(IExecutionContext& ctx, const std::string& url,
                            const std::string& ref) {
     const std::string label = url + (ref.empty() ? "" : ("@" + ref));
     return clone_into_cache(ctx, url, ref, git_cache_dir(url, ref), label,
-                            /*trim_datasheets=*/false);
+                            /*trim_datasheets=*/false, /*recurse_submodules=*/true);
+}
+
+std::string git_head_commit(IExecutionContext& ctx, const fs::path& repo) {
+    auto res = ctx.execute({"git", "-C", repo.string(), "rev-parse", "HEAD"}, "",
+                           /*silent=*/true);
+    if (res.exit_code != 0) return {};
+    std::string out = res.output;
+    while (!out.empty() && std::isspace(static_cast<unsigned char>(out.back()))) out.pop_back();
+    // A full SHA-1 (40) or SHA-256 (64) object name, hex only.
+    if (out.size() != 40 && out.size() != 64) return {};
+    for (char c : out)
+        if (!std::isxdigit(static_cast<unsigned char>(c))) return {};
+    return out;
+}
+
+std::optional<int> read_hal_api_version(const fs::path& navhal_dir) {
+    std::ifstream f(navhal_dir / "include" / "navhal.h");
+    if (!f) return std::nullopt;
+    static const std::regex re(R"(^\s*#\s*define\s+HAL_API_VERSION\s+(\d+)\b)");
+    std::string line;
+    std::smatch m;
+    while (std::getline(f, line))
+        if (std::regex_search(line, m, re)) return std::stoi(m[1].str());
+    return std::nullopt;
 }
 
 bool link_navhal(IExecutionContext& ctx, const fs::path& src, const fs::path& dest) {

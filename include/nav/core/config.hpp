@@ -31,6 +31,9 @@ struct Dependency {
 struct ProjectConfig {
     std::filesystem::path root;
     std::string project_name;
+    // [project].version — semver string; a library fetched by a v* tag must
+    // match it (see docs/LIBRARY_ABI.md §12).
+    std::string project_version;
     // "executable" (default) builds firmware; "library" builds a static .a that
     // other nav projects can depend on.
     std::string project_type = "executable";
@@ -48,6 +51,10 @@ struct ProjectConfig {
     // -DSUBMODULE so NavHAL yields those handlers instead of emitting its own
     // (which would collide at link).
     bool navhal_submodule = false;
+
+    // [abi].hal_api_version — the NavHAL HAL_API_VERSION this project targets.
+    // 0 means undeclared (not checked).
+    int hal_api_version = 0;
 
     bool is_library() const { return project_type == "library"; }
 };

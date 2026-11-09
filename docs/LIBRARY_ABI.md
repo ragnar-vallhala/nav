@@ -36,8 +36,8 @@ field says which it is: `"library"` or `"executable"` (an **app**). These
 are the only two kinds; "module" and "package" are not separate terms; they mean "library".
 
 Status: fields marked † below are specified here but **not yet read by nav**.
-Today nav reads `[project]`, `[target]`, `[build].backend`, `[dependencies]`
-and `[library]`.
+Today nav reads `[project]`, `[target]`, `[build].backend`, `[dependencies]`,
+`[library]` and `[abi].hal_api_version`.
 
 ### Library example
 
@@ -115,7 +115,7 @@ bme280 = { git = "https://github.com/jane/nav-bme280", ref = "v1.2.0" }
 | `[project].version` | yes | yes | semver `MAJOR.MINOR.PATCH`; implemented |
 | `[project].license` | yes | yes | SPDX identifier † |
 | `[abi].abi_version` | yes | yes | integer, this spec's version † |
-| `[abi].hal_api_version` | yes | yes | integer; must equal NavHAL's `HAL_API_VERSION` at build time † |
+| `[abi].hal_api_version` | yes | yes | integer; must equal NavHAL's `HAL_API_VERSION` at build time. Implemented: `nav build` checks it when declared (0/absent is not checked yet) |
 | `[target].*` | optional | yes | target triple. A library's `[target]` is used only when it is built standalone; as a dependency it is rebuilt for the app's target. implemented |
 | `[build].backend` | yes | yes | `"cmake"`; implemented |
 | `[build].sources` | yes | yes | glob list † (today: `src/**` by CMake glob) |

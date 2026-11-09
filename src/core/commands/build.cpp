@@ -82,11 +82,39 @@ int BuildCommand::run(IExecutionContext& ctx, const std::vector<std::string>& /*
     // Hooks that must run before NavHAL is added (e.g. -DSUBMODULE so a
     // vector-owning library like vaios takes the SysTick/PendSV handlers).
     const fs::path libdeps_pre_cmake = fs::path("build") / "nav-deps-pre.cmake";
+    std::vector<ResolvedLib> resolved; // kept for the HAL API check below
     if (!cfg->dependencies.empty()) {
         std::vector<std::string> direct;
         auto libs = resolve_library_deps(ctx, *root, *cfg, &direct);
         if (!libs) {
             ui::error("Could not resolve library dependencies. See errors above.");
+            return 1;
+        }
+
+        // Pin every git library to the commit its ref resolved to (nav.lock
+        // "git"), and refuse a ref that now resolves somewhere else.
+        const fs::path lock_path = *root / "nav.lock";
+        Lockfile lock;
+        if (fs::exists(lock_path)) {
+            auto loaded = load_lockfile(lock_path);
+            if (!loaded) {
+                ui::error("nav.lock exists but could not be parsed; fix or remove it and rebuild.");
+                return 1;
+            }
+            lock = std::move(*loaded);
+        }
+        auto pins = reconcile_git_lock(lock, *libs);
+        for (const auto& n : pins.notes) ui::info("nav.lock: " + n);
+        if (!pins.errors.empty()) {
+            ui::error("A pinned git dependency no longer matches nav.lock:");
+            for (const auto& e : pins.errors) ui::error("  " + e);
+            ui::error("The ref moved upstream, or the shared cache holds another commit. If the new");
+            ui::error("commit is intended, delete that entry from nav.lock and rebuild; otherwise");
+            ui::error("pin a ref that still points at the locked commit.");
+            return 1;
+        }
+        if (pins.changed && !save_lockfile(lock, lock_path)) {
+            ui::error("Failed to write nav.lock.");
             return 1;
         }
         if (!write_libdeps_cmake(*libs, direct, libdeps_cmake)) {
@@ -145,6 +173,7 @@ int BuildCommand::run(IExecutionContext& ctx, const std::vector<std::string>& /*
             fs::remove(libdeps_pre_cmake, rmec);
         }
         ui::info("Linked " + std::to_string(libs->size()) + " library dependency(ies).");
+        resolved = std::move(*libs);
     } else {
         // No deps now — clear any stale graph from an earlier build.
         std::error_code rmec;
@@ -169,6 +198,30 @@ int BuildCommand::run(IExecutionContext& ctx, const std::vector<std::string>& /*
             return 1;
         }
     }
+    // HAL contract check: a project or library that declares
+    // [abi].hal_api_version must match the NavHAL it is built against.
+    {
+        std::vector<std::string> mismatches;
+        const auto have = read_hal_api_version(navhal_dir);
+        auto check = [&](const std::string& who, int want) {
+            if (want == 0) return;
+            if (!have) {
+                mismatches.push_back(who + " declares hal_api_version = " + std::to_string(want) +
+                                     ", but extern/NavHAL/include/navhal.h defines no HAL_API_VERSION");
+            } else if (*have != want) {
+                mismatches.push_back(who + " targets hal_api_version = " + std::to_string(want) +
+                                     ", NavHAL provides " + std::to_string(*have));
+            }
+        };
+        check(cfg->project_name.empty() ? "this project" : cfg->project_name, cfg->hal_api_version);
+        for (const auto& lib : resolved) check(lib.name, lib.hal_api_version);
+        if (!mismatches.empty()) {
+            ui::error("HAL API version mismatch:");
+            for (const auto& m : mismatches) ui::error("  " + m);
+            return 1;
+        }
+    }
+
     if (fs::exists(navhal_dir)) {
 #ifdef _WIN32
         ::_putenv_s("srctree", navhal_dir.string().c_str());

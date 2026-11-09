@@ -3,6 +3,7 @@
 #include "nav/core/execution_context.hpp"
 
 #include <filesystem>
+#include <optional>
 #include <string>
 
 namespace nav::core {
@@ -20,10 +21,19 @@ std::filesystem::path ensure_navhal_cached(IExecutionContext& ctx, const std::st
 
 // Ensure an arbitrary git dependency <url>@<ref> exists in the shared cache
 // (see git_cache_dir), cloning it once if absent and reusing it afterwards.
-// `ref` may be empty to track the repository's default branch. Returns the
-// absolute cache path, or an empty path on failure.
+// `ref` may be empty to track the repository's default branch. Submodules are
+// fetched too (shallow). Returns the absolute cache path, or an empty path on
+// failure.
 std::filesystem::path ensure_git_cached(IExecutionContext& ctx, const std::string& url,
                                         const std::string& ref);
+
+// The commit checked out in the git repository at `repo` (`git rev-parse HEAD`),
+// or an empty string if it cannot be determined.
+std::string git_head_commit(IExecutionContext& ctx, const std::filesystem::path& repo);
+
+// HAL_API_VERSION as #defined in <navhal_dir>/include/navhal.h, or nullopt if
+// the header or the define is missing.
+std::optional<int> read_hal_api_version(const std::filesystem::path& navhal_dir);
 
 // Point `dest` (e.g. <project>/extern/NavHAL) at the cached NavHAL at `src`,
 // preferring a symlink, then a Windows directory junction, then a full copy as

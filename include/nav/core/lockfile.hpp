@@ -28,11 +28,26 @@ struct LockedPackage {
     std::vector<std::string> dependencies;
 };
 
+// A git library dependency pinned to the commit its ref resolved to. This is
+// nav's integrity guarantee for GitHub-hosted libraries (docs/LIBRARY_ABI.md
+// §10): `nav build` refuses a ref that now resolves to a different commit.
+struct LockedGit {
+    std::string name;    // canonical library name ([project].name)
+    std::string url;     // clone URL as written in nav.toml
+    std::string ref;     // tag / branch / commit as written in nav.toml
+    std::string commit;  // full object name the ref resolved to
+
+    bool operator==(const LockedGit&) const = default;
+};
+
 struct Lockfile {
     std::vector<LockedPackage> packages;
+    std::vector<LockedGit> git;
 
     // Lookup by name; nullopt if absent.
     std::optional<LockedPackage> find(const std::string& name) const;
+    // Git pin lookup by canonical name; nullptr if absent.
+    const LockedGit* find_git(const std::string& name) const;
 };
 
 // Parse nav.lock (JSON). Returns nullopt on read/parse failure.

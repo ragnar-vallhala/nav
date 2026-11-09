@@ -41,11 +41,13 @@ std::optional<ProjectConfig> load_project_config(const fs::path& project_root) {
     cfg.root = project_root;
     cfg.project_name  = tbl["project"]["name"].value_or<std::string>("");
     cfg.project_type  = tbl["project"]["type"].value_or<std::string>("executable");
+    cfg.project_version = tbl["project"]["version"].value_or<std::string>("");
     cfg.target_arch   = tbl["target"]["arch"].value_or<std::string>("");
     cfg.target_vendor = tbl["target"]["vendor"].value_or<std::string>("");
     cfg.target_board  = tbl["target"]["board"].value_or<std::string>("");
     cfg.build_backend = tbl["build"]["backend"].value_or<std::string>("");
     cfg.navhal_submodule = tbl["library"]["navhal_submodule"].value_or(false);
+    cfg.hal_api_version = static_cast<int>(tbl["abi"]["hal_api_version"].value_or<int64_t>(0));
 
     // [dependencies] — each value is an inline table: { path = "..." } or
     // { git = "...", ref = "..." }. A bare string value is treated as a path.
