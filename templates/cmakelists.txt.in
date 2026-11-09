@@ -225,11 +225,12 @@ if(_nav_frag_opt AND NAV_APP_LINKER_FRAGMENT_POSITION STREQUAL "after")
     list(APPEND NAV_APP_LINK_OPTIONS "${_nav_frag_opt}")
 endif()
 # [build] libc: "none" is freestanding (-nostdlib); "newlib" drops it and links
-# the C library. The system libraries are collected here and emitted LAST on the
-# link line (step 7), after the app, hal and every dependency archive, so a
-# dependency's own _sbrk/_write/... beat the library's stubs. [build] syscalls =
-# "none" leaves out -lnosys altogether.
+# the C library. The system libraries go in the dependency group (step 7), so ld
+# rescans the dependency archives when libc's objects need _sbrk/_write/...
+# -lnosys goes after that group closes: it only supplies the syscalls no
+# dependency defines. [build] syscalls = "none" leaves it out altogether.
 set(NAV_APP_SYS_LIBS)
+set(NAV_APP_STUB_LIBS)
 if(NAV_APP_LIBC STREQUAL "newlib")
     list(APPEND NAV_APP_SYS_LIBS -lc -lm)
 else()
@@ -239,7 +240,7 @@ foreach(_nav_lib ${NAV_APP_LIBS})
     list(APPEND NAV_APP_SYS_LIBS "-l${_nav_lib}")
 endforeach()
 if(NAV_APP_LIBC STREQUAL "newlib" AND NOT NAV_APP_SYSCALLS STREQUAL "none")
-    list(APPEND NAV_APP_SYS_LIBS -lnosys)
+    list(APPEND NAV_APP_STUB_LIBS -lnosys)
 endif()
 list(APPEND NAV_APP_SYS_LIBS -lgcc)
 # nosys.specs makes gcc itself append -lnosys, so syscalls = "none" must drop it.
@@ -293,18 +294,19 @@ if(NAV_DEPS_LINK_DIRS)
 endif()
 # 7. Link line. The app's objects come first, then one group holding hal (Whole
 #    Archive mandatory for static HAL exports), the resolved registry archives
-#    and every nav library dependency, then the system libraries in their own
-#    group. Keeping the system libraries last is what makes a dependency's
-#    syscalls win over newlib's / nosys' stubs.
+#    and every nav library dependency, followed by libc/libm/libs/libgcc in the
+#    same group, so ld rescans the dependency archives when libc's objects pull
+#    in _write/_sbrk. -lnosys comes after the group: by then every syscall a
+#    dependency defines is resolved, and nosys only fills the rest.
+#    (NAV_LINK_STUBS_AFTER_GROUP)
 target_link_libraries(${PROJECT_NAME} PRIVATE
   -Wl,--start-group
     -Wl,--whole-archive hal -Wl,--no-whole-archive
     ${NAV_DEPS_LIBRARIES}
     ${NAV_DEP_TARGETS}
-  -Wl,--end-group
-  -Wl,--start-group
     ${NAV_APP_SYS_LIBS}
   -Wl,--end-group
+  ${NAV_APP_STUB_LIBS}
 )
 
 # 8c. Print the image size after every link.

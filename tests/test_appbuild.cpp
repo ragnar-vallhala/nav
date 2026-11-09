@@ -423,8 +423,9 @@ TEST(AppBuildSyscalls, PlanDefaultsToNosysAndRenders) {
 
 TEST(AppBuildTemplate, SystemLibsComeAfterDependencyArchives) {
     const std::string t = render_app_cmakelists("p");
-    // One link call: hal and every dependency archive in a group, then the
-    // system libraries (-lc -lm, libs, -lnosys) in a group of their own.
+    // One group: hal, every dependency archive, then the system libraries
+    // (-lc -lm, libs, -lnosys). They must share the group so ld rescans the
+    // dependency archives when libc pulls in _write/_sbrk.
     const auto hal = t.find("-Wl,--whole-archive hal");
     ASSERT_NE(hal, std::string::npos);
     const auto deps = t.find("${NAV_DEP_TARGETS}", hal);
@@ -432,6 +433,14 @@ TEST(AppBuildTemplate, SystemLibsComeAfterDependencyArchives) {
     ASSERT_NE(deps, std::string::npos);
     ASSERT_NE(sys, std::string::npos);
     EXPECT_LT(deps, sys);
+    const auto end = t.find("-Wl,--end-group", hal);
+    ASSERT_NE(end, std::string::npos);
+    EXPECT_LT(sys, end);
+    EXPECT_EQ(t.find("-Wl,--start-group", hal), std::string::npos);
+    // -lnosys sits after the group, so it never beats a dependency's syscalls.
+    const auto stubs = t.find("${NAV_APP_STUB_LIBS}", hal);
+    ASSERT_NE(stubs, std::string::npos);
+    EXPECT_LT(end, stubs);
     // -lnosys is only added for syscalls != "none".
     EXPECT_NE(t.find("NOT NAV_APP_SYSCALLS STREQUAL \"none\""), std::string::npos);
 }

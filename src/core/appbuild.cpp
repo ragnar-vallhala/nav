@@ -334,7 +334,10 @@ bool cmakelists_supports_app_kconfig(const std::string& t) {
 }
 
 bool cmakelists_supports_dep_opts(const std::string& t) {
-    return t.find("NAV_APP_LINKER_FRAGMENT_POSITION") != std::string::npos;
+    // NAV_LINK_STUBS_AFTER_GROUP marks the link line with the system libraries in
+    // the dependency group and -lnosys after it; older templates mis-link syscalls.
+    return t.find("NAV_APP_LINKER_FRAGMENT_POSITION") != std::string::npos &&
+           t.find("NAV_LINK_STUBS_AFTER_GROUP") != std::string::npos;
 }
 
 bool cmakelists_is_nav_generated_app(const std::string& t) {
