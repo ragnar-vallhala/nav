@@ -83,6 +83,7 @@ bool prepare_app_kconfig(IExecutionContext& ctx,
                          const std::vector<ResolvedLib>& libs,
                          const std::filesystem::path& navhal_dir,
                          std::string* error,
-                         std::vector<std::string>* warnings = nullptr);
+                         std::vector<std::string>* warnings = nullptr,
+                         const std::string& python = "python3");
 
 } // namespace nav::core

@@ -213,7 +213,8 @@ fs::path write_merged_kconfig(const fs::path& root, const ProjectConfig& cfg,
 
 bool prepare_app_kconfig(IExecutionContext& ctx, const fs::path& root, const ProjectConfig& cfg,
                          const std::vector<ResolvedLib>& libs, const fs::path& navhal_dir,
-                         std::string* error, std::vector<std::string>* warnings) {
+                         std::string* error, std::vector<std::string>* warnings,
+                         const std::string& python) {
     auto fail = [&](const std::string& m) { if (error) *error = m; return false; };
 
     const fs::path merged = write_merged_kconfig(root, cfg, libs, navhal_dir);
@@ -235,7 +236,7 @@ bool prepare_app_kconfig(IExecutionContext& ctx, const fs::path& root, const Pro
     EnvGuard srctree("srctree", fs::absolute(navhal_dir).string());
     EnvGuard no_navhal("NAVHAL_KCONFIG", empty_stub.string());
 
-    auto res = ctx.execute({"python3", script.string(), merged.string(),
+    auto res = ctx.execute({python, script.string(), merged.string(),
                             (root / ".config").string(), out_config.string(),
                             out_syms.string(), kAppMenu},
                            root.string(), /*silent=*/true);

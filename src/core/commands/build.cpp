@@ -317,7 +317,10 @@ int BuildCommand::run(IExecutionContext& ctx, const std::vector<std::string>& /*
         } else {
             std::string err;
             std::vector<std::string> warns;
-            if (!prepare_app_kconfig(ctx, *root, *cfg, app_libs, navhal_dir, &err, &warns)) {
+            // Same interpreter as NavHAL's Kconfig step: one that has kconfiglib.
+            const std::string py = ensure_kconfig_python(ctx);
+            if (py.empty()) return 1;
+            if (!prepare_app_kconfig(ctx, *root, *cfg, app_libs, navhal_dir, &err, &warns, py)) {
                 ui::error("App Kconfig: " + err);
                 return 1;
             }
