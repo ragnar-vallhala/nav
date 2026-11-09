@@ -559,3 +559,32 @@ TEST(AppBuildTemplate, DetectsTemplateWithLinkSettings) {
     EXPECT_TRUE(cmakelists_supports_dep_opts(render_app_cmakelists("p")));
     EXPECT_FALSE(cmakelists_supports_dep_opts("include(\"nav-app.cmake\")"));
 }
+
+TEST(AppBuildTemplate, OlderTemplateWithoutAliasHandlingIsStale) {
+    std::string t = render_app_cmakelists("p");
+    ASSERT_TRUE(cmakelists_supports_dep_opts(t));
+    const auto pos = t.find("NAV_ALIAS_SAFE");
+    ASSERT_NE(pos, std::string::npos);
+    t.erase(pos, std::string("NAV_ALIAS_SAFE").size());
+    EXPECT_FALSE(cmakelists_supports_dep_opts(t));
+}
+
+TEST(AppBuildTemplate, ResolvesAliasTargetsBeforeMutatingThem) {
+    const std::string t = render_app_cmakelists("p");
+    // Both loops that mutate dependency targets resolve ALIASED_TARGET first.
+    const auto walk = t.find("set(_nav_todo hal");
+    ASSERT_NE(walk, std::string::npos);
+    const auto walk_alias = t.find("ALIASED_TARGET", walk);
+    const auto walk_set = t.find("set_property(TARGET ${_nav_t}", walk);
+    ASSERT_NE(walk_alias, std::string::npos);
+    ASSERT_NE(walk_set, std::string::npos);
+    EXPECT_LT(walk_alias, walk_set);
+
+    const auto opt = t.find("if(NAV_APP_DEPS_OPT)");
+    ASSERT_NE(opt, std::string::npos);
+    const auto opt_alias = t.find("ALIASED_TARGET", opt);
+    const auto opt_set = t.find("target_compile_options(${_nav_t}", opt);
+    ASSERT_NE(opt_alias, std::string::npos);
+    ASSERT_NE(opt_set, std::string::npos);
+    EXPECT_LT(opt_alias, opt_set);
+}

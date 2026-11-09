@@ -52,3 +52,10 @@ target_link_libraries(nav_tests PRIVATE
 
 include(GoogleTest)
 gtest_discover_tests(nav_tests)
+
+# End-to-end: the template's dependency-target loops against an ALIAS target.
+if(UNIX)
+    add_test(NAME TemplateAliasTargets
+        COMMAND sh ${CMAKE_SOURCE_DIR}/scripts/check-template-alias.sh
+                   ${CMAKE_SOURCE_DIR}/templates/cmakelists.txt.in)
+endif()

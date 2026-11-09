@@ -336,8 +336,11 @@ bool cmakelists_supports_app_kconfig(const std::string& t) {
 bool cmakelists_supports_dep_opts(const std::string& t) {
     // NAV_LINK_STUBS_AFTER_GROUP marks the link line with the system libraries in
     // the dependency group and -lnosys after it; older templates mis-link syscalls.
+    // NAV_ALIAS_SAFE marks the target walks that resolve ALIAS targets (an alias
+    // such as navlink::navlink made set_property fail in older templates).
     return t.find("NAV_APP_LINKER_FRAGMENT_POSITION") != std::string::npos &&
-           t.find("NAV_LINK_STUBS_AFTER_GROUP") != std::string::npos;
+           t.find("NAV_LINK_STUBS_AFTER_GROUP") != std::string::npos &&
+           t.find("NAV_ALIAS_SAFE") != std::string::npos;
 }
 
 bool cmakelists_is_nav_generated_app(const std::string& t) {
