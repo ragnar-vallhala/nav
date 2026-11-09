@@ -120,7 +120,7 @@ bme280 = { git = "https://github.com/jane/nav-bme280", ref = "v1.2.0" }
 | `[build].backend` | yes | yes | `"cmake"`; implemented |
 | `[build].sources` | yes | yes | glob list † (today: `src/**` by CMake glob) |
 | `[requires].caps` | optional | optional | list of `NAVHAL_HAS_*` (sans prefix) † |
-| `[library].navhal_sublibrary` | optional | no | library owns the CPU vectors (SysTick/PendSV/SVCall/HardFault); nav builds NavHAL with `-DSUBLIBRARY`; implemented |
+| `[library].navhal_submodule` | optional | no | library owns the CPU vectors (SysTick/PendSV/SVCall/HardFault); nav builds NavHAL with `-DSUBMODULE`; implemented |
 | `[dependencies]` | optional | optional | name → `{ git, ref }` (or `{ path }` for local development) |
 
 ---
