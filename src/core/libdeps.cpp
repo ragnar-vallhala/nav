@@ -486,7 +486,13 @@ std::string render_libdeps_cmake(const std::vector<ResolvedLib>& libs,
             const auto eq = opt.find('=');
             const std::string key = eq == std::string::npos ? opt : opt.substr(0, eq);
             const std::string val = eq == std::string::npos ? "ON" : opt.substr(eq + 1);
-            os << "set(" << key << " \"" << val << "\" CACHE STRING \"nav dep option\" FORCE)\n";
+            // Booleans go in as BOOL so they match the library's option() type.
+            static const char* const kBool[] = {"ON", "OFF", "TRUE", "FALSE", "YES", "NO"};
+            std::string up = val;
+            for (auto& ch : up) ch = static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
+            const bool is_bool = std::find(std::begin(kBool), std::end(kBool), up) != std::end(kBool);
+            os << "set(" << key << " \"" << val << "\" CACHE " << (is_bool ? "BOOL" : "STRING")
+               << " \"nav dep option\" FORCE)\n";
         }
         os << "add_subdirectory(" << q(lib.src)
            << " \"${CMAKE_BINARY_DIR}/deps/" << lib.name << "\")\n";

@@ -172,17 +172,18 @@ TEST(LibDeps, RenderEmitsSubdirsEdgesAndTargets) {
 
 TEST(LibDeps, RenderEmitsDependencyOptionsBeforeSubdir) {
     std::vector<ResolvedLib> libs = {
-        {"vaios", "/abs/vaios", {}, {"NAVHAL=ON", "VAIOS_FPU=ON"}},
+        {"vaios", "/abs/vaios", {}, {"NAVHAL=ON", "VAIOS_FPU=ON", "NAVLINK_PROFILE=test"}},
     };
     std::string out = nav::core::render_libdeps_cmake(libs, {"vaios"});
 
-    const auto navhal = out.find("set(NAVHAL \"ON\" CACHE STRING \"nav dep option\" FORCE)");
-    const auto fpu    = out.find("set(VAIOS_FPU \"ON\" CACHE STRING \"nav dep option\" FORCE)");
+    const auto navhal = out.find("set(NAVHAL \"ON\" CACHE BOOL \"nav dep option\" FORCE)");
+    const auto fpu    = out.find("set(VAIOS_FPU \"ON\" CACHE BOOL \"nav dep option\" FORCE)");
     const auto subdir = out.find("add_subdirectory(\"/abs/vaios\"");
     ASSERT_NE(navhal, std::string::npos);
     ASSERT_NE(fpu, std::string::npos);
     ASSERT_NE(subdir, std::string::npos);
     // Options must be forced into the cache before the library is added.
+    EXPECT_NE(out.find("set(NAVLINK_PROFILE \"test\" CACHE STRING"), std::string::npos);
     EXPECT_LT(navhal, subdir);
     EXPECT_LT(fpu, subdir);
 }
