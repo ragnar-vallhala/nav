@@ -1,4 +1,7 @@
+#include "nav/core/board.hpp"
+#include "nav/core/board_config.hpp"
 #include "nav/core/command.hpp"
+#include "nav/core/kconfig_python.hpp"
 #include "nav/core/navhal.hpp"
 #include "nav/core/project_name.hpp"
 #include "nav/core/ui.hpp"
@@ -22,16 +25,20 @@ namespace fs = std::filesystem;
 
 namespace {
 
-std::string substitute(std::string_view tpl, const std::string& project_name) {
+std::string substitute(std::string_view tpl, const std::vector<std::pair<std::string, std::string>>& vars) {
     std::string out(tpl);
-    const std::string token = "{{PROJECT_NAME}}";
-    size_t pos = 0;
-    while ((pos = out.find(token, pos)) != std::string::npos) {
-        out.replace(pos, token.length(), project_name);
-        pos += project_name.length();
+    for (const auto& [name, value] : vars) {
+        const std::string token = "{{" + name + "}}";
+        size_t pos = 0;
+        while ((pos = out.find(token, pos)) != std::string::npos) {
+            out.replace(pos, token.length(), value);
+            pos += value.length();
+        }
     }
     return out;
 }
+
+constexpr const char* kDefaultBoard = "nucleo_f401re";
 
 // Per-run unique temp suffix so concurrent / repeated invocations don't collide.
 std::string unique_suffix() {
@@ -57,11 +64,21 @@ int CreateCommand::run(IExecutionContext& ctx, const std::vector<std::string>& a
     bool force = false;
     bool as_library = false;
     std::string proj_name;
-    for (const auto& a : args) {
+    std::string board_id = kDefaultBoard;
+    for (size_t i = 0; i < args.size(); ++i) {
+        const auto& a = args[i];
         if (a == "--force" || a == "-f") {
             force = true;
         } else if (a == "--lib" || a == "--library") {
             as_library = true;
+        } else if (a == "--board" || a == "-b") {
+            if (i + 1 >= args.size()) {
+                ui::error("--board needs a board id (see 'nav board list --all').");
+                return 1;
+            }
+            board_id = args[++i];
+        } else if (a.rfind("--board=", 0) == 0) {
+            board_id = a.substr(8);
         } else if (proj_name.empty()) {
             proj_name = a;
         }
@@ -72,6 +89,14 @@ int CreateCommand::run(IExecutionContext& ctx, const std::vector<std::string>& a
         ui::error("Invalid project name '" + proj_name + "': " + reason);
         return 1;
     }
+
+    const auto board = default_catalog().find(board_id);
+    if (!board) {
+        ui::error("Unknown board '" + board_id + "'. Run 'nav board list --all' to see available ids.");
+        return 1;
+    }
+    const std::vector<std::pair<std::string, std::string>> vars = {
+        {"PROJECT_NAME", proj_name}, {"ARCH", board->arch}, {"VENDOR", board->vendor}, {"BOARD", board->id}};
 
     const fs::path final_path = fs::path(proj_name);
     std::error_code ec;
@@ -132,16 +157,26 @@ int CreateCommand::run(IExecutionContext& ctx, const std::vector<std::string>& a
     // library project gets a static-archive CMake + exported header/source and
     // no main(); a firmware project gets the executable scaffold + .config.
     if (as_library) {
-        std::ofstream(tmp_path / "nav.toml")                     << substitute(templates::kNavTomlLib, proj_name);
-        std::ofstream(tmp_path / "include" / (proj_name + ".h")) << substitute(templates::kLibHeader, proj_name);
-        std::ofstream(tmp_path / "src" / (proj_name + ".c"))     << substitute(templates::kLibSource, proj_name);
-        std::ofstream(tmp_path / "CMakeLists.txt")               << substitute(templates::kCMakeListsLib, proj_name);
+        std::ofstream(tmp_path / "nav.toml")                     << substitute(templates::kNavTomlLib, vars);
+        std::ofstream(tmp_path / "include" / (proj_name + ".h")) << substitute(templates::kLibHeader, vars);
+        std::ofstream(tmp_path / "src" / (proj_name + ".c"))     << substitute(templates::kLibSource, vars);
+        std::ofstream(tmp_path / "CMakeLists.txt")               << substitute(templates::kCMakeListsLib, vars);
         ui::info("Library scaffold and starter code populated.");
     } else {
-        std::ofstream(tmp_path / "nav.toml")        << substitute(templates::kNavToml, proj_name);
-        std::ofstream(tmp_path / ".config")         << templates::kDotConfig;
+        // .config comes from NavHAL's defconfig for the chosen board, so it
+        // selects the board nav.toml names.
+        const std::string python = ensure_kconfig_python(ctx);
+        if (python.empty()) ui::warning("Writing an unexpanded .config; 'nav build' expands it.");
+        const std::string why = seed_board_config(ctx, tmp_path / "extern" / "NavHAL", navhal_board_name(*board),
+                                                  templates::kDotConfig, tmp_path / ".config", python);
+        if (!why.empty()) {
+            ui::error("Could not write .config for board '" + board->id + "': " + why);
+            cleanup_tmp();
+            return 1;
+        }
+        std::ofstream(tmp_path / "nav.toml")        << substitute(templates::kNavToml, vars);
         std::ofstream(tmp_path / "src" / "main.c")  << templates::kMainC;
-        std::ofstream(tmp_path / "CMakeLists.txt")  << substitute(templates::kCMakeLists, proj_name);
+        std::ofstream(tmp_path / "CMakeLists.txt")  << substitute(templates::kCMakeLists, vars);
         ui::info("Default config files and starter code populated.");
     }
 

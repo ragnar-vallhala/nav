@@ -1,4 +1,5 @@
 #include "nav/core/board.hpp"
+#include "nav/core/board_config.hpp"
 #include "nav/core/cache.hpp"
 #include "nav/core/command.hpp"
 #include "nav/core/config.hpp"
@@ -61,6 +62,39 @@ int BuildCommand::run(IExecutionContext& ctx, const std::vector<std::string>& /*
         return 1;
     }
     ui::info("Resolved board: " + board->id + " (" + board->arch + ")");
+
+    // NavHAL's Kconfig (extern/NavHAL/Kconfig) uses relative `source` globs that
+    // kconfiglib resolves against $srctree (default: cwd). NavHAL standalone runs
+    // cmake from its own root so cwd happens to match; we drive cmake from the
+    // project root, so point $srctree at the NavHAL clone explicitly. Child
+    // processes (cmake -> kconfig.py) inherit it.
+    const fs::path navhal_dir = *root / "extern" / "NavHAL";
+    // The project links extern/NavHAL into the shared cache; if that link is
+    // missing or dangling (cache cleared, fresh checkout), restore it before
+    // configuring rather than failing deep inside cmake.
+    if (!fs::exists(navhal_dir)) {
+        ui::warning("NavHAL missing at extern/NavHAL — restoring from the shared cache.");
+        const fs::path navhal_src = ensure_navhal_cached(ctx, kDefaultNavhalRef);
+        if (navhal_src.empty() || !link_navhal(ctx, navhal_src, navhal_dir)) {
+            ui::error("Could not restore NavHAL. Check your network connection and retry.");
+            return 1;
+        }
+    }
+    // The board in nav.toml decides; .config must select that board and no
+    // other. Checked before dependency requirements are merged in, so a stale
+    // .config is reported instead of patched.
+    const NavhalTargets targets = scan_navhal_targets(navhal_dir);
+    const fs::path app_config = *root / ".config";
+    if (fs::exists(app_config)) {
+        const std::string why = check_config_board(targets, navhal_board_name(*board), parse_kconfig(app_config));
+        if (!why.empty()) {
+            ui::error("nav.toml targets board '" + board->id + "', but " + why + ".");
+            ui::error("Regenerate .config for it with 'nav board use " + board->id +
+                      "' (the old file is kept as .config.old).");
+            return 1;
+        }
+    }
+
 
     // Locked dependencies: emit build/nav-deps.cmake from nav.lock so the
     // generated CMake picks up any cached library include/link inputs and the
@@ -130,7 +164,6 @@ int BuildCommand::run(IExecutionContext& ctx, const std::vector<std::string>& /*
         // dep added before this existed (or a hand-edited .config) still builds:
         // append any purely-missing capabilities, and hard-error only on a
         // genuine value conflict (the app sets a key to something a dep can't use).
-        const fs::path app_config = *root / ".config";
         if (fs::exists(app_config)) {
             auto have = parse_kconfig(app_config);
             std::vector<std::string> missing, conflicts;
@@ -138,18 +171,25 @@ int BuildCommand::run(IExecutionContext& ctx, const std::vector<std::string>& /*
                 auto lc = find_navhal_config(lib.src);
                 if (!lc) continue;
                 auto diff = diff_requirements(have, parse_kconfig(*lc));
+                hold_target_choices(diff, targets.choice_symbols);
                 for (const auto& m : diff.missing) {
                     missing.push_back(m);
                     have[m.substr(0, m.find('='))] = m.substr(m.find('=') + 1); // seen now
                 }
-                for (const auto& c : diff.conflicts)
-                    conflicts.push_back(lib.name + " needs " + c.key + "=" + c.need +
-                                        " but .config has " + c.have);
+                for (const auto& c : diff.conflicts) {
+                    if (targets.choice_symbols.count(c.key))
+                        conflicts.push_back(lib.name + " is configured for " + c.key +
+                                            ", which board '" + board->id + "' does not select");
+                    else
+                        conflicts.push_back(lib.name + " needs " + c.key + "=" + c.need +
+                                            " but .config has " + c.have);
+                }
             }
             if (!conflicts.empty()) {
                 ui::error("Your .config conflicts with capabilities required by dependencies:");
                 for (const auto& c : conflicts) ui::error("  " + c);
-                ui::error("Reconcile the value(s) in .config (nav config) and rebuild.");
+                ui::error("Reconcile the value(s) in .config (nav config), or switch board with");
+                ui::error("'nav board use <id>', and rebuild.");
                 return 1;
             }
             if (!missing.empty()) {
@@ -182,23 +222,6 @@ int BuildCommand::run(IExecutionContext& ctx, const std::vector<std::string>& /*
         fs::remove(libdeps_pre_cmake, rmec);
     }
 
-    // NavHAL's Kconfig (extern/NavHAL/Kconfig) uses relative `source` globs that
-    // kconfiglib resolves against $srctree (default: cwd). NavHAL standalone runs
-    // cmake from its own root so cwd happens to match; we drive cmake from the
-    // project root, so point $srctree at the NavHAL clone explicitly. Child
-    // processes (cmake -> kconfig.py) inherit it.
-    const fs::path navhal_dir = *root / "extern" / "NavHAL";
-    // The project links extern/NavHAL into the shared cache; if that link is
-    // missing or dangling (cache cleared, fresh checkout), restore it before
-    // configuring rather than failing deep inside cmake.
-    if (!fs::exists(navhal_dir)) {
-        ui::warning("NavHAL missing at extern/NavHAL — restoring from the shared cache.");
-        const fs::path navhal_src = ensure_navhal_cached(ctx, kDefaultNavhalRef);
-        if (navhal_src.empty() || !link_navhal(ctx, navhal_src, navhal_dir)) {
-            ui::error("Could not restore NavHAL. Check your network connection and retry.");
-            return 1;
-        }
-    }
     // HAL contract check: a project or library that declares
     // [abi].hal_api_version must match the NavHAL it is built against.
     {

@@ -1,3 +1,4 @@
+#include "nav/core/board_config.hpp"
 #include "nav/core/command.hpp"
 #include "nav/core/config.hpp"
 #include "nav/core/navconfig.hpp"
@@ -193,7 +194,9 @@ int lib_add(IExecutionContext& ctx, const fs::path& root, std::string name,
     // authority); differing values are surfaced as conflicts, not overwritten.
     const fs::path app_cfg = root / ".config";
     if (auto lc = find_navhal_config(dep_dir); lc && fs::exists(app_cfg, ec)) {
-        const auto diff = diff_requirements(parse_kconfig(app_cfg), parse_kconfig(*lc));
+        auto diff = diff_requirements(parse_kconfig(app_cfg), parse_kconfig(*lc));
+        // Never let a dependency select a second board / arch / family.
+        hold_target_choices(diff, scan_navhal_targets(root / "extern" / "NavHAL").choice_symbols);
         if (!diff.missing.empty()) {
             std::ofstream f(app_cfg, std::ios::app);
             f << "\n# Required by '" << name << "' (added by nav lib add)\n";
@@ -204,6 +207,8 @@ int lib_add(IExecutionContext& ctx, const fs::path& root, std::string name,
         for (const auto& c : diff.conflicts)
             ui::warning(".config conflict: " + c.key + " (have " + c.have + ", " + name +
                         " needs " + c.need + ") — kept your value; edit if required.");
+        if (!diff.conflicts.empty())
+            ui::warning("If '" + name + "' needs another board, switch with 'nav board use <id>'.");
     }
 
     ui::success("Added dependency '" + name + "'. It will be built on the next 'nav build'.");

@@ -8,9 +8,9 @@ type = "library"
 # Board used when building this library standalone (`nav build` here). When a
 # firmware project depends on it, the library is rebuilt for that project's board.
 [target]
-arch = "cortex-m4"
-vendor = "stm32"
-board = "nucleo_f401re"
+arch = "{{ARCH}}"
+vendor = "{{VENDOR}}"
+board = "{{BOARD}}"
 
 [build]
 backend = "cmake"

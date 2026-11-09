@@ -25,7 +25,7 @@ required.
 ## Quick start
 
 ```bash
-nav create my_project       # scaffold a project, pull NavHAL, generate .config
+nav create my_project --board nucleo_f401re   # scaffold, pull NavHAL, write .config for the board
 cd my_project
 nav build                   # cross-compile with arm-none-eabi
 nav upload                  # flash the connected board
@@ -38,12 +38,12 @@ nav monitor --baud 115200   # open the serial monitor
 
 | Command | Description |
 | :--- | :--- |
-| `nav create <name>` | Scaffold a project, pull NavHAL, and bootstrap `.config` and the build files. |
+| `nav create <name> [--board <id>]` | Scaffold a project, pull NavHAL, and write the build files and a `.config` seeded from NavHAL's defconfig for the board (default `nucleo_f401re`). |
 | `nav build` | Cross-compile with the `arm-none-eabi` toolchain. Rebuilds when `.config` changes. |
 | `nav config` | Edit NavHAL Kconfig options through a menuconfig-style TUI over the project `.config`. |
 | `nav upload` | Flash the firmware to the board and reset the target. |
 | `nav monitor` | Open a serial monitor (auto-detects the port; `--baud` sets the rate). |
-| `nav board` | Manage the board / toolchain registry. |
+| `nav board` | Manage the board / toolchain registry. `nav board use <id>` switches the project's board: it updates `[target]` in `nav.toml` and regenerates `.config` (the old one is kept as `.config.old`). `nav build` stops if `.config` selects a different board from `nav.toml`. |
 | `nav lib` | Work with library-type projects. |
 | `nav check` | Verify the toolchain, package manager, and flasher are present and working. |
 | `nav update` | Install missing local tools. |
