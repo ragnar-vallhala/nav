@@ -1,6 +1,7 @@
 #include "nav/core/board.hpp"
 #include "nav/core/command.hpp"
 #include "nav/core/config.hpp"
+#include "nav/core/kconfig_python.hpp"
 #include "nav/core/navhal.hpp"
 #include "nav/core/provision.hpp"
 #include "nav/core/toolchain.hpp"
@@ -70,13 +71,14 @@ int UpdateCommand::run(IExecutionContext& ctx, const std::vector<std::string>& /
         }
     }
 
-    if (missing_bins.empty()) {
-        ui::success("Verification absolute! All local toolchains verified and active.");
-        return 0;
-    }
+    int rc = missing_bins.empty() ? 0 : install_tools(ctx, missing_bins);
 
-    int rc = install_tools(ctx, missing_bins);
-    if (rc == 0) ui::success("Toolchain synchronized.");
+    // After the tools: kconfiglib needs a Python to install into.
+    if (ensure_kconfig_python(ctx).empty()) rc = rc ? rc : 1;
+
+    if (rc == 0)
+        ui::success(missing_bins.empty() ? "Verification absolute! All local toolchains verified and active."
+                                         : "Toolchain synchronized.");
     return rc;
 }
 

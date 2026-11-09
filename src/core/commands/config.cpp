@@ -1,5 +1,6 @@
 #include "nav/core/command.hpp"
 #include "nav/core/config.hpp"    // find_project_root
+#include "nav/core/kconfig_python.hpp"
 #include "nav/core/navconfig.hpp" // find_navhal_config, parse_kconfig, unmet_requirements
 #include "nav/core/navhal.hpp"    // ensure_navhal_cached, link_navhal, kDefaultNavhalRef
 #include "nav/core/ui.hpp"
@@ -89,14 +90,17 @@ int ConfigCommand::run(IExecutionContext& ctx, const std::vector<std::string>& /
     ui::step("Config", "Opening NavHAL menuconfig — editing " + dotconfig.string());
     ui::info("Arrow keys / Enter to navigate, Space to toggle, ? for help, Q to save & quit.");
 
+    // menuconfig ships with kconfiglib: use the same interpreter `nav build`
+    // hands CMake (nav's venv when the system Python lacks kconfiglib).
+    const std::string python = ensure_kconfig_python(ctx);
+    if (python.empty()) return 1;
+
     // A full-screen curses TUI must own the real terminal, so launch it directly
-    // (not through the captured execute()). python resolves from PATH — nav
-    // injects its provisioned toolchains, and that python carries kconfiglib.
-    const std::string cmd = "python3 -m menuconfig " + q(kconfig);
+    // (not through the captured execute()).
+    const std::string cmd = q(python) + " -m menuconfig " + q(kconfig);
     int rc = std::system(cmd.c_str());
     if (rc != 0) {
-        ui::error("menuconfig did not run. Ensure kconfiglib is installed for nav's "
-                  "python (nav provisions it; otherwise: pip install kconfiglib).");
+        ui::error("menuconfig exited with an error (" + python + " -m menuconfig).");
         return 1;
     }
 

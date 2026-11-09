@@ -3,6 +3,7 @@
 #include "nav/core/command.hpp"
 #include "nav/core/config.hpp"
 #include "nav/core/deps.hpp"
+#include "nav/core/kconfig_python.hpp"
 #include "nav/core/libdeps.hpp"
 #include "nav/core/lockfile.hpp"
 #include "nav/core/navconfig.hpp"
@@ -245,8 +246,16 @@ int BuildCommand::run(IExecutionContext& ctx, const std::vector<std::string>& /*
         }
     }
 
+    // NavHAL's Kconfig step (tools/kconfig.py) imports kconfiglib and runs
+    // under ${Python3_EXECUTABLE}. Hand CMake an interpreter that has it --
+    // nav's own venv if the system Python lacks it -- rather than letting
+    // find_package(Python3) pick one that fails deep inside configure.
+    const std::string kconfig_python = ensure_kconfig_python(ctx);
+    if (kconfig_python.empty()) return 1;
+
     // Windows ships no `make`, so drive cmake through Ninja (provisioned above).
-    std::vector<std::string> configure_cmd = {"cmake", "-S", ".", "-B", "build"};
+    std::vector<std::string> configure_cmd = {"cmake", "-S", ".", "-B", "build",
+                                              "-DPython3_EXECUTABLE=" + kconfig_python};
 #ifdef _WIN32
     configure_cmd.push_back("-G");
     configure_cmd.push_back("Ninja");

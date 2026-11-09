@@ -1,6 +1,7 @@
 #include "nav/core/board.hpp"
 #include "nav/core/command.hpp"
 #include "nav/core/config.hpp"
+#include "nav/core/kconfig_python.hpp"
 #include "nav/core/toolchain.hpp"
 #include "nav/core/ui.hpp"
 
@@ -35,6 +36,14 @@ int CheckCommand::run(IExecutionContext& ctx, const std::vector<std::string>& /*
     for (const auto& req : tm.get_system_requirements()) {
         auto res = tm.probe_tool(ctx, req);
         failed_critical += render_probe(res, "Detected.");
+    }
+    // NavHAL's configuration step imports kconfiglib. Not critical here:
+    // `nav build` and `nav update` set it up in nav's own venv when missing.
+    if (std::string py = find_kconfig_python(ctx); !py.empty()) {
+        ui::tool_ok("kconfiglib", py);
+    } else {
+        ui::tool_missing_optional("kconfiglib");
+        ui::info("  'nav build' or 'nav update' installs it into " + kconfig_venv_dir().string());
     }
     std::cout << std::endl;
 
