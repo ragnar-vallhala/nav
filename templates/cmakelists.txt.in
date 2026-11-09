@@ -63,6 +63,12 @@ endif()
 #     needs NavHAL built with -DSUBMODULE so it cedes the SysTick/PendSV/SVCall/
 #     HardFault handlers. nav emits this when such a dependency is present; it
 #     MUST run before NavHAL is added.
+#     nav-deps-pre.cmake only names the define (NAV_NAVHAL_DEFINES); it is applied
+#     to the NavHAL targets alone below, so it does not leak into the app or into
+#     other libraries. NAV_TEMPLATE_SCOPED_DEFINES tells the pre file this
+#     template does that.
+set(NAV_TEMPLATE_SCOPED_DEFINES ON)
+set(NAV_NAVHAL_DEFINES)
 if(EXISTS "${CMAKE_BINARY_DIR}/nav-deps-pre.cmake")
     include("${CMAKE_BINARY_DIR}/nav-deps-pre.cmake")
 endif()
@@ -84,6 +90,15 @@ endfunction()
 
 # 2. Add NavHAL Dependency Framework
 add_subdirectory(extern/NavHAL)
+if(NAV_NAVHAL_DEFINES)
+    nav_directory_targets(extern/NavHAL _nav_hal_targets)
+    foreach(_nav_t ${_nav_hal_targets})
+        get_target_property(_nav_type ${_nav_t} TYPE)
+        if(NOT _nav_type STREQUAL "INTERFACE_LIBRARY" AND NOT _nav_type STREQUAL "UTILITY")
+            target_compile_definitions(${_nav_t} PRIVATE ${NAV_NAVHAL_DEFINES})
+        endif()
+    endforeach()
+endif()
 
 # 2a. Nav library dependencies (from nav.toml [dependencies]). nav resolves the
 #     transitive graph and writes build/nav-deps-libs.cmake, which

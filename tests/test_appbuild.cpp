@@ -485,3 +485,16 @@ TEST(AppBuildDepsOpt, TemplateAppliesPerTarget) {
     // It runs after nav-app.cmake is read, i.e. after every library target exists.
     EXPECT_LT(t.find("include(\"${CMAKE_BINARY_DIR}/nav-app.cmake\")"), t.find("if(NAV_APP_DEPS_OPT)"));
 }
+
+// --- SUBMODULE define scoping -----------------------------------------------
+
+TEST(AppBuildTemplate, NavhalDefinesAreAppliedToNavhalTargetsOnly) {
+    const std::string t = render_app_cmakelists("p");
+    EXPECT_NE(t.find("target_compile_definitions(${_nav_t} PRIVATE ${NAV_NAVHAL_DEFINES})"), std::string::npos);
+    // No directory-wide define in the template (it would reach the app and libraries).
+    EXPECT_EQ(t.find("add_compile_definitions"), std::string::npos);
+    EXPECT_NE(t.find("set(NAV_TEMPLATE_SCOPED_DEFINES ON)"), std::string::npos);
+    // The define is applied right after NavHAL is added, before any library.
+    EXPECT_LT(t.find("add_subdirectory(extern/NavHAL)"), t.find("PRIVATE ${NAV_NAVHAL_DEFINES}"));
+    EXPECT_LT(t.find("PRIVATE ${NAV_NAVHAL_DEFINES}"), t.find("nav-deps-libs.cmake"));
+}
