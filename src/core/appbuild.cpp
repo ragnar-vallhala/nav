@@ -97,8 +97,20 @@ std::vector<std::string> expand_one(const fs::path& root, const std::string& pat
     }
     if (!fs::is_directory(base, ec)) return out;
 
+    // A pattern with no literal prefix walks the project root; keep it out of the
+    // build tree, vendored sources (NavHAL in extern/) and dot-directories (.git).
+    // A literal prefix such as extern/foo/ names such a directory on purpose.
+    const bool from_root = lit == 0;
     for (fs::recursive_directory_iterator it(base, ec), end; !ec && it != end; it.increment(ec)) {
         std::error_code fec;
+        if (from_root && it->is_directory(fec)) {
+            const std::string name = it->path().filename().generic_string();
+            const bool top = it.depth() == 0;
+            if ((!name.empty() && name[0] == '.') || (top && (name == "build" || name == "extern"))) {
+                it.disable_recursion_pending();
+                continue;
+            }
+        }
         if (!it->is_regular_file(fec)) continue;
         std::string rel = prefix + fs::relative(it->path(), base, fec).generic_string();
         if (glob_match(pattern, rel)) out.push_back(std::move(rel));

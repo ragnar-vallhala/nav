@@ -167,6 +167,36 @@ TEST(AppBuildPlan, ExpandsSortedWithExclude) {
     EXPECT_EQ(plan->include_dirs, std::vector<std::string>{abs(td, "include")});
 }
 
+TEST(AppBuildPlan, RootGlobSkipsBuildExternAndDotDirs) {
+    TempDir td;
+    for (auto f : {"main.c", "src/a.c", "src/deep/b.c", "build/gen.c", "extern/NavHAL/hal.c",
+                   ".git/x.c", "src/.hidden/h.c", "src/build/keep.c"})
+        touch(td.path(), f);
+    ProjectConfig cfg;
+    cfg.root = td.path();
+    cfg.build.sources = {"**/*.c"};
+    std::string err;
+    auto plan = plan_app_build(cfg, err);
+    ASSERT_TRUE(plan) << err;
+    EXPECT_EQ(plan->sources,
+              (std::vector<std::string>{abs(td, "main.c"), abs(td, "src/a.c"),
+                                        abs(td, "src/build/keep.c"), abs(td, "src/deep/b.c")}));
+}
+
+TEST(AppBuildPlan, LiteralPrefixMayEnterExternAndBuild) {
+    TempDir td;
+    for (auto f : {"extern/foo/a.c", "extern/NavHAL/hal.c", "build/gen/g.c"})
+        touch(td.path(), f);
+    ProjectConfig cfg;
+    cfg.root = td.path();
+    cfg.build.sources = {"extern/foo/*.c", "build/gen/*.c"};
+    std::string err;
+    auto plan = plan_app_build(cfg, err);
+    ASSERT_TRUE(plan) << err;
+    EXPECT_EQ(plan->sources,
+              (std::vector<std::string>{abs(td, "build/gen/g.c"), abs(td, "extern/foo/a.c")}));
+}
+
 TEST(AppBuildPlan, DefaultIsMainC) {
     TempDir td;
     touch(td.path(), "src/main.c");
