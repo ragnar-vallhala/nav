@@ -213,7 +213,13 @@ int install_tools(IExecutionContext& ctx, const std::vector<std::string>& binari
     if (!pm_packages.empty()) {
         ui::step("Installing", "System package manager: " + std::to_string(pm_packages.size()) + " package(s)");
         auto res = ctx.execute(build_install_command(*pm, pm_packages));
-        if (res.exit_code != 0) { ui::error("Package manager install failed."); ok = false; }
+        int rc = res.exit_code;
+#ifdef _WIN32
+        // winget exits 0x8A15002B (UPDATE_NOT_APPLICABLE) when the package is
+        // already installed and current; that is success for our purposes.
+        if (pm == PackageManager::Winget && rc == static_cast<int>(0x8A15002Bu)) rc = 0;
+#endif
+        if (rc != 0) { ui::error("Package manager install failed."); ok = false; }
     }
 
     if (!to_download.empty()) {

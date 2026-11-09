@@ -17,7 +17,7 @@ namespace nav::core {
 
 ToolchainManager::ToolchainManager() {}
 
-static bool find_binary_in_path(const std::string& name) {
+static bool find_binary_in_path_exact(const std::string& name) {
     const char* path_env = std::getenv("PATH");
     if (!path_env) return false;
 
@@ -34,6 +34,12 @@ static bool find_binary_in_path(const std::string& name) {
     std::string segment;
     while (std::getline(ss, segment, sep)) {
         if (segment.empty()) continue;
+#ifdef _WIN32
+        // A stock Windows ships python.exe/python3.exe "App execution alias"
+        // stubs in WindowsApps that only open the Store. They are not Python.
+        if ((name == "python" || name == "python3") &&
+            segment.find("WindowsApps") != std::string::npos) continue;
+#endif
         try {
             fs::path full_path = fs::path(segment) / name;
 #ifdef _WIN32
@@ -55,6 +61,15 @@ static bool find_binary_in_path(const std::string& name) {
         } catch(...) {}
     }
     return false;
+}
+
+static bool find_binary_in_path(const std::string& name) {
+#ifdef _WIN32
+    // Python for Windows (winget, python.org) installs python.exe only, never
+    // python3.exe, so either one satisfies the "python3" requirement.
+    if (name == "python3") return find_binary_in_path_exact("python3") || find_binary_in_path_exact("python");
+#endif
+    return find_binary_in_path_exact(name);
 }
 
 std::optional<PackageManager> detect_package_manager() {
