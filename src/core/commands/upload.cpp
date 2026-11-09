@@ -8,6 +8,7 @@
 #include "nav/core/serial.hpp"
 #include "nav/core/toolchain.hpp"
 #include "nav/core/ui.hpp"
+#include "nav/core/variant.hpp"
 
 #include <cstdlib>
 #include <filesystem>
@@ -31,7 +32,7 @@ std::string join(const std::vector<std::string>& argv) {
 
 const char* kUsage =
     "Usage: nav upload [--runner <name>] [--port <dev>] [--set <name>=<value>]... [--probe <serial|usb-path>]\n"
-    "                  [--connect-under-reset] [--dry-run] [--list] [--list-probes]";
+    "                  [--connect-under-reset] [--variant <name>] [--dry-run] [--list] [--list-probes]";
 
 std::string env_value(const char* name) {
     const char* v = std::getenv(name);
@@ -69,7 +70,7 @@ int UploadCommand::run(IExecutionContext& ctx, const std::vector<std::string>& a
     std::string runner_id;
     std::map<std::string, std::string> cli_vars;
     bool dry_run = false, list = false, want_list_probes = false, connect_under_reset = false;
-    std::string cli_probe;
+    std::string cli_probe, variant_name;
     for (size_t i = 0; i < args.size(); ++i) {
         const auto& a = args[i];
         const bool has_value = i + 1 < args.size();
@@ -86,6 +87,7 @@ int UploadCommand::run(IExecutionContext& ctx, const std::vector<std::string>& a
         else if (a == "--list-probes") want_list_probes = true;
         else if (a == "--probe" && has_value) cli_probe = args[++i];
         else if (a == "--connect-under-reset") connect_under_reset = true;
+        else if (a == "--variant" && has_value) variant_name = args[++i];
         else { ui::error(kUsage); return 1; }
     }
 
@@ -106,6 +108,10 @@ int UploadCommand::run(IExecutionContext& ctx, const std::vector<std::string>& a
                   "depend on it from a firmware project, then upload that.");
         return 1;
     }
+    if (!variant_name.empty() && !find_variant(*cfg, variant_name)) {
+        ui::error("Unknown variant '" + variant_name + "' (known: " + variant_names(*cfg) + ").");
+        return 1;
+    }
     auto board = default_catalog(root).find(cfg->target_board);
     if (!board) {
         ui::error("Board '" + cfg->target_board + "' is not in the catalog ('nav board list --all').");
@@ -122,11 +128,13 @@ int UploadCommand::run(IExecutionContext& ctx, const std::vector<std::string>& a
         return 0;
     }
 
-    // The firmware ELF the generated CMakeLists builds: build/<project name>.
-    fs::path elf = fs::path("build") / cfg->project_name;
+    // The firmware ELF the generated CMakeLists builds: build/<project name>, or
+    // build/<variant>/<its output name> for a variant.
+    fs::path elf = variant_build_dir(variant_name) / firmware_name(*cfg, variant_name);
     if (!fs::exists(elf) && fs::exists(fs::path(elf) += ".elf")) elf += ".elf";
     if (!dry_run && !fs::exists(elf)) {
-        ui::error("No firmware at " + elf.string() + ". Run 'nav build' first.");
+        ui::error("No firmware at " + elf.string() + ". Run 'nav build" +
+                  (variant_name.empty() ? "" : " --variant " + variant_name) + "' first.");
         return 1;
     }
 

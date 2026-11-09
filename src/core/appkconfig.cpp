@@ -194,13 +194,14 @@ with open(out_syms, "w") as f:
 }
 
 fs::path write_merged_kconfig(const fs::path& root, const ProjectConfig& cfg,
-                              const std::vector<ResolvedLib>& libs, const fs::path& navhal_dir) {
+                              const std::vector<ResolvedLib>& libs, const fs::path& navhal_dir,
+                              const fs::path& build_dir) {
     std::vector<KconfigDep> deps;
     for (const auto& l : libs) {
         std::error_code ec;
         if (fs::is_regular_file(l.src / "Kconfig", ec)) deps.push_back({l.name, l.src / "Kconfig"});
     }
-    const fs::path build = root / "build";
+    const fs::path build = build_dir.empty() ? root / "build" : build_dir;
     std::error_code ec;
     fs::create_directories(build, ec);
     const fs::path out = build / "nav-Kconfig";
@@ -214,13 +215,13 @@ fs::path write_merged_kconfig(const fs::path& root, const ProjectConfig& cfg,
 bool prepare_app_kconfig(IExecutionContext& ctx, const fs::path& root, const ProjectConfig& cfg,
                          const std::vector<ResolvedLib>& libs, const fs::path& navhal_dir,
                          std::string* error, std::vector<std::string>* warnings,
-                         const std::string& python) {
+                         const std::string& python, const fs::path& build_dir, const fs::path& config) {
     auto fail = [&](const std::string& m) { if (error) *error = m; return false; };
 
-    const fs::path merged = write_merged_kconfig(root, cfg, libs, navhal_dir);
+    const fs::path merged = write_merged_kconfig(root, cfg, libs, navhal_dir, build_dir);
     if (merged.empty()) return fail("could not write build/nav-Kconfig");
 
-    const fs::path build = root / "build";
+    const fs::path build = build_dir.empty() ? root / "build" : build_dir;
     const fs::path script = build / "nav-kconfig.py";
     const fs::path out_config = build / "nav.config";
     const fs::path out_syms = build / "nav-app-symbols.json";
@@ -237,7 +238,7 @@ bool prepare_app_kconfig(IExecutionContext& ctx, const fs::path& root, const Pro
     EnvGuard no_navhal("NAVHAL_KCONFIG", empty_stub.string());
 
     auto res = ctx.execute({python, script.string(), merged.string(),
-                            (root / ".config").string(), out_config.string(),
+                            (config.empty() ? root / ".config" : config).string(), out_config.string(),
                             out_syms.string(), kAppMenu},
                            root.string(), /*silent=*/true);
     std::vector<std::string> lines;

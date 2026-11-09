@@ -80,6 +80,7 @@ add_library(nav_core STATIC
     src/core/board_config.cpp
     src/core/runner.cpp
     src/core/probe.cpp
+    src/core/variant.cpp
     src/core/registry.cpp
     src/core/provision.cpp
     src/core/deps.cpp

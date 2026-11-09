@@ -43,10 +43,15 @@ project({{PROJECT_NAME}} C CXX ASM)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # 1. Sync global configuration to dependency path
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.config")
+#    A build variant may name another .config (nav passes -DNAV_APP_CONFIG=...).
+set(NAV_APP_CONFIG_FILE "${CMAKE_CURRENT_SOURCE_DIR}/.config")
+if(NAV_APP_CONFIG)
+    set(NAV_APP_CONFIG_FILE "${NAV_APP_CONFIG}")
+endif()
+if(EXISTS "${NAV_APP_CONFIG_FILE}")
     message(STATUS "[Nav] Locking active configuration context...")
     configure_file(
-        "${CMAKE_CURRENT_SOURCE_DIR}/.config"
+        "${NAV_APP_CONFIG_FILE}"
         "${CMAKE_CURRENT_SOURCE_DIR}/extern/NavHAL/.config"
         COPYONLY
     )
@@ -89,11 +94,18 @@ set(NAV_APP_C_FLAGS)
 set(NAV_APP_C_STANDARD)
 set(NAV_APP_LINKER_FRAGMENT)
 set(NAV_APP_LIBC none)
+set(NAV_APP_OUTPUT)
 set(NAV_APP_LIBS)
 if(EXISTS "${CMAKE_BINARY_DIR}/nav-app.cmake")
     include("${CMAKE_BINARY_DIR}/nav-app.cmake")
 endif()
 add_executable(${PROJECT_NAME} ${NAV_APP_SOURCES})
+# A build variant may rename the firmware file (nav.toml [variant.*] output).
+set(NAV_APP_FILE_NAME "${PROJECT_NAME}")
+if(NAV_APP_OUTPUT)
+    set(NAV_APP_FILE_NAME "${NAV_APP_OUTPUT}")
+    set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME "${NAV_APP_OUTPUT}")
+endif()
 if(NAV_APP_DEFINES)
     target_compile_definitions(${PROJECT_NAME} PRIVATE ${NAV_APP_DEFINES})
 endif()
@@ -248,8 +260,8 @@ if(NAV_BOARD_FLASH_ADDRESS)
 endif()
 if(NAV_RESOLVED_FLASHER AND NAV_RESOLVED_FLASH_ADDRESS)
     add_custom_target(flash
-      COMMAND ${CMAKE_OBJCOPY} -O binary $<TARGET_FILE:${PROJECT_NAME}> ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}.bin
-      COMMAND ${NAV_RESOLVED_FLASHER} write ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}.bin ${NAV_RESOLVED_FLASH_ADDRESS}
+      COMMAND ${CMAKE_OBJCOPY} -O binary $<TARGET_FILE:${PROJECT_NAME}> ${CMAKE_CURRENT_BINARY_DIR}/${NAV_APP_FILE_NAME}.bin
+      COMMAND ${NAV_RESOLVED_FLASHER} write ${CMAKE_CURRENT_BINARY_DIR}/${NAV_APP_FILE_NAME}.bin ${NAV_RESOLVED_FLASH_ADDRESS}
       DEPENDS ${PROJECT_NAME}
       COMMENT "Pumping Binary payload onto board..."
     )

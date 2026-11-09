@@ -60,6 +60,8 @@ struct BuildSettings {
     std::string libc = "none";
     // Extra libraries, each linked as -l<name>.
     std::vector<std::string> libs;
+    // Firmware file name (set by a variant's `output`); empty = project name.
+    std::string output;
 };
 
 // nav.toml [upload]: defaults for `nav upload` (command line and environment win).
@@ -68,6 +70,20 @@ struct UploadSettings {
     std::string probe;
     // Attach with the target held in reset (st-flash --connect-under-reset).
     bool connect_under_reset = false;
+};
+
+// One [variant.<name>] table: an alternative build of the same project (e.g. a
+// hardware-test image) layered over [build]. See variant.hpp.
+struct Variant {
+    std::string name;
+    std::vector<std::string> sources_add;     // globs added to [build].sources
+    std::vector<std::string> sources_remove;  // globs added to [build].exclude
+    std::vector<std::string> defines;         // appended to [build].defines
+    std::string output;                       // ELF name; empty = project name
+    std::string kconfig;                      // alternative .config; empty = .config
+    // [variant.<name>.dependencies.<lib>] options = [...]: "KEY=VALUE" entries
+    // merged over the library's own options for this variant only.
+    std::map<std::string, std::vector<std::string>> dep_options;
 };
 
 struct ProjectConfig {
@@ -86,6 +102,7 @@ struct ProjectConfig {
 
     BuildSettings build;
     UploadSettings upload;
+    std::vector<Variant> variants;  // [variant.*], in name order
 
     // Declared [dependencies] (nav library projects this one links against).
     std::vector<Dependency> dependencies;

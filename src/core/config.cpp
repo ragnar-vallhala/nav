@@ -3,6 +3,7 @@
 #include <toml++/toml.hpp>
 
 #include <iostream>
+#include <regex>
 
 namespace fs = std::filesystem;
 
@@ -143,6 +144,71 @@ bool parse_upload_settings(const toml::table& tbl, UploadSettings& u) {
     return true;
 }
 
+bool parse_variants(const toml::table& tbl, std::vector<Variant>& out) {
+    const toml::node* node = tbl.get("variant");
+    if (!node) return true;
+    const auto* vt = node->as_table();
+    if (!vt) {
+        std::cerr << "nav.toml: [variant] must hold tables ([variant.<name>])\n";
+        return false;
+    }
+    for (const auto& [name_key, vnode] : *vt) {
+        Variant v;
+        v.name = std::string(name_key.str());
+        const std::string where = "[variant." + v.name + "]";
+        // The name is a directory under build/; keep it clear of cmake's own.
+        static const std::regex name_re("[A-Za-z0-9][A-Za-z0-9_-]*");
+        if (!std::regex_match(v.name, name_re) || v.name == "deps" || v.name == "extern" ||
+            v.name == "CMakeFiles" || v.name == "Testing") {
+            std::cerr << "nav.toml: " << where << ": variant names use letters, digits, '_' and '-', and may not be "
+                      << "deps, extern, CMakeFiles or Testing (they become build/<name>/)\n";
+            return false;
+        }
+        const auto* t = vnode.as_table();
+        if (!t) {
+            std::cerr << "nav.toml: " << where << " must be a table\n";
+            return false;
+        }
+        static const char* const kKnown[] = {"sources_add", "sources_remove", "defines", "output",
+                                             "kconfig", "dependencies"};
+        for (const auto& [k, x] : *t) {
+            (void)x;
+            bool ok = false;
+            for (const char* n : kKnown) ok = ok || k.str() == n;
+            if (!ok) {
+                std::cerr << "nav.toml: unknown key " << where << "." << k.str()
+                          << " (known: sources_add, sources_remove, defines, output, kconfig, dependencies)\n";
+                return false;
+            }
+        }
+        if (!read_string_array(*t, "sources_add", where, v.sources_add) ||
+            !read_string_array(*t, "sources_remove", where, v.sources_remove) ||
+            !read_string_array(*t, "defines", where, v.defines) ||
+            !read_string(*t, "output", where, v.output) || !read_string(*t, "kconfig", where, v.kconfig))
+            return false;
+        if (const toml::node* d = t->get("dependencies")) {
+            const auto* dt = d->as_table();
+            if (!dt) {
+                std::cerr << "nav.toml: " << where << ".dependencies must be a table\n";
+                return false;
+            }
+            for (const auto& [lib, lnode] : *dt) {
+                const std::string lwhere = where + ".dependencies." + std::string(lib.str());
+                const auto* lt = lnode.as_table();
+                if (!lt) {
+                    std::cerr << "nav.toml: " << lwhere << " must be a table with an options array\n";
+                    return false;
+                }
+                std::vector<std::string> opts;
+                if (!read_string_array(*lt, "options", lwhere, opts)) return false;
+                v.dep_options[std::string(lib.str())] = std::move(opts);
+            }
+        }
+        out.push_back(std::move(v));
+    }
+    return true;
+}
+
 } // namespace
 
 std::optional<fs::path> find_project_root(fs::path start) {
@@ -190,6 +256,7 @@ std::optional<ProjectConfig> load_project_config(const fs::path& project_root) {
 
     if (!parse_build_settings(tbl, cfg.build)) return std::nullopt;
     if (!parse_upload_settings(tbl, cfg.upload)) return std::nullopt;
+    if (!parse_variants(tbl, cfg.variants)) return std::nullopt;
 
     // [dependencies] — each value is an inline table: { path = "..." } or
     // { git = "...", ref = "..." }. A bare string value is treated as a path.

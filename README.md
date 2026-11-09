@@ -39,9 +39,9 @@ nav monitor --baud 115200   # open the serial monitor
 | Command | Description |
 | :--- | :--- |
 | `nav create <name> [--board <id>]` | Scaffold a project, pull NavHAL, and write the build files and a `.config` seeded from NavHAL's defconfig for the board (default `nucleo_f401re`). |
-| `nav build` | Cross-compile with the `arm-none-eabi` toolchain. Rebuilds when `.config` changes. |
+| `nav build` | Cross-compile with the `arm-none-eabi` toolchain. Rebuilds when `.config` changes. `--variant <name>` builds a `[variant.<name>]` image in `build/<name>/`. |
 | `nav config` | Edit NavHAL Kconfig options through a menuconfig-style TUI over the project `.config`. |
-| `nav upload` | Flash the firmware with the board's runner (`st-flash`, `openocd`, `avrdude`). `--runner <name>` picks another, `--port <dev>` sets the serial port (auto-detected when one is attached), `--set <name>=<value>` fills a runner variable, `--dry-run` prints the commands, `--list` shows the board's runners. `--probe <serial\|usb-path>`, `--connect-under-reset` and `--list-probes` pick the debug probe (see [Probe selection](#probe-selection)). |
+| `nav upload` | Flash the firmware with the board's runner (`st-flash`, `openocd`, `avrdude`). `--runner <name>` picks another, `--port <dev>` sets the serial port (auto-detected when one is attached), `--set <name>=<value>` fills a runner variable, `--dry-run` prints the commands, `--list` shows the board's runners. `--probe <serial\|usb-path>`, `--connect-under-reset` and `--list-probes` pick the debug probe (see [Probe selection](#probe-selection)). `--variant <name>` flashes that variant's build. |
 | `nav monitor` | Open a serial monitor (auto-detects the port; `--baud` sets the rate). |
 | `nav board` | Manage the board / toolchain registry. `nav board use <id>` switches the project's board: it updates `[target]` in `nav.toml` and regenerates `.config` (the old one is kept as `.config.old`). `nav build` stops if `.config` selects a different board from `nav.toml`. |
 | `nav lib` | Work with library dependencies: `add`, `remove`, `list`, and `tree`, which prints the whole dependency graph and marks conflicts (one library requested from two sources, reported with the chain of projects behind each request). `[overrides]` in `nav.toml` picks one source for the whole project. |
@@ -71,6 +71,21 @@ flags = ["-Wextra", "-Wconversion", "-Werror"]
 `*` and `?` stay inside a path segment, `**` spans directories. `nav build` expands the globs (sorted) into `build/nav-app.cmake` each time, and fails if a `sources` pattern or a `file_flags` rule matches nothing. `linker_fragment` should use `INSERT AFTER .text;`; `libc = "newlib"` links `-lc -lm -lnosys -lgcc`. NavHAL and dependency headers reach the app as system includes, so they never trip the app's `-Werror`. After linking, nav prints the image size.
 
 These keys need a `CMakeLists.txt` from the current template. A project made by an older nav keeps building as before, but if `nav.toml` uses `[build]` keys, `nav build` says so; run `nav regen` to rewrite `CMakeLists.txt` (the old one is kept as `CMakeLists.txt.old`).
+
+### Build variants (`[variant.<name>]`)
+A variant is a second image of the same project, such as a hardware-test firmware beside the production one:
+```toml
+[variant.hwtest]
+sources_add    = ["tests/onboard/**/*.c"]   # joined to [build].sources
+sources_remove = ["src/main.c"]             # joined to [build].exclude
+defines        = ["VAYU_HW_TEST=1"]         # appended to [build].defines
+output         = "hwtest"                   # ELF/bin name; default = project name
+kconfig        = ".config.hwtest"           # optional alternative .config (still validated)
+
+[variant.hwtest.dependencies.navlink]
+options = ["NAVLINK_PROFILE=test"]          # merged over the dependency's own options
+```
+`nav build --variant hwtest` builds in `build/hwtest/`, so it never touches the production build in `build/`; `nav upload --variant hwtest` flashes `build/hwtest/hwtest`. An unknown variant name is an error that lists the known ones. Sources go through the same planner as `[build]` (a glob that matches nothing is an error); `kconfig` goes through the same app Kconfig validation as `.config`. Dependency options replace an option with the same `KEY` and add the others, for that variant only; naming a dependency the project does not have is an error. Variant names use letters, digits, `_` and `-`, and may not be `deps`, `extern`, `CMakeFiles` or `Testing`. Variants need a `CMakeLists.txt` from the current template (`nav regen`).
 
 ### `nav regen`
 Rewrites a nav-generated `CMakeLists.txt` from the current template, after saving the old one as `CMakeLists.txt.old`. It refuses a `CMakeLists.txt` that nav did not generate.

@@ -163,6 +163,7 @@ std::optional<AppBuildPlan> plan_app_build(const ProjectConfig& cfg, std::string
     plan.c_standard = b.c_standard;
     plan.libc = b.libc;
     plan.libs = b.libs;
+    plan.output = b.output;
     if (!b.linker_fragment.empty()) {
         std::error_code ec;
         const std::string abs_frag = abs_path(root, normalize(b.linker_fragment));
@@ -203,6 +204,7 @@ std::string render_app_cmake(const AppBuildPlan& plan) {
     if (plan.c_standard) os << "set(NAV_APP_C_STANDARD " << *plan.c_standard << ")\n";
     else os << "set(NAV_APP_C_STANDARD)\n";
     os << "set(NAV_APP_LINKER_FRAGMENT" << (plan.linker_fragment.empty() ? "" : " " + cq(plan.linker_fragment)) << ")\n";
+    os << "set(NAV_APP_OUTPUT" << (plan.output.empty() ? "" : " " + cq(plan.output)) << ")\n";
     os << "set(NAV_APP_LIBC " << cq(plan.libc) << ")\n";
     emit_list(os, "NAV_APP_LIBS", plan.libs);
     for (const auto& ff : plan.file_flags) {
@@ -217,6 +219,10 @@ std::string render_app_cmake(const AppBuildPlan& plan) {
 
 bool cmakelists_supports_app_build(const std::string& t) {
     return t.find("nav-app.cmake") != std::string::npos;
+}
+
+bool cmakelists_supports_variants(const std::string& t) {
+    return t.find("NAV_APP_OUTPUT") != std::string::npos && t.find("NAV_APP_CONFIG") != std::string::npos;
 }
 
 bool cmakelists_is_nav_generated_app(const std::string& t) {
