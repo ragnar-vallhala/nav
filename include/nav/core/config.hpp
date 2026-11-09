@@ -2,6 +2,7 @@
 
 #include <filesystem>
 #include <optional>
+#include <map>
 #include <string>
 
 #include <vector>
@@ -61,6 +62,14 @@ struct BuildSettings {
     std::vector<std::string> libs;
 };
 
+// nav.toml [upload]: defaults for `nav upload` (command line and environment win).
+struct UploadSettings {
+    // Which debug probe to flash through: a USB serial or a USB port path.
+    std::string probe;
+    // Attach with the target held in reset (st-flash --connect-under-reset).
+    bool connect_under_reset = false;
+};
+
 struct ProjectConfig {
     std::filesystem::path root;
     std::string project_name;
@@ -76,6 +85,7 @@ struct ProjectConfig {
     std::string build_backend;
 
     BuildSettings build;
+    UploadSettings upload;
 
     // Declared [dependencies] (nav library projects this one links against).
     std::vector<Dependency> dependencies;

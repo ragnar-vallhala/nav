@@ -19,6 +19,9 @@ namespace nav::core {
 //   2. the board's "runners": { "<runner>": { ... } } entry
 //   3. built-ins: elf, bin, hex (image paths), address (board flash_address)
 //   4. values given on the command line (--port, --set key=value)
+// Probe selection (probe.hpp) adds probe_serial, probe_usb_path and
+// connect_under_reset (set to "1") the same way; a runner uses them through
+// conditional argument groups, which are dropped when the variable is empty.
 
 // The runner `nav upload` uses when none is named: the board's "runner", else
 // its flash_tool, else the first entry of its "runners". Empty if none.

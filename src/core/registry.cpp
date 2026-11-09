@@ -73,7 +73,17 @@ void load_runners(const json& j, Registry& r) {
         def.id = id;
         def.tool = d.value("tool", id);
         def.image = d.value("image", std::string{"elf"});
-        def.args = str_array(d, "args");
+        if (d.contains("args"))
+            for (auto& a : d["args"]) {
+                if (a.is_string()) {
+                    def.args.push_back({"", {a.get<std::string>()}});
+                } else if (a.is_object()) {
+                    RunnerArg g;
+                    g.when = a.value("if", std::string{});
+                    g.argv = str_array(a, "args");
+                    def.args.push_back(std::move(g));
+                }
+            }
         if (d.contains("defaults")) def.defaults = str_map(d["defaults"]);
         r.add_runner(std::move(def));
     }

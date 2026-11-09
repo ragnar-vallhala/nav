@@ -104,6 +104,45 @@ bool parse_build_settings(const toml::table& tbl, BuildSettings& b) {
     return true;
 }
 
+bool read_string(const toml::table& tbl, std::string_view key, const std::string& where, std::string& out) {
+    const toml::node* n = tbl.get(key);
+    if (!n) return true;
+    auto v = n->value<std::string>();
+    if (!v) {
+        std::cerr << "nav.toml: " << where << "." << key << " must be a string\n";
+        return false;
+    }
+    out = *v;
+    return true;
+}
+
+bool parse_upload_settings(const toml::table& tbl, UploadSettings& u) {
+    const toml::node* node = tbl.get("upload");
+    if (!node) return true;
+    const auto* ut = node->as_table();
+    if (!ut) {
+        std::cerr << "nav.toml: [upload] must be a table\n";
+        return false;
+    }
+    for (const auto& [k, v] : *ut) {
+        (void)v;
+        if (k.str() != "probe" && k.str() != "connect_under_reset") {
+            std::cerr << "nav.toml: unknown key [upload]." << k.str() << " (known: probe, connect_under_reset)\n";
+            return false;
+        }
+    }
+    if (!read_string(*ut, "probe", "[upload]", u.probe)) return false;
+    if (const toml::node* n = ut->get("connect_under_reset")) {
+        auto v = n->value<bool>();
+        if (!v) {
+            std::cerr << "nav.toml: [upload].connect_under_reset must be true or false\n";
+            return false;
+        }
+        u.connect_under_reset = *v;
+    }
+    return true;
+}
+
 } // namespace
 
 std::optional<fs::path> find_project_root(fs::path start) {
@@ -150,6 +189,7 @@ std::optional<ProjectConfig> load_project_config(const fs::path& project_root) {
     cfg.hal_api_version = static_cast<int>(tbl["abi"]["hal_api_version"].value_or<int64_t>(0));
 
     if (!parse_build_settings(tbl, cfg.build)) return std::nullopt;
+    if (!parse_upload_settings(tbl, cfg.upload)) return std::nullopt;
 
     // [dependencies] — each value is an inline table: { path = "..." } or
     // { git = "...", ref = "..." }. A bare string value is treated as a path.

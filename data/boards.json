@@ -59,12 +59,24 @@
     "st-flash": {
       "tool": "st-flash",
       "image": "bin",
-      "args": ["write", "{bin}", "{address}"]
+      "args": [
+        { "if": "probe_serial", "args": ["--serial", "{probe_serial}"] },
+        { "if": "connect_under_reset", "args": ["--connect-under-reset"] },
+        "write", "{bin}", "{address}"
+      ]
     },
     "openocd": {
       "tool": "openocd",
       "image": "elf",
-      "args": ["-f", "{interface}", "-f", "{target}", "-c", "program \"{elf}\" verify reset exit"],
+      "args": [
+        "-f", "{interface}",
+        { "if": "probe_serial", "args": ["-c", "adapter serial {probe_serial}"] },
+        { "if": "probe_usb_path", "args": ["-c", "adapter usb location {probe_usb_path}"] },
+        { "if": "probe_serial|probe_usb_path", "args": ["-c", "transport select hla_swd"] },
+        "-f", "{target}",
+        { "if": "connect_under_reset", "args": ["-c", "reset_config srst_only connect_assert_srst"] },
+        "-c", "program \"{elf}\" verify reset exit"
+      ],
       "defaults": { "interface": "interface/stlink.cfg" }
     },
     "avrdude": {

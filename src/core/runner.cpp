@@ -21,6 +21,25 @@ fs::path image_path(const fs::path& elf, const std::string& ext) {
     return p;
 }
 
+// "a|b" names alternatives: the group applies when any of them has a value.
+std::vector<std::string> split_when(const std::string& when) {
+    std::vector<std::string> out;
+    std::string cur;
+    for (char c : when) {
+        if (c == '|') { out.push_back(cur); cur.clear(); }
+        else cur += c;
+    }
+    out.push_back(cur);
+    return out;
+}
+
+bool when_holds(const std::string& when, const std::map<std::string, std::string>& vars) {
+    if (when.empty()) return true;
+    for (const auto& name : split_when(when))
+        if (auto v = vars.find(name); v != vars.end() && !v->second.empty()) return true;
+    return false;
+}
+
 } // namespace
 
 std::string default_runner(const Board& board) {
@@ -49,8 +68,12 @@ std::vector<std::string> board_runner_names(const Board& board) {
 
 bool runner_uses(const RunnerDef& runner, const std::string& var) {
     const std::string token = "{" + var + "}";
-    for (const auto& a : runner.args)
-        if (a.find(token) != std::string::npos) return true;
+    for (const auto& g : runner.args) {
+        for (const auto& w : split_when(g.when))
+            if (w == var) return true;
+        for (const auto& a : g.argv)
+            if (a.find(token) != std::string::npos) return true;
+    }
     return false;
 }
 
@@ -121,7 +144,10 @@ FlashPlan plan_flash(const Board& board, const Registry& reg, const std::string&
     const ToolDef* tool = reg.tool(def->tool);
     FlashStep flash{"Flashing", {tool && !tool->binary.empty() ? tool->binary : def->tool}};
     std::set<std::string> missing;
-    for (const auto& a : def->args) flash.argv.push_back(expand_placeholders(a, vars, missing));
+    for (const auto& g : def->args) {
+        if (!when_holds(g.when, vars)) continue;
+        for (const auto& a : g.argv) flash.argv.push_back(expand_placeholders(a, vars, missing));
+    }
     if (!missing.empty()) {
         std::string list;
         for (const auto& m : missing) list += (list.empty() ? "" : ", ") + m;

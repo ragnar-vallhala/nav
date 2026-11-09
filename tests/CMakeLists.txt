@@ -33,6 +33,7 @@ add_executable(nav_tests
     test_kconfig_python.cpp
     test_board_config.cpp
     test_runner.cpp
+    test_probe.cpp
     test_appbuild.cpp
     test_appkconfig.cpp
 )

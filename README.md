@@ -41,7 +41,7 @@ nav monitor --baud 115200   # open the serial monitor
 | `nav create <name> [--board <id>]` | Scaffold a project, pull NavHAL, and write the build files and a `.config` seeded from NavHAL's defconfig for the board (default `nucleo_f401re`). |
 | `nav build` | Cross-compile with the `arm-none-eabi` toolchain. Rebuilds when `.config` changes. |
 | `nav config` | Edit NavHAL Kconfig options through a menuconfig-style TUI over the project `.config`. |
-| `nav upload` | Flash the firmware with the board's runner (`st-flash`, `openocd`, `avrdude`). `--runner <name>` picks another, `--port <dev>` sets the serial port (auto-detected when one is attached), `--set <name>=<value>` fills a runner variable, `--dry-run` prints the commands, `--list` shows the board's runners. |
+| `nav upload` | Flash the firmware with the board's runner (`st-flash`, `openocd`, `avrdude`). `--runner <name>` picks another, `--port <dev>` sets the serial port (auto-detected when one is attached), `--set <name>=<value>` fills a runner variable, `--dry-run` prints the commands, `--list` shows the board's runners. `--probe <serial\|usb-path>`, `--connect-under-reset` and `--list-probes` pick the debug probe (see [Probe selection](#probe-selection)). |
 | `nav monitor` | Open a serial monitor (auto-detects the port; `--baud` sets the rate). |
 | `nav board` | Manage the board / toolchain registry. `nav board use <id>` switches the project's board: it updates `[target]` in `nav.toml` and regenerates `.config` (the old one is kept as `.config.old`). `nav build` stops if `.config` selects a different board from `nav.toml`. |
 | `nav lib` | Work with library dependencies: `add`, `remove`, `list`, and `tree`, which prints the whole dependency graph and marks conflicts (one library requested from two sources, reported with the chain of projects behind each request). `[overrides]` in `nav.toml` picks one source for the whole project. |
@@ -101,6 +101,50 @@ gives each supported runner the variables it needs:
 Built-in variables are `{elf}`, `{bin}`, `{hex}`, `{address}` (the board's
 `flash_address`) and `{port}`. Command-line values (`--port`, `--set`) win over
 the board's, which win over the runner's `defaults`.
+
+An `args` entry is a plain string, or a conditional group that is emitted only when
+a variable has a value: `{ "if": "probe_serial", "args": ["--serial", "{probe_serial}"] }`
+(`"a|b"` means either). The built-in `st-flash` and `openocd` runners use this for the
+probe variables below.
+
+### Probe selection
+
+A bench with several ST-Links must flash the one you mean. nav never picks for you: with
+more than one ST-Link attached and no probe chosen, `nav upload` stops, lists them and
+says how to choose. With one probe (or none) and nothing configured it behaves as before.
+
+```bash
+nav upload --list-probes                    # attached ST-Links: USB path and serial (Linux, via sysfs)
+nav upload --probe 1-3.4                    # by USB port path
+nav upload --probe 0668FF3332504E3043232724 # by USB serial
+nav upload --probe 1-3.4 --runner openocd --connect-under-reset
+```
+
+```toml
+[upload]
+probe = "1-3.4"                # same as --probe
+connect_under_reset = true     # same as --connect-under-reset
+```
+
+Precedence: `--probe`, then `NAV_PROBE`, then `[upload] probe`. A value like `3-2` or
+`1-3.3` is a USB path, anything else a serial; write `usb:<path>` or `serial:<sn>` to be
+explicit. nav checks it against what is attached and fails on no match.
+
+Runner variables: `{probe_serial}` and `{probe_usb_path}` (set from the choice, only
+those the runner uses) and `connect_under_reset`.
+
+| Runner | Serial | USB path | Connect under reset |
+| :--- | :--- | :--- | :--- |
+| `st-flash` | `--serial <sn>` | not supported by the tool | `--connect-under-reset` |
+| `openocd` | `-c "adapter serial <sn>"` | `-c "adapter usb location <bus>-<port.path>"` | `-c "reset_config srst_only connect_assert_srst"` |
+
+openocd also gets `transport select hla_swd` when a probe is chosen. Cloned ST-Links
+can report the same serial, which no tool can tell apart: `--probe` refuses a serial
+shared by several adapters, and a USB path given to `st-flash` is turned into its
+serial only when that serial is unique. Otherwise use `--runner openocd`, which pins
+the USB port. After flashing, the board's `st-flash reset` is aimed at the same probe
+(or skipped with a warning when it cannot be). Probe listing and checks need Linux; on
+other systems `--list-probes` says so and `--probe` is passed to the runner unchecked.
 
 ### Pinning NavHAL
 

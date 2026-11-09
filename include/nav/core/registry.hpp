@@ -23,11 +23,20 @@ struct ToolDownload {
 // A way to flash a board: a tool plus a command template. Placeholders in
 // `args` ({elf}, {bin}, {hex}, {address}, {port}, or any variable from
 // `defaults` / the board's runner entry) are filled in by `nav upload`.
+// One element of a runner's command template: plain arguments, or a group that
+// is emitted only when the variable `when` has a non-empty value (a probe
+// serial, connect_under_reset, ...). In boards.json a plain string is one
+// argument; {"if": "var", "args": [...]} is a conditional group.
+struct RunnerArg {
+    std::string when;                // empty: always
+    std::vector<std::string> argv;
+};
+
 struct RunnerDef {
     std::string id;
     std::string tool;   // tool id in the registry; its binary is what runs
     std::string image;  // "elf" | "bin" | "hex": the file the command flashes
-    std::vector<std::string> args;
+    std::vector<RunnerArg> args;
     std::map<std::string, std::string> defaults;
 };
 
