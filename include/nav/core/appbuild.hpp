@@ -3,6 +3,7 @@
 #include "nav/core/config.hpp"
 
 #include <filesystem>
+#include <map>
 #include <optional>
 #include <string>
 #include <vector>
@@ -32,13 +33,33 @@ struct AppBuildPlan {
         std::vector<std::string> flags;
     };
     std::vector<FileFlags> file_flags;      // in nav.toml order
+    std::vector<std::string> navhal_exclude; // absolute NavHAL files to drop (see plan_navhal_exclude)
 };
 
 // Expand cfg.build against cfg.root: sources globs minus excludes (sorted,
 // deduplicated), then match each file_flags rule against the surviving
 // sources. Returns nullopt with `error` set when a sources pattern or a
 // file_flags rule matches nothing, or when no source remains.
-std::optional<AppBuildPlan> plan_app_build(const ProjectConfig& cfg, std::string& error);
+//
+// [build.board.<cfg.target_board>] and each [build.kconfig.<SYMBOL>] whose
+// CONFIG_<SYMBOL> is set (not "n") in `config` (a parsed .config; null = none
+// set) are layered on top of [build], additively.
+std::optional<AppBuildPlan> plan_app_build(const ProjectConfig& cfg, std::string& error,
+                                           const std::map<std::string, std::string>* config = nullptr);
+
+// True when `config` has CONFIG_<symbol> (or `symbol` if it already starts with
+// CONFIG_) set to anything but "n".
+bool kconfig_symbol_set(const std::map<std::string, std::string>& config, const std::string& symbol);
+
+// True when [build.kconfig.*] tables exist, so the resolved config must be known
+// before the plan is made.
+inline bool build_needs_config(const ProjectConfig& cfg) { return !cfg.build.kconfig.empty(); }
+
+// Absolute, '/'-separated paths of cfg.navhal_exclude under `navhal_root`.
+// nullopt with `error` set when a listed file does not exist there.
+std::optional<std::vector<std::string>> plan_navhal_exclude(const ProjectConfig& cfg,
+                                                            const std::filesystem::path& navhal_root,
+                                                            std::string& error);
 
 // Render the plan as build/nav-app.cmake (see templates/cmakelists.txt.in).
 std::string render_app_cmake(const AppBuildPlan& plan);

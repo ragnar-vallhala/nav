@@ -13,6 +13,18 @@ void append_unique(std::vector<std::string>& into, const std::vector<std::string
         if (std::find(into.begin(), into.end(), a) == into.end()) into.push_back(a);
 }
 
+// `add` appended to `into`, base-first, without repeating an entry (file_flags
+// rules are kept in order and not deduplicated).
+void fold_additions(BuildAdditions& into, const BuildAdditions& add) {
+    append_unique(into.sources, add.sources);
+    append_unique(into.exclude, add.exclude);
+    append_unique(into.include_dirs, add.include_dirs);
+    append_unique(into.defines, add.defines);
+    append_unique(into.c_flags, add.c_flags);
+    append_unique(into.libs, add.libs);
+    into.file_flags.insert(into.file_flags.end(), add.file_flags.begin(), add.file_flags.end());
+}
+
 std::string key_of(const std::string& opt) { return opt.substr(0, opt.find('=')); }
 
 } // namespace
@@ -39,9 +51,13 @@ std::optional<ProjectConfig> apply_variant(const ProjectConfig& cfg, const std::
     }
     ProjectConfig out = cfg;
     BuildSettings& b = out.build;
-    append_unique(b.sources, v->sources_add);
-    append_unique(b.exclude, v->sources_remove);
-    append_unique(b.defines, v->defines);
+    // The variant is its own layer on top of the base, board and Kconfig tables.
+    BuildAdditions& l = b.variant;
+    append_unique(l.sources, v->sources_add);
+    append_unique(l.exclude, v->sources_remove);
+    fold_additions(l, v->add);
+    for (const auto& [n, a] : v->board) fold_additions(b.variant_board[n], a);
+    for (const auto& [n, a] : v->kconfig_when) fold_additions(b.variant_kconfig[n], a);
     if (!v->output.empty()) b.output = v->output;
     b.declared = true;  // a variant always needs the [build]-aware CMakeLists.txt
     return out;

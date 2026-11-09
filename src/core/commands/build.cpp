@@ -136,6 +136,7 @@ int BuildCommand::run(IExecutionContext& ctx, const std::vector<std::string>& ar
     // unless nav.toml asks for more, in which case say how to regenerate rather
     // than silently ignoring the settings.
     const fs::path app_cmake = bdir / "nav-app.cmake";
+    bool write_app_cmake = false;
     if (!cfg->is_library()) {
         std::string lists_text;
         if (std::ifstream in{"CMakeLists.txt"}) {
@@ -160,24 +161,11 @@ int BuildCommand::run(IExecutionContext& ctx, const std::vector<std::string>& ar
                       "(the old one is kept as CMakeLists.txt.old).");
             return 1;
         }
+        // The plan itself is made after the app Kconfig is resolved (below): a
+        // [build.kconfig.<SYMBOL>] table depends on the resolved config.
         std::error_code rmec;
-        if (new_template) {
-            std::string err;
-            auto plan = plan_app_build(*cfg, err);
-            if (!plan) {
-                ui::error("nav.toml: " + err + ".");
-                return 1;
-            }
-            std::ofstream f(app_cmake);
-            f << render_app_cmake(*plan);
-            if (!f.good()) {
-                ui::error("Failed to write " + app_cmake.string() + ".");
-                return 1;
-            }
-            ui::info("App sources: " + std::to_string(plan->sources.size()) + " file(s).");
-        } else {
-            fs::remove(app_cmake, rmec);
-        }
+        if (!new_template) fs::remove(app_cmake, rmec);
+        write_app_cmake = new_template;
     }
 
     // Locked dependencies: emit build/nav-deps.cmake from nav.lock so the
@@ -406,6 +394,36 @@ int BuildCommand::run(IExecutionContext& ctx, const std::vector<std::string>& ar
             ui::info("App Kconfig merged (NavHAL + " + std::to_string(app_libs.size()) +
                      " dependency(ies) + app); wrote " + (bdir / "app_autoconf.h").generic_string() + ".");
         }
+    }
+
+    // App sources/flags: expand nav.toml [build] (with the matching board and
+    // Kconfig tables) into build/nav-app.cmake. Runs after the app Kconfig so the
+    // resolved build/nav.config is there for [build.kconfig.<SYMBOL>].
+    if (write_app_cmake) {
+        std::map<std::string, std::string> resolved_config;
+        const fs::path cfg_file = app_kconfig ? *root / bdir / "nav.config" : app_config;
+        if (fs::exists(cfg_file)) resolved_config = parse_kconfig(cfg_file);
+        std::string err;
+        auto plan = plan_app_build(*cfg, err, &resolved_config);
+        if (!plan) {
+            ui::error("nav.toml: " + err + ".");
+            return 1;
+        }
+        if (auto ex = plan_navhal_exclude(*cfg, navhal_dir, err)) {
+            plan->navhal_exclude = std::move(*ex);
+        } else {
+            ui::error("nav.toml: " + err + ".");
+            return 1;
+        }
+        std::ofstream f(app_cmake);
+        f << render_app_cmake(*plan);
+        if (!f.good()) {
+            ui::error("Failed to write " + app_cmake.string() + ".");
+            return 1;
+        }
+        ui::info("App sources: " + std::to_string(plan->sources.size()) + " file(s).");
+        if (!plan->navhal_exclude.empty())
+            ui::info("Excluding " + std::to_string(plan->navhal_exclude.size()) + " NavHAL source(s).");
     }
 
     // Run cmake quietly (silent=true captures output without streaming it), so a

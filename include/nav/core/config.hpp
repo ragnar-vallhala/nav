@@ -36,6 +36,18 @@ struct FileFlagRule {
     std::vector<std::string> flags;
 };
 
+// The additive subset of [build] keys: what [build.board.<b>],
+// [build.kconfig.<SYM>] and a variant layer on top of the base [build].
+struct BuildAdditions {
+    std::vector<std::string> sources;
+    std::vector<std::string> exclude;
+    std::vector<std::string> include_dirs;
+    std::vector<std::string> defines;
+    std::vector<std::string> c_flags;
+    std::vector<std::string> libs;
+    std::vector<FileFlagRule> file_flags;
+};
+
 // nav.toml [build] source/flag settings for an executable app. Globs are
 // relative to the project root; nav expands them at `nav build` time.
 struct BuildSettings {
@@ -62,6 +74,18 @@ struct BuildSettings {
     std::vector<std::string> libs;
     // Firmware file name (set by a variant's `output`); empty = project name.
     std::string output;
+
+    // [build.board.<board>] / [build.kconfig.<SYMBOL>]: settings applied on top
+    // of the above when the project's board matches / CONFIG_<SYMBOL> is set.
+    std::map<std::string, BuildAdditions> board;
+    std::map<std::string, BuildAdditions> kconfig;
+
+    // The selected variant's layer (set by apply_variant): the same shape, applied
+    // after everything above, so a variant's exclude can drop what the base and
+    // board tables add.
+    BuildAdditions variant;
+    std::map<std::string, BuildAdditions> variant_board;
+    std::map<std::string, BuildAdditions> variant_kconfig;
 };
 
 // nav.toml [upload]: defaults for `nav upload` (command line and environment win).
@@ -81,6 +105,12 @@ struct Variant {
     std::vector<std::string> defines;         // appended to [build].defines
     std::string output;                       // ELF name; empty = project name
     std::string kconfig;                      // alternative .config; empty = .config
+    // Every other [build] key, additive on top of the base ([variant.<n>] sources,
+    // exclude, include_dirs, defines, c_flags, libs, file_flags). `defines`,
+    // `sources_add` and `sources_remove` above are folded in as well.
+    BuildAdditions add;
+    std::map<std::string, BuildAdditions> board;    // [variant.<n>.board.<board>]
+    std::map<std::string, BuildAdditions> kconfig_when;  // [variant.<n>.kconfig.<SYMBOL>]
     // [variant.<name>.dependencies.<lib>] options = [...]: "KEY=VALUE" entries
     // merged over the library's own options for this variant only.
     std::map<std::string, std::vector<std::string>> dep_options;
@@ -127,6 +157,9 @@ struct ProjectConfig {
     // table is absent (the NavHAL default then applies, see navhal_spec()).
     std::string navhal_ref;
     std::string navhal_git;
+    // [navhal].exclude — NavHAL source files (relative to the NavHAL root) to
+    // drop from its library targets, e.g. one the app replaces.
+    std::vector<std::string> navhal_exclude;
 
     bool is_library() const { return project_type == "library"; }
 };

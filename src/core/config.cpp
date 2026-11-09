@@ -37,6 +37,96 @@ bool read_string_array(const toml::table& tbl, std::string_view key,
     return true;
 }
 
+bool parse_file_flags(const toml::node& n, const std::string& where, std::vector<FileFlagRule>& out) {
+    const auto* arr = n.as_array();
+    if (!arr) {
+        std::cerr << "nav.toml: " << where << ".file_flags must be an array of tables ([[" << where.substr(1, where.size() - 2)
+                  << ".file_flags]])\n";
+        return false;
+    }
+    for (const auto& e : *arr) {
+        const auto* t = e.as_table();
+        if (!t) {
+            std::cerr << "nav.toml: " << where << ".file_flags must be an array of tables\n";
+            return false;
+        }
+        FileFlagRule r;
+        if (!read_string_array(*t, "match", "[[" + where.substr(1, where.size() - 2) + ".file_flags]]", r.match) ||
+            !read_string_array(*t, "flags", "[[" + where.substr(1, where.size() - 2) + ".file_flags]]", r.flags))
+            return false;
+        if (r.match.empty()) {
+            std::cerr << "nav.toml: each [[" << where.substr(1, where.size() - 2) << ".file_flags]] needs a non-empty 'match'\n";
+            return false;
+        }
+        out.push_back(std::move(r));
+    }
+    return true;
+}
+
+// The additive [build]-style keys of `t` into `a`. `extra_known` lists keys the
+// caller handles itself (not an error here). Unknown keys are an error.
+bool parse_additions(const toml::table& t, const std::string& where, BuildAdditions& a,
+                     std::initializer_list<std::string_view> extra_known) {
+    static const std::string_view kKeys[] = {"sources", "exclude", "include_dirs", "defines",
+                                             "c_flags", "libs", "file_flags"};
+    for (const auto& [k, v] : t) {
+        (void)v;
+        bool ok = false;
+        for (auto n : kKeys) ok = ok || k.str() == n;
+        for (auto n : extra_known) ok = ok || k.str() == n;
+        if (!ok) {
+            std::cerr << "nav.toml: unknown key " << where << "." << k.str()
+                      << " (known: sources, exclude, include_dirs, defines, c_flags, file_flags, libs)\n";
+            return false;
+        }
+    }
+    if (!read_string_array(t, "sources", where, a.sources) || !read_string_array(t, "exclude", where, a.exclude) ||
+        !read_string_array(t, "include_dirs", where, a.include_dirs) ||
+        !read_string_array(t, "defines", where, a.defines) || !read_string_array(t, "c_flags", where, a.c_flags) ||
+        !read_string_array(t, "libs", where, a.libs))
+        return false;
+    if (const toml::node* n = t.get("file_flags"))
+        if (!parse_file_flags(*n, where, a.file_flags)) return false;
+    return true;
+}
+
+// [<prefix>.board.<b>] and [<prefix>.kconfig.<SYM>] sub-tables of `parent`.
+bool parse_conditionals(const toml::table& parent, const std::string& prefix,
+                        std::map<std::string, BuildAdditions>& board,
+                        std::map<std::string, BuildAdditions>& kconfig, bool* present,
+                        const char* kconfig_key = "kconfig") {
+    for (const char* kind : {"board", kconfig_key}) {
+        if (std::string(kind) == "board" && std::string(kconfig_key) != "kconfig") continue;  // parsed once
+        const toml::node* n = parent.get(kind);
+        if (!n) continue;
+        // A variant's `kconfig = "<file>"` is its alternative .config, not a table.
+        if (!n->is_table() && std::string(kind) == "kconfig" && prefix.rfind("variant.", 0) == 0) continue;
+        const std::string where = prefix + "." + kind;
+        const auto* tbl = n->as_table();
+        if (!tbl) {
+            std::cerr << "nav.toml: [" << where << "] must hold tables ([" << where << ".<name>])\n";
+            return false;
+        }
+        for (const auto& [name, node] : *tbl) {
+            const std::string w = "[" + where + "." + std::string(name.str()) + "]";
+            const auto* t = node.as_table();
+            if (!t) {
+                std::cerr << "nav.toml: " << w << " must be a table\n";
+                return false;
+            }
+            BuildAdditions a;
+            if (!parse_additions(*t, w, a, {})) return false;
+            auto& dst = (std::string(kind) == "board" ? board : kconfig)[std::string(name.str())];
+            auto cat = [](auto& d, const auto& s) { d.insert(d.end(), s.begin(), s.end()); };
+            cat(dst.sources, a.sources); cat(dst.exclude, a.exclude); cat(dst.include_dirs, a.include_dirs);
+            cat(dst.defines, a.defines); cat(dst.c_flags, a.c_flags); cat(dst.libs, a.libs);
+            cat(dst.file_flags, a.file_flags);
+            if (present) *present = true;
+        }
+    }
+    return true;
+}
+
 bool parse_build_settings(const toml::table& tbl, BuildSettings& b) {
     const auto* bt = tbl["build"].as_table();
     if (!bt) return true;
@@ -78,28 +168,13 @@ bool parse_build_settings(const toml::table& tbl, BuildSettings& b) {
         any = true;
     }
     if (const toml::node* n = bt->get("file_flags")) {
-        const auto* arr = n->as_array();
-        if (!arr) {
-            std::cerr << "nav.toml: [build].file_flags must be an array of tables ([[build.file_flags]])\n";
-            return false;
-        }
-        for (const auto& e : *arr) {
-            const auto* t = e.as_table();
-            if (!t) {
-                std::cerr << "nav.toml: [build].file_flags must be an array of tables ([[build.file_flags]])\n";
-                return false;
-            }
-            FileFlagRule r;
-            if (!read_string_array(*t, "match", "[[build.file_flags]]", r.match) ||
-                !read_string_array(*t, "flags", "[[build.file_flags]]", r.flags))
-                return false;
-            if (r.match.empty()) {
-                std::cerr << "nav.toml: each [[build.file_flags]] needs a non-empty 'match'\n";
-                return false;
-            }
-            b.file_flags.push_back(std::move(r));
-        }
+        if (!parse_file_flags(*n, "[build]", b.file_flags)) return false;
         any = true;
+    }
+    {
+        bool present = false;
+        if (!parse_conditionals(*bt, "build", b.board, b.kconfig, &present)) return false;
+        any = any || present;
     }
     b.declared = any;
     return true;
@@ -144,6 +219,21 @@ bool parse_upload_settings(const toml::table& tbl, UploadSettings& u) {
     return true;
 }
 
+// [navhal] exclude = ["src/utils/freestanding.c", ...]
+bool parse_navhal_exclude(const toml::table& tbl, std::vector<std::string>& out) {
+    const toml::node* node = tbl.get("navhal");
+    const auto* nt = node ? node->as_table() : nullptr;
+    if (!nt) return true;
+    if (!read_string_array(*nt, "exclude", "[navhal]", out)) return false;
+    for (const auto& e : out) {
+        if (e.empty()) {
+            std::cerr << "nav.toml: [navhal].exclude holds an empty path\n";
+            return false;
+        }
+    }
+    return true;
+}
+
 bool parse_variants(const toml::table& tbl, std::vector<Variant>& out) {
     const toml::node* node = tbl.get("variant");
     if (!node) return true;
@@ -169,22 +259,21 @@ bool parse_variants(const toml::table& tbl, std::vector<Variant>& out) {
             std::cerr << "nav.toml: " << where << " must be a table\n";
             return false;
         }
-        static const char* const kKnown[] = {"sources_add", "sources_remove", "defines", "output",
-                                             "kconfig", "dependencies"};
-        for (const auto& [k, x] : *t) {
-            (void)x;
-            bool ok = false;
-            for (const char* n : kKnown) ok = ok || k.str() == n;
-            if (!ok) {
-                std::cerr << "nav.toml: unknown key " << where << "." << k.str()
-                          << " (known: sources_add, sources_remove, defines, output, kconfig, dependencies)\n";
-                return false;
-            }
-        }
+        if (!parse_additions(*t, where, v.add,
+                             {"sources_add", "sources_remove", "output", "kconfig", "kconfig_when", "dependencies",
+                              "board"}))
+            return false;
+        // sources_add / sources_remove are the older names for sources / exclude.
         if (!read_string_array(*t, "sources_add", where, v.sources_add) ||
             !read_string_array(*t, "sources_remove", where, v.sources_remove) ||
-            !read_string_array(*t, "defines", where, v.defines) ||
-            !read_string(*t, "output", where, v.output) || !read_string(*t, "kconfig", where, v.kconfig))
+            !read_string(*t, "output", where, v.output))
+            return false;
+        v.defines = v.add.defines;
+        if (const toml::node* kn = t->get("kconfig"); kn && !kn->is_table()) {
+            if (!read_string(*t, "kconfig", where, v.kconfig)) return false;
+        }
+        if (!parse_conditionals(*t, "variant." + v.name, v.board, v.kconfig_when, nullptr, "kconfig")) return false;
+        if (!parse_conditionals(*t, "variant." + v.name, v.board, v.kconfig_when, nullptr, "kconfig_when"))
             return false;
         if (const toml::node* d = t->get("dependencies")) {
             const auto* dt = d->as_table();
@@ -251,12 +340,14 @@ std::optional<ProjectConfig> load_project_config(const fs::path& project_root) {
     cfg.build_backend = tbl["build"]["backend"].value_or<std::string>("");
     cfg.navhal_ref = tbl["navhal"]["ref"].value_or<std::string>("");
     cfg.navhal_git = tbl["navhal"]["git"].value_or<std::string>("");
+    if (!parse_navhal_exclude(tbl, cfg.navhal_exclude)) return std::nullopt;
     cfg.navhal_submodule = tbl["library"]["navhal_submodule"].value_or(false);
     cfg.hal_api_version = static_cast<int>(tbl["abi"]["hal_api_version"].value_or<int64_t>(0));
 
     if (!parse_build_settings(tbl, cfg.build)) return std::nullopt;
     if (!parse_upload_settings(tbl, cfg.upload)) return std::nullopt;
     if (!parse_variants(tbl, cfg.variants)) return std::nullopt;
+    if (!cfg.navhal_exclude.empty()) cfg.build.declared = true;  // needs the [build]-aware CMakeLists.txt
 
     // [dependencies] — each value is an inline table: { path = "..." } or
     // { git = "...", ref = "..." }. A bare string value is treated as a path.

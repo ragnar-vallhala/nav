@@ -72,6 +72,23 @@ flags = ["-Wextra", "-Wconversion", "-Werror"]
 
 These keys need a `CMakeLists.txt` from the current template. A project made by an older nav keeps building as before, but if `nav.toml` uses `[build]` keys, `nav build` says so; run `nav regen` to rewrite `CMakeLists.txt` (the old one is kept as `CMakeLists.txt.old`).
 
+#### Board- and Kconfig-conditional settings
+
+`[build.board.<board>]` and `[build.kconfig.<SYMBOL>]` take the same keys as `[build]` (`sources`, `exclude`, `include_dirs`, `defines`, `c_flags`, `libs`, `[[...file_flags]]`) and add to it:
+```toml
+[build.board.navixdev]                  # when [target].board = "navixdev"
+sources      = ["src/sensors/dev/*.c"]
+include_dirs = ["board/navixdev"]
+
+[build.kconfig.USE_BARO]                # when CONFIG_USE_BARO is y (or set to any value but n)
+sources = ["src/baro/*.c"]
+defines = ["HAS_BARO=1"]
+[[build.kconfig.USE_BARO.file_flags]]
+match = ["src/baro/*.c"]
+flags = ["-O3"]
+```
+Layers apply in the order `[build]`, the matching board table, the matching Kconfig tables (by symbol name), then the selected variant's. A layer's `exclude` removes sources from its own layer and earlier ones, so `[build]` can exclude `src/sensors/**` and a board table adds its own back. The Kconfig tables read the resolved `build/nav.config` (the app `.config` when the project has no Kconfig); `nav build` resolves it before it writes `build/nav-app.cmake`. An unknown key in these tables is an error.
+
 ### Build variants (`[variant.<name>]`)
 A variant is a second image of the same project, such as a hardware-test firmware beside the production one:
 ```toml
@@ -81,6 +98,15 @@ sources_remove = ["src/main.c"]             # joined to [build].exclude
 defines        = ["VAYU_HW_TEST=1"]         # appended to [build].defines
 output         = "hwtest"                   # ELF/bin name; default = project name
 kconfig        = ".config.hwtest"           # optional alternative .config (still validated)
+# every [build] key is accepted too, all additive on top of the base:
+include_dirs   = ["tests/onboard"]          # also: sources, exclude, c_flags, libs, [[...file_flags]]
+c_flags        = ["--coverage"]
+libs           = ["gcov"]
+
+[variant.hwtest.board.navixdev]             # the board/kconfig sub-tables work here as well
+defines = ["HWTEST_DEV=1"]
+[variant.hwtest.kconfig_when.USE_BARO]      # a variant's `kconfig` string and a
+defines = ["HWTEST_BARO=1"]                 # [variant.x.kconfig.SYM] table cannot share a name
 
 [variant.hwtest.dependencies.navlink]
 options = ["NAVLINK_PROFILE=test"]          # merged over the dependency's own options
@@ -169,7 +195,13 @@ other systems `--list-probes` says so and `--probe` is passed to the runner unch
 [navhal]
 ref = "v0.4.0"                      # a tag, branch or commit; default "stable"
 # git = "https://example.com/NavHAL.git"   # optional: a fork (default: upstream)
+# exclude = ["src/utils/freestanding.c"]   # optional: NavHAL sources to drop, relative to its root
 ```
+
+`exclude` removes those files from NavHAL's `hal` library and its `common` object library
+(the target that owns most common sources), after NavHAL is added, for an app that supplies
+its own version. A path that does not exist in the pinned NavHAL is an error. It needs a
+`CMakeLists.txt` from the current template (`nav regen`).
 
 The first `nav build` (and `nav create`) writes the commit to `nav.lock`; every later build
 links `extern/NavHAL` to exactly that commit. Each commit has its own checkout under

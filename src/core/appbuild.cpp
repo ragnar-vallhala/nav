@@ -131,25 +131,63 @@ bool glob_match(const std::string& pattern, const std::string& path) {
     return match_segments(split(normalize(pattern)), 0, split(normalize(path)), 0);
 }
 
-std::optional<AppBuildPlan> plan_app_build(const ProjectConfig& cfg, std::string& error) {
+bool kconfig_symbol_set(const std::map<std::string, std::string>& config, const std::string& symbol) {
+    const std::string key = symbol.rfind("CONFIG_", 0) == 0 ? symbol : "CONFIG_" + symbol;
+    auto it = config.find(key);
+    return it != config.end() && it->second != "n";
+}
+
+std::optional<AppBuildPlan> plan_app_build(const ProjectConfig& cfg, std::string& error,
+                                           const std::map<std::string, std::string>* config) {
     const BuildSettings& b = cfg.build;
     const fs::path root = cfg.root;
 
-    std::set<std::string> found;
-    for (const auto& pat : b.sources) {
-        auto m = expand_one(root, pat);
-        if (m.empty()) {
-            error = "[build].sources pattern '" + pat + "' matches no files";
-            return std::nullopt;
+    // The base [build], then each matching [build.board.*] and [build.kconfig.*]
+    // table, in that order. Everything is additive.
+    struct Layer { std::string label; const BuildAdditions* add; };
+    BuildAdditions base;
+    base.sources = b.sources; base.exclude = b.exclude; base.include_dirs = b.include_dirs;
+    base.defines = b.defines; base.c_flags = b.c_flags; base.libs = b.libs;
+    base.file_flags = b.file_flags;
+    std::vector<Layer> layers{{"[build]", &base}};
+    auto add_layers = [&](const std::string& what, const std::map<std::string, BuildAdditions>& boards,
+                          const std::map<std::string, BuildAdditions>& kconfigs) {
+        if (auto it = boards.find(cfg.target_board); it != boards.end())
+            layers.push_back({what + ".board." + cfg.target_board + "]", &it->second});
+        for (const auto& [sym, add] : kconfigs)
+            if (config && kconfig_symbol_set(*config, sym))
+                layers.push_back({what + ".kconfig." + sym + "]", &add});
+    };
+    add_layers("[build", b.board, b.kconfig);
+    // The variant, when one is selected, comes last.
+    if (!b.variant.sources.empty() || !b.variant.exclude.empty() || !b.variant.include_dirs.empty() ||
+        !b.variant.defines.empty() || !b.variant.c_flags.empty() || !b.variant.libs.empty() ||
+        !b.variant.file_flags.empty() || !b.variant_board.empty() || !b.variant_kconfig.empty()) {
+        layers.push_back({"[variant]", &b.variant});
+        add_layers("[variant", b.variant_board, b.variant_kconfig);
+    }
+
+    // A layer's exclude drops sources from its own layer and every earlier one,
+    // never from a later layer (so [build] can leave out a directory that a
+    // board table then adds back by name).
+    std::set<std::string> kept_set;
+    for (size_t i = 0; i < layers.size(); ++i) {
+        for (const auto& pat : layers[i].add->sources) {
+            auto m = expand_one(root, pat);
+            if (m.empty()) {
+                error = layers[i].label + ".sources pattern '" + pat + "' matches no files";
+                return std::nullopt;
+            }
+            for (const auto& f : m) {
+                bool excluded = false;
+                for (size_t j = i; j < layers.size() && !excluded; ++j)
+                    excluded = std::any_of(layers[j].add->exclude.begin(), layers[j].add->exclude.end(),
+                                           [&](const std::string& e) { return glob_match(e, f); });
+                if (!excluded) kept_set.insert(f);
+            }
         }
-        found.insert(m.begin(), m.end());
     }
-    std::vector<std::string> kept;
-    for (const auto& f : found) {
-        bool excluded = std::any_of(b.exclude.begin(), b.exclude.end(),
-                                    [&](const std::string& e) { return glob_match(e, f); });
-        if (!excluded) kept.push_back(f); // std::set iteration is sorted
-    }
+    const std::vector<std::string> kept(kept_set.begin(), kept_set.end()); // sorted
     if (kept.empty()) {
         error = "[build].exclude removes every source file";
         return std::nullopt;
@@ -157,12 +195,17 @@ std::optional<AppBuildPlan> plan_app_build(const ProjectConfig& cfg, std::string
 
     AppBuildPlan plan;
     for (const auto& f : kept) plan.sources.push_back(abs_path(root, f));
-    for (const auto& d : b.include_dirs) plan.include_dirs.push_back(abs_path(root, normalize(d)));
-    plan.defines = b.defines;
-    plan.c_flags = b.c_flags;
+    auto append_unique = [](std::vector<std::string>& into, const std::string& v) {
+        if (std::find(into.begin(), into.end(), v) == into.end()) into.push_back(v);
+    };
+    for (const auto& l : layers) {
+        for (const auto& d : l.add->include_dirs) append_unique(plan.include_dirs, abs_path(root, normalize(d)));
+        for (const auto& d : l.add->defines) append_unique(plan.defines, d);
+        for (const auto& d : l.add->c_flags) plan.c_flags.push_back(d);
+        for (const auto& d : l.add->libs) append_unique(plan.libs, d);
+    }
     plan.c_standard = b.c_standard;
     plan.libc = b.libc;
-    plan.libs = b.libs;
     plan.output = b.output;
     if (!b.linker_fragment.empty()) {
         std::error_code ec;
@@ -174,7 +217,9 @@ std::optional<AppBuildPlan> plan_app_build(const ProjectConfig& cfg, std::string
         plan.linker_fragment = abs_frag;
     }
 
-    for (const auto& rule : b.file_flags) {
+    std::vector<FileFlagRule> rules;
+    for (const auto& l : layers) rules.insert(rules.end(), l.add->file_flags.begin(), l.add->file_flags.end());
+    for (const auto& rule : rules) {
         AppBuildPlan::FileFlags ff;
         ff.flags = rule.flags;
         for (const auto& f : kept) {
@@ -185,12 +230,32 @@ std::optional<AppBuildPlan> plan_app_build(const ProjectConfig& cfg, std::string
         if (ff.files.empty()) {
             std::string pats;
             for (const auto& m : rule.match) pats += (pats.empty() ? "'" : ", '") + m + "'";
-            error = "[[build.file_flags]] match " + pats + " matches none of the build's sources";
+            error = "a [[build.file_flags]] rule matching " + pats + " matches none of the build's sources";
             return std::nullopt;
         }
         plan.file_flags.push_back(std::move(ff));
     }
     return plan;
+}
+
+std::optional<std::vector<std::string>> plan_navhal_exclude(const ProjectConfig& cfg, const fs::path& navhal_root,
+                                                            std::string& error) {
+    std::vector<std::string> out;
+    for (const auto& e : cfg.navhal_exclude) {
+        const std::string rel = normalize(e);
+        std::error_code ec;
+        if (rel.empty() || fs::path(rel).is_absolute() || rel.find("..") != std::string::npos) {
+            error = "[navhal].exclude '" + e + "' must be a path relative to the NavHAL root";
+            return std::nullopt;
+        }
+        if (!fs::is_regular_file(navhal_root / rel, ec)) {
+            error = "[navhal].exclude '" + e + "' does not exist in NavHAL (" + navhal_root.generic_string() + ")";
+            return std::nullopt;
+        }
+        const std::string abs = abs_path(navhal_root, rel);
+        if (std::find(out.begin(), out.end(), abs) == out.end()) out.push_back(abs);
+    }
+    return out;
 }
 
 std::string render_app_cmake(const AppBuildPlan& plan) {
@@ -213,6 +278,39 @@ std::string render_app_cmake(const AppBuildPlan& plan) {
         os << "\n    APPEND PROPERTY COMPILE_OPTIONS";
         for (const auto& fl : ff.flags) os << "\n    " << cq(fl);
         os << ")\n";
+    }
+    if (!plan.navhal_exclude.empty()) {
+        // NavHAL is already added when this file is included. Its sources live in
+        // the `hal` library and in the `common` object library that `hal` pulls in
+        // through $<TARGET_OBJECTS:common>, so filter both. Entries are compared by
+        // real path: extern/NavHAL is a link to a pinned checkout.
+        os << "\n";
+        emit_list(os, "NAV_NAVHAL_EXCLUDE", plan.navhal_exclude);
+        os << "set(_nav_hal_drop)\n"
+           << "foreach(_f IN LISTS NAV_NAVHAL_EXCLUDE)\n"
+           << "    get_filename_component(_r \"${_f}\" REALPATH)\n"
+           << "    list(APPEND _nav_hal_drop \"${_r}\")\n"
+           << "endforeach()\n"
+           << "foreach(_t hal common)\n"
+           << "    if(TARGET ${_t})\n"
+           << "        get_target_property(_srcs ${_t} SOURCES)\n"
+           << "        get_target_property(_sdir ${_t} SOURCE_DIR)\n"
+           << "        set(_keep)\n"
+           << "        foreach(_s IN LISTS _srcs)\n"
+           << "            set(_drop FALSE)\n"
+           << "            if(NOT _s MATCHES \"^\\\\$<\")\n"
+           << "                get_filename_component(_rs \"${_s}\" REALPATH BASE_DIR \"${_sdir}\")\n"
+           << "                if(_rs IN_LIST _nav_hal_drop)\n"
+           << "                    set(_drop TRUE)\n"
+           << "                endif()\n"
+           << "            endif()\n"
+           << "            if(NOT _drop)\n"
+           << "                list(APPEND _keep \"${_s}\")\n"
+           << "            endif()\n"
+           << "        endforeach()\n"
+           << "        set_property(TARGET ${_t} PROPERTY SOURCES \"${_keep}\")\n"
+           << "    endif()\n"
+           << "endforeach()\n";
     }
     return os.str();
 }
