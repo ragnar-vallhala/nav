@@ -225,6 +225,10 @@ bool cmakelists_supports_variants(const std::string& t) {
     return t.find("NAV_APP_OUTPUT") != std::string::npos && t.find("NAV_APP_CONFIG") != std::string::npos;
 }
 
+bool cmakelists_supports_app_kconfig(const std::string& t) {
+    return t.find("nav-app-kconfig.cmake") != std::string::npos || t.find("NAV_APP_AUTOCONF") != std::string::npos;
+}
+
 bool cmakelists_is_nav_generated_app(const std::string& t) {
     return t.find("nav-board.cmake") != std::string::npos &&
            t.find("add_executable(${PROJECT_NAME}") != std::string::npos;

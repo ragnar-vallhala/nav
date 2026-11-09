@@ -319,6 +319,15 @@ TEST(AppBuildTemplate, OldTemplateIsDetected) {
     EXPECT_TRUE(cmakelists_is_nav_generated_app(old));
 }
 
+TEST(AppBuildTemplate, OldTemplateLacksAppKconfig) {
+    const std::string old =
+        "include(\"${CMAKE_BINARY_DIR}/nav-board.cmake\")\n"
+        "include(\"${CMAKE_BINARY_DIR}/nav-app.cmake\")\n"
+        "add_executable(${PROJECT_NAME} src/main.c)\n";
+    EXPECT_FALSE(cmakelists_supports_app_kconfig(old));
+    EXPECT_TRUE(cmakelists_supports_app_kconfig(render_app_cmakelists("demo")));
+}
+
 TEST(AppBuildTemplate, HandWrittenCMakeListsIsNotNavGenerated) {
     EXPECT_FALSE(cmakelists_is_nav_generated_app(
         "project(mine C)\nadd_executable(mine src/main.c)\n"));
