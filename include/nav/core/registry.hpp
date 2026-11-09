@@ -2,6 +2,7 @@
 
 #include "nav/core/board.hpp"
 
+#include <algorithm>
 #include <map>
 #include <string>
 #include <vector>
@@ -72,8 +73,16 @@ public:
     void add_runner(RunnerDef d) { runners_[d.id] = std::move(d); }
     void set_core(std::vector<std::string> c) { core_ = std::move(c); }
 
+    // Notices raised while overlaying user files (e.g. a stale runner); each
+    // distinct text once, in order. registry() prints them on first use.
+    const std::vector<std::string>& notes() const { return notes_; }
+    void add_note(const std::string& n) {
+        if (std::find(notes_.begin(), notes_.end(), n) == notes_.end()) notes_.push_back(n);
+    }
+
 private:
     std::vector<std::string> core_;
+    std::vector<std::string> notes_;
     std::map<std::string, ToolDef> tools_;
     std::map<std::string, Board> boards_;
     std::map<std::string, RunnerDef> runners_;
