@@ -1,6 +1,9 @@
 #include "nav/core/registry.hpp"
+#include "nav/config/embedded_config.hpp"
 
 #include <gtest/gtest.h>
+
+#include <string>
 
 using namespace nav::core;
 
@@ -93,6 +96,21 @@ TEST(Registry, UserOverrideWins) {
     EXPECT_EQ(r.tool("cmake")->version, "9.9.9");
     ASSERT_NE(r.board("my_board"), nullptr);
     EXPECT_EQ(r.board("my_board")->name, "Custom");
+}
+
+TEST(Registry, BakedCatalogHasNavixsmF401re) {
+    // vaios targets this board; nav must resolve it out of the box. Its arch is
+    // the core (cortex-m4), not the ISA: NavHAL derives include/port/<arch>
+    // from CMAKE_SYSTEM_PROCESSOR, which nav sets from this field.
+    Registry r = registry_from_json(std::string(nav::config::kBakedToolchainJson),
+                                    std::string(nav::config::kBakedBoardsJson));
+    const Board* b = r.board("navixsmf401re");
+    ASSERT_NE(b, nullptr);
+    EXPECT_EQ(b->navhal_board, "navixsmf401re");
+    EXPECT_EQ(b->arch, "cortex-m4");
+    EXPECT_EQ(b->compiler, "arm-none-eabi-gcc");
+    EXPECT_EQ(b->flash_tool, "st-flash");
+    EXPECT_EQ(b->flash_address, "0x08000000");
 }
 
 TEST(Registry, BoardMergeIsFieldLevel) {
