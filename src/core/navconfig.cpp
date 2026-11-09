@@ -103,6 +103,39 @@ std::map<std::string, std::string> parse_kconfig(const fs::path& path) {
     return out;
 }
 
+std::set<std::string> parse_kconfig_unset(const fs::path& path) {
+    std::set<std::string> out;
+    std::ifstream f(path);
+    std::string line;
+    while (std::getline(f, line)) {
+        const std::string t = trim(line);
+        if (t.rfind("# CONFIG_", 0) != 0) continue;
+        const std::string sym = line_symbol(t);
+        if (!sym.empty()) out.insert(sym);
+    }
+    return out;
+}
+
+std::vector<std::string> merge_requirements(std::map<std::string, std::string>& have,
+                                            const std::set<std::string>& unset,
+                                            const std::map<std::string, std::string>& required,
+                                            const std::string& dep,
+                                            std::vector<RequirementOverride>& overrides) {
+    std::vector<std::string> add;
+    for (const auto& [key, val] : required) {
+        auto it = have.find(key);
+        if (it != have.end()) {
+            if (it->second != val) overrides.push_back({dep, key, val, it->second});
+        } else if (unset.count(key)) {
+            overrides.push_back({dep, key, val, "not set"});
+        } else {
+            add.push_back(key + "=" + val);
+            have[key] = val;
+        }
+    }
+    return add;
+}
+
 std::optional<fs::path> find_navhal_config(const fs::path& root) {
     std::error_code ec;
     for (const char* name : {".config", "navhal.config"}) {

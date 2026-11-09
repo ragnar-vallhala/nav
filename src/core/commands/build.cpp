@@ -202,6 +202,9 @@ int BuildCommand::run(IExecutionContext& ctx, const std::vector<std::string>& ar
     // App-level Kconfig (appkconfig.hpp): opt-in by shipping a root Kconfig.
     const bool app_kconfig = app_has_kconfig(*root);
     std::vector<ResolvedLib> app_libs;
+    // The config every consumer reads: the app's .config plus dependency
+    // requirements, written under the build dir. Empty if there is no .config.
+    fs::path effective_config;
     if (!cfg->dependencies.empty()) {
         std::vector<std::string> direct;
         auto libs = resolve_library_deps(ctx, *root, *cfg, &direct);
@@ -259,44 +262,63 @@ int BuildCommand::run(IExecutionContext& ctx, const std::vector<std::string>& ar
 
         // Capability check: the app's .config is the single authority that
         // configures NavHAL. Every dependency that ships a NavHAL config
-        // declares the capabilities it needs; the app .config must satisfy them
-        // all. They are unioned in at `nav lib add`, but self-heal here too so a
-        // dep added before this existed (or a hand-edited .config) still builds:
-        // append any purely-missing capabilities, and hard-error only on a
-        // genuine value conflict (the app sets a key to something a dep can't use).
+        // declares the capabilities it needs. `nav lib add` unions them into the
+        // .config; here they are merged into an *effective* config under the
+        // build dir (the tracked .config is never written by a build), so a dep
+        // added before that existed, or a hand-edited .config, still builds.
+        // Where the app explicitly says otherwise (another value, or "is not
+        // set") the app wins and a warning names the dependency and symbol. The
+        // only hard error is a board-choice symbol the board does not select.
         if (fs::exists(app_config)) {
             auto have = parse_kconfig(app_config);
-            std::vector<std::string> missing, conflicts;
+            const auto unset = parse_kconfig_unset(app_config);
+            std::vector<std::string> additions, conflicts;
+            std::vector<RequirementOverride> overrides;
             for (const auto& lib : *libs) {
                 auto lc = find_navhal_config(lib.src);
                 if (!lc) continue;
-                auto diff = diff_requirements(have, parse_kconfig(*lc));
+                auto required = parse_kconfig(*lc);
+                auto diff = diff_requirements(have, required);
                 hold_target_choices(diff, targets.choice_symbols);
-                for (const auto& m : diff.missing) {
-                    missing.push_back(m);
-                    have[m.substr(0, m.find('='))] = m.substr(m.find('=') + 1); // seen now
-                }
-                for (const auto& c : diff.conflicts) {
+                for (const auto& c : diff.conflicts)
                     if (targets.choice_symbols.count(c.key))
                         conflicts.push_back(lib.name + " is configured for " + c.key +
                                             ", which board '" + board->id + "' does not select");
-                    else
-                        conflicts.push_back(lib.name + " needs " + c.key + "=" + c.need +
-                                            " but .config has " + c.have);
-                }
+                for (auto it = required.begin(); it != required.end();)
+                    it = targets.choice_symbols.count(it->first) ? required.erase(it) : std::next(it);
+                for (auto& m : merge_requirements(have, unset, required, lib.name, overrides))
+                    additions.push_back(std::move(m));
             }
             if (!conflicts.empty()) {
                 ui::error("Your .config conflicts with capabilities required by dependencies:");
                 for (const auto& c : conflicts) ui::error("  " + c);
-                ui::error("Reconcile the value(s) in .config (nav config), or switch board with");
-                ui::error("'nav board use <id>', and rebuild.");
+                ui::error("Switch board with 'nav board use <id>', and rebuild.");
                 return 1;
             }
-            if (!missing.empty()) {
-                update_config_file(app_config, missing, "# Unioned by nav build from dependency requirements");
-                ui::info("Unioned " + std::to_string(missing.size()) +
-                         " capability requirement(s) from dependencies into .config.");
+            for (const auto& o : overrides)
+                ui::warning("dependency '" + o.dep + "' needs " + o.key + "=" + o.need + " but .config has " +
+                            (o.have == "not set" ? "it not set" : o.key + "=" + o.have) +
+                            "; keeping the .config value (the dependency may not work as intended).");
+            std::string text;
+            {
+                std::ifstream in(app_config);
+                std::ostringstream ss;
+                ss << in.rdbuf();
+                text = ss.str();
             }
+            effective_config = bdir / "nav-effective.config";
+            const std::string eff = apply_config_assignments(text, additions,
+                                                             "# Added by nav build from dependency requirements");
+            std::ofstream out(effective_config, std::ios::trunc);
+            out << eff;
+            if (!out.good()) {
+                ui::error("Failed to write " + effective_config.string() + ".");
+                return 1;
+            }
+            if (!additions.empty())
+                ui::info("Merged " + std::to_string(additions.size()) +
+                         " capability requirement(s) from dependencies into " +
+                         effective_config.generic_string() + " (.config is not modified).");
         }
 
         std::error_code rmec;
@@ -372,7 +394,8 @@ int BuildCommand::run(IExecutionContext& ctx, const std::vector<std::string>& ar
             const std::string py = ensure_kconfig_python(ctx);
             if (py.empty()) return 1;
             if (!prepare_app_kconfig(ctx, *root, *cfg, app_libs, navhal_dir, &err, &warns, py,
-                                    *root / bdir, app_config)) {
+                                    *root / bdir,
+                                    effective_config.empty() ? app_config : fs::absolute(effective_config))) {
                 ui::error("App Kconfig: " + err);
                 return 1;
             }
@@ -405,10 +428,12 @@ int BuildCommand::run(IExecutionContext& ctx, const std::vector<std::string>& ar
     if (kconfig_python.empty()) return 1;
 
     // Windows ships no `make`, so drive cmake through Ninja (provisioned above).
-    // NAV_APP_CONFIG: the variant's alternative .config (empty = the project's).
+    // NAV_APP_CONFIG: the effective config (.config + dependency requirements).
     std::vector<std::string> configure_cmd = {
         "cmake", "-S", ".", "-B", bdir.generic_string(), "-DPython3_EXECUTABLE=" + kconfig_python,
-        "-DNAV_APP_CONFIG=" + (variant && !variant->kconfig.empty() ? app_config.generic_string() : std::string{})};
+        "-DNAV_APP_CONFIG=" + (!effective_config.empty() ? fs::absolute(effective_config).generic_string()
+                               : variant && !variant->kconfig.empty() ? app_config.generic_string()
+                                                                      : std::string{})};
 #ifdef _WIN32
     configure_cmd.push_back("-G");
     configure_cmd.push_back("Ninja");
