@@ -78,8 +78,30 @@ endif()
 #    FLASHER, FLASH_ADDRESS for backward compatibility with its config flow).
 include("${CMAKE_BINARY_DIR}/config.cmake")
 
-# 4. Declare user application target
-add_executable(${PROJECT_NAME} src/main.c)
+# 4. Declare user application target. The app's sources, include dirs, defines
+#    and flags come from nav.toml [build]: `nav build` expands the globs into
+#    build/nav-app.cmake, so this file carries nothing app-specific. Without that
+#    file (or without [build] keys) the app is src/main.c + include/.
+set(NAV_APP_SOURCES src/main.c)
+set(NAV_APP_INCLUDE_DIRS include)
+set(NAV_APP_DEFINES)
+set(NAV_APP_C_FLAGS)
+set(NAV_APP_C_STANDARD)
+if(EXISTS "${CMAKE_BINARY_DIR}/nav-app.cmake")
+    include("${CMAKE_BINARY_DIR}/nav-app.cmake")
+endif()
+add_executable(${PROJECT_NAME} ${NAV_APP_SOURCES})
+if(NAV_APP_DEFINES)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE ${NAV_APP_DEFINES})
+endif()
+if(NAV_APP_C_FLAGS)
+    target_compile_options(${PROJECT_NAME} PRIVATE
+        "$<$<COMPILE_LANGUAGE:C>:${NAV_APP_C_FLAGS}>")
+endif()
+if(NAV_APP_C_STANDARD)
+    set_target_properties(${PROJECT_NAME} PROPERTIES
+        C_STANDARD ${NAV_APP_C_STANDARD} C_STANDARD_REQUIRED ON)
+endif()
 
 # 5. Apply board-derived compilation flags.
 if(NAV_BOARD_COMPILE_FLAGS)
@@ -126,16 +148,40 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
   -Wl,--end-group
 )
 
-# 8. Bind includes
-target_include_directories(${PROJECT_NAME} PUBLIC
-    include
-    extern/NavHAL/include
-)
+# 8. Bind includes. The app's own directories are ordinary includes; NavHAL and
+#    everything that arrives through a dependency are SYSTEM, so a warning in a
+#    vendor header never trips the app's -Werror.
+target_include_directories(${PROJECT_NAME} PUBLIC ${NAV_APP_INCLUDE_DIRS})
+target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC extern/NavHAL/include)
+
+# Mark the include dirs a dependency (and hal) exports as SYSTEM for whoever
+# links it. Done with INTERFACE_SYSTEM_INCLUDE_DIRECTORIES rather than the
+# SYSTEM target property (CMake 3.25+) because this template supports 3.20.
+# Only the consumer sees the change; the library still builds with its own
+# warnings. Walks the link graph, so a dependency's own dependencies count too.
+set(_nav_todo hal ${NAV_DEP_TARGETS})
+set(_nav_seen)
+while(_nav_todo)
+    list(POP_FRONT _nav_todo _nav_t)
+    if(NOT TARGET ${_nav_t} OR "${_nav_t}" IN_LIST _nav_seen)
+        continue()
+    endif()
+    list(APPEND _nav_seen ${_nav_t})
+    get_target_property(_nav_imported ${_nav_t} IMPORTED)
+    if(NOT _nav_imported)
+        set_property(TARGET ${_nav_t} APPEND PROPERTY INTERFACE_SYSTEM_INCLUDE_DIRECTORIES
+            "$<TARGET_PROPERTY:${_nav_t},INTERFACE_INCLUDE_DIRECTORIES>")
+    endif()
+    get_target_property(_nav_links ${_nav_t} INTERFACE_LINK_LIBRARIES)
+    if(_nav_links)
+        list(APPEND _nav_todo ${_nav_links})
+    endif()
+endwhile()
 
 # 8a. Registry library inputs (from nav-deps.cmake): headers, archive search
 #     dirs, and the resolved static archives themselves.
 if(NAV_DEPS_INCLUDE_DIRS)
-    target_include_directories(${PROJECT_NAME} PUBLIC ${NAV_DEPS_INCLUDE_DIRS})
+    target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC ${NAV_DEPS_INCLUDE_DIRS})
 endif()
 if(NAV_DEPS_LINK_DIRS)
     target_link_directories(${PROJECT_NAME} PRIVATE ${NAV_DEPS_LINK_DIRS})
@@ -148,6 +194,14 @@ endif()
 #     a static target whose PUBLIC include dirs propagate here automatically.
 if(NAV_DEP_TARGETS)
     target_link_libraries(${PROJECT_NAME} PRIVATE ${NAV_DEP_TARGETS})
+endif()
+
+# 8c. Print the image size after every link.
+if(CMAKE_BINARY_SIZE)
+    add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+        COMMAND ${CMAKE_BINARY_SIZE} $<TARGET_FILE:${PROJECT_NAME}>
+        COMMENT "Image size:"
+        VERBATIM)
 endif()
 
 # 9. Flash target support. Prefer Nav-resolved flasher; fall back to NavHAL's

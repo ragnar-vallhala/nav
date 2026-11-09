@@ -28,6 +28,30 @@ struct Dependency {
     bool is_path() const { return !path.empty(); }
 };
 
+// One [[build.file_flags]] rule: extra compiler flags for the sources whose
+// project-relative path matches any of the `match` globs.
+struct FileFlagRule {
+    std::vector<std::string> match;
+    std::vector<std::string> flags;
+};
+
+// nav.toml [build] source/flag settings for an executable app. Globs are
+// relative to the project root; nav expands them at `nav build` time.
+struct BuildSettings {
+    // True when any of the keys below is present. An app without them builds
+    // exactly as it always did (src/main.c + include/), so it also works with a
+    // CMakeLists.txt generated from the older template.
+    bool declared = false;
+
+    std::vector<std::string> sources{"src/main.c"};
+    std::vector<std::string> exclude;
+    std::vector<std::string> include_dirs{"include"};
+    std::vector<std::string> defines;
+    std::vector<std::string> c_flags;
+    std::optional<int> c_standard;
+    std::vector<FileFlagRule> file_flags;
+};
+
 struct ProjectConfig {
     std::filesystem::path root;
     std::string project_name;
@@ -41,6 +65,8 @@ struct ProjectConfig {
     std::string target_vendor;
     std::string target_board;
     std::string build_backend;
+
+    BuildSettings build;
 
     // Declared [dependencies] (nav library projects this one links against).
     std::vector<Dependency> dependencies;

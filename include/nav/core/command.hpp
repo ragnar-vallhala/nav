@@ -36,6 +36,12 @@ public:
     std::string help_text() const override { return "Compile system software sources."; }
 };
 
+class RegenCommand : public ICommand {
+public:
+    int run(IExecutionContext& ctx, const std::vector<std::string>& args) override;
+    std::string help_text() const override { return "Rewrite CMakeLists.txt from nav's current template (old one kept as .old)."; }
+};
+
 class UploadCommand : public ICommand {
 public:
     int run(IExecutionContext& ctx, const std::vector<std::string>& args) override;
