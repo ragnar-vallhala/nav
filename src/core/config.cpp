@@ -40,10 +40,11 @@ bool parse_build_settings(const toml::table& tbl, BuildSettings& b) {
     const auto* bt = tbl["build"].as_table();
     if (!bt) return true;
     bool any = false;
-    for (std::string_view k : {"sources", "exclude", "include_dirs", "defines", "c_flags"}) {
+    for (std::string_view k : {"sources", "exclude", "include_dirs", "defines", "c_flags", "libs"}) {
         std::vector<std::string>* dst =
             k == "sources" ? &b.sources : k == "exclude" ? &b.exclude
-            : k == "include_dirs" ? &b.include_dirs : k == "defines" ? &b.defines : &b.c_flags;
+            : k == "include_dirs" ? &b.include_dirs : k == "defines" ? &b.defines
+            : k == "libs" ? &b.libs : &b.c_flags;
         bool present = false;
         if (!read_string_array(*bt, k, "[build]", *dst, &present)) return false;
         any = any || present;
@@ -55,6 +56,24 @@ bool parse_build_settings(const toml::table& tbl, BuildSettings& b) {
             return false;
         }
         b.c_standard = static_cast<int>(*v);
+        any = true;
+    }
+    if (const toml::node* n = bt->get("linker_fragment")) {
+        auto v = n->value<std::string>();
+        if (!v || v->empty()) {
+            std::cerr << "nav.toml: [build].linker_fragment must be a non-empty path string\n";
+            return false;
+        }
+        b.linker_fragment = *v;
+        any = true;
+    }
+    if (const toml::node* n = bt->get("libc")) {
+        auto v = n->value<std::string>();
+        if (!v || (*v != "none" && *v != "newlib")) {
+            std::cerr << "nav.toml: [build].libc must be \"none\" or \"newlib\"\n";
+            return false;
+        }
+        b.libc = *v;
         any = true;
     }
     if (const toml::node* n = bt->get("file_flags")) {

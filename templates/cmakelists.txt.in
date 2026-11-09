@@ -87,6 +87,9 @@ set(NAV_APP_INCLUDE_DIRS include)
 set(NAV_APP_DEFINES)
 set(NAV_APP_C_FLAGS)
 set(NAV_APP_C_STANDARD)
+set(NAV_APP_LINKER_FRAGMENT)
+set(NAV_APP_LIBC none)
+set(NAV_APP_LIBS)
 if(EXISTS "${CMAKE_BINARY_DIR}/nav-app.cmake")
     include("${CMAKE_BINARY_DIR}/nav-app.cmake")
 endif()
@@ -133,9 +136,30 @@ else()
             "${NAV_LINKER_SCRIPT} does not exist. Update NavHAL.")
     endif()
 endif()
+# [build] linker_fragment: an app script layered on the board script (it should
+# use INSERT AFTER ...;); NavHAL's script stays the base. GNU ld only resolves
+# an INSERT target when the fragment's -T comes BEFORE the board's -T on its
+# command line ("board then app" fails with ".text not found for insert").
+# SHELL: keeps CMake from de-duplicating the repeated -T.
+set(NAV_APP_LINK_OPTIONS)
+if(NAV_APP_LINKER_FRAGMENT)
+    list(APPEND NAV_APP_LINK_OPTIONS "SHELL:-T \"${NAV_APP_LINKER_FRAGMENT}\"")
+    set_property(TARGET ${PROJECT_NAME} APPEND PROPERTY LINK_DEPENDS "${NAV_APP_LINKER_FRAGMENT}")
+endif()
+list(APPEND NAV_APP_LINK_OPTIONS "SHELL:-T \"${NAV_LINKER_SCRIPT}\"")
+# [build] libc: "none" is freestanding (-nostdlib); "newlib" drops it and links
+# the C library through nosys stubs.
+set(NAV_APP_SYS_LIBS -lgcc)
+if(NAV_APP_LIBC STREQUAL "newlib")
+    set(NAV_APP_SYS_LIBS -lc -lm -lnosys -lgcc)
+else()
+    list(APPEND NAV_APP_LINK_OPTIONS "-nostdlib")
+endif()
+foreach(_nav_lib ${NAV_APP_LIBS})
+    list(APPEND NAV_APP_SYS_LIBS "-l${_nav_lib}")
+endforeach()
 target_link_options(${PROJECT_NAME} PRIVATE
-  "-T" "${NAV_LINKER_SCRIPT}"
-  "-nostdlib"
+  ${NAV_APP_LINK_OPTIONS}
   "--specs=nosys.specs"
   ${NAV_BOARD_LINK_FLAGS}
 )
@@ -144,7 +168,7 @@ target_link_options(${PROJECT_NAME} PRIVATE
 target_link_libraries(${PROJECT_NAME} PRIVATE
   -Wl,--start-group
     -Wl,--whole-archive hal -Wl,--no-whole-archive
-    -lgcc
+    ${NAV_APP_SYS_LIBS}
   -Wl,--end-group
 )
 

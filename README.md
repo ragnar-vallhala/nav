@@ -47,7 +47,33 @@ nav monitor --baud 115200   # open the serial monitor
 | `nav lib` | Work with library dependencies: `add`, `remove`, `list`, and `tree`, which prints the whole dependency graph and marks conflicts (one library requested from two sources, reported with the chain of projects behind each request). `[overrides]` in `nav.toml` picks one source for the whole project. |
 | `nav check` | Verify the toolchain, package manager, and flasher are present and working. |
 | `nav update` | Install missing local tools. |
+| `nav regen` | Rewrite a nav-generated `CMakeLists.txt` from the current template (old one kept as `CMakeLists.txt.old`); needed before an older project can use `[build]` keys. |
 | `nav clean` | Remove build artifacts. |
+
+### App sources and flags (`[build]` in `nav.toml`)
+An app is `nav.toml` + `.config` + sources; nav generates the CMake. Without any of these keys the app is `src/main.c` plus `include/`.
+```toml
+[build]
+sources      = ["src/**/*.c"]           # globs from the project root (default ["src/main.c"])
+exclude      = ["src/driver/sensor/**"] # globs removed from sources
+include_dirs = ["include", "board/x"]   # default ["include"]
+defines      = ["CORTEX_M4=1"]
+c_flags      = ["-O2", "-Wall"]
+c_standard   = 11                       # optional: 90, 99, 11, 17, 23
+linker_fragment = "app.ld"              # extra linker script, added to NavHAL's board script
+libc         = "newlib"                 # default "none" (freestanding, -nostdlib)
+libs         = ["m"]                    # extra -l libraries
+
+[[build.file_flags]]                    # extra flags for matching sources, in order
+match = ["src/est/*.c", "src/control/**/*.c"]
+flags = ["-Wextra", "-Wconversion", "-Werror"]
+```
+`*` and `?` stay inside a path segment, `**` spans directories. `nav build` expands the globs (sorted) into `build/nav-app.cmake` each time, and fails if a `sources` pattern or a `file_flags` rule matches nothing. `linker_fragment` should use `INSERT AFTER .text;`; `libc = "newlib"` links `-lc -lm -lnosys -lgcc`. NavHAL and dependency headers reach the app as system includes, so they never trip the app's `-Werror`. After linking, nav prints the image size.
+
+These keys need a `CMakeLists.txt` from the current template. A project made by an older nav keeps building as before, but if `nav.toml` uses `[build]` keys, `nav build` says so; run `nav regen` to rewrite `CMakeLists.txt` (the old one is kept as `CMakeLists.txt.old`).
+
+### `nav regen`
+Rewrites a nav-generated `CMakeLists.txt` from the current template, after saving the old one as `CMakeLists.txt.old`. It refuses a `CMakeLists.txt` that nav did not generate.
 
 ### Flash runners
 

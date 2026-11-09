@@ -323,3 +323,55 @@ TEST(AppBuildTemplate, HandWrittenCMakeListsIsNotNavGenerated) {
     EXPECT_FALSE(cmakelists_is_nav_generated_app(
         "project(mine C)\nadd_executable(mine src/main.c)\n"));
 }
+
+// --- linker fragment / libc / libs -----------------------------------------
+
+TEST(AppBuildLink, ParsesFragmentLibcLibs) {
+    TempDir td;
+    write_toml(td.path(), "[build]\nlinker_fragment = \"app.ld\"\nlibc = \"newlib\"\nlibs = [\"m\", \"c\"]\n");
+    auto cfg = load_project_config(td.path());
+    ASSERT_TRUE(cfg);
+    EXPECT_TRUE(cfg->build.declared);
+    EXPECT_EQ(cfg->build.linker_fragment, "app.ld");
+    EXPECT_EQ(cfg->build.libc, "newlib");
+    EXPECT_EQ(cfg->build.libs, (std::vector<std::string>{"m", "c"}));
+}
+
+TEST(AppBuildLink, DefaultsAndBadLibc) {
+    TempDir td;
+    write_toml(td.path(), "");
+    auto cfg = load_project_config(td.path());
+    ASSERT_TRUE(cfg);
+    EXPECT_EQ(cfg->build.libc, "none");
+    EXPECT_TRUE(cfg->build.linker_fragment.empty());
+    TempDir bad;
+    write_toml(bad.path(), "[build]\nlibc = \"glibc\"\n");
+    EXPECT_FALSE(load_project_config(bad.path()));
+}
+
+TEST(AppBuildLink, PlanResolvesFragmentAndErrorsWhenMissing) {
+    TempDir td;
+    touch(td.path(), "src/main.c");
+    ProjectConfig cfg;
+    cfg.root = td.path();
+    cfg.build.linker_fragment = "app.ld";
+    std::string err;
+    EXPECT_FALSE(plan_app_build(cfg, err));
+    EXPECT_NE(err.find("app.ld"), std::string::npos);
+    touch(td.path(), "app.ld");
+    cfg.build.libc = "newlib";
+    cfg.build.libs = {"m"};
+    auto plan = plan_app_build(cfg, err);
+    ASSERT_TRUE(plan) << err;
+    EXPECT_EQ(plan->linker_fragment, abs(td, "app.ld"));
+    const std::string out = render_app_cmake(*plan);
+    EXPECT_NE(out.find("set(NAV_APP_LINKER_FRAGMENT \"" + abs(td, "app.ld") + "\")"), std::string::npos) << out;
+    EXPECT_NE(out.find("set(NAV_APP_LIBC \"newlib\")"), std::string::npos);
+    EXPECT_NE(out.find("set(NAV_APP_LIBS\n    \"m\")"), std::string::npos);
+}
+
+TEST(AppBuildLink, RenderDefaultsAreNone) {
+    const std::string out = render_app_cmake(AppBuildPlan{});
+    EXPECT_NE(out.find("set(NAV_APP_LINKER_FRAGMENT)"), std::string::npos);
+    EXPECT_NE(out.find("set(NAV_APP_LIBC \"none\")"), std::string::npos);
+}

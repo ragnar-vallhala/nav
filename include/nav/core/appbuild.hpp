@@ -23,6 +23,9 @@ struct AppBuildPlan {
     std::vector<std::string> defines;
     std::vector<std::string> c_flags;
     std::optional<int> c_standard;
+    std::string linker_fragment;            // absolute, '/'-separated; empty = none
+    std::string libc = "none";
+    std::vector<std::string> libs;
     struct FileFlags {
         std::vector<std::string> files;     // absolute, '/'-separated, sorted
         std::vector<std::string> flags;

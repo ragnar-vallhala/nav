@@ -161,6 +161,17 @@ std::optional<AppBuildPlan> plan_app_build(const ProjectConfig& cfg, std::string
     plan.defines = b.defines;
     plan.c_flags = b.c_flags;
     plan.c_standard = b.c_standard;
+    plan.libc = b.libc;
+    plan.libs = b.libs;
+    if (!b.linker_fragment.empty()) {
+        std::error_code ec;
+        const std::string abs_frag = abs_path(root, normalize(b.linker_fragment));
+        if (!fs::is_regular_file(abs_frag, ec)) {
+            error = "[build].linker_fragment '" + b.linker_fragment + "' does not exist";
+            return std::nullopt;
+        }
+        plan.linker_fragment = abs_frag;
+    }
 
     for (const auto& rule : b.file_flags) {
         AppBuildPlan::FileFlags ff;
@@ -191,6 +202,9 @@ std::string render_app_cmake(const AppBuildPlan& plan) {
     emit_list(os, "NAV_APP_C_FLAGS", plan.c_flags);
     if (plan.c_standard) os << "set(NAV_APP_C_STANDARD " << *plan.c_standard << ")\n";
     else os << "set(NAV_APP_C_STANDARD)\n";
+    os << "set(NAV_APP_LINKER_FRAGMENT" << (plan.linker_fragment.empty() ? "" : " " + cq(plan.linker_fragment)) << ")\n";
+    os << "set(NAV_APP_LIBC " << cq(plan.libc) << ")\n";
+    emit_list(os, "NAV_APP_LIBS", plan.libs);
     for (const auto& ff : plan.file_flags) {
         os << "\nset_property(SOURCE";
         for (const auto& f : ff.files) os << "\n    " << cq(f);

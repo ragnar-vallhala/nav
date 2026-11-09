@@ -50,6 +50,15 @@ struct BuildSettings {
     std::vector<std::string> c_flags;
     std::optional<int> c_standard;
     std::vector<FileFlagRule> file_flags;
+
+    // App linker fragment (relative to the project root), passed as a second
+    // -T after NavHAL's board script; it should use `INSERT AFTER ...;`.
+    std::string linker_fragment;
+    // "none" (freestanding, -nostdlib: today's behaviour) or "newlib"
+    // (-lc -lm -lnosys with nosys.specs).
+    std::string libc = "none";
+    // Extra libraries, each linked as -l<name>.
+    std::vector<std::string> libs;
 };
 
 struct ProjectConfig {
