@@ -1,6 +1,7 @@
 #pragma once
 
 #include <filesystem>
+#include <map>
 #include <optional>
 #include <string>
 #include <vector>
@@ -29,6 +30,13 @@ struct Board {
     // still flash through a custom CMake target).
     std::string flash_tool;
     std::string flash_address;
+
+    // Flash runners (see runner.hpp). `runner` is the default one `nav upload`
+    // uses (empty: flash_tool). `runners` lists every runner the board supports,
+    // each with the variables its command template needs (e.g. openocd's
+    // "target" config, avrdude's "part").
+    std::string runner;
+    std::map<std::string, std::map<std::string, std::string>> runners;
 
     // Post-flash reset. Some flashers leave the core halted after writing (e.g.
     // st-flash on a Nucleo whose NRST isn't wired to the debugger), so the new

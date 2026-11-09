@@ -30,6 +30,7 @@ add_executable(nav_tests
     test_navconfig.cpp
     test_kconfig_python.cpp
     test_board_config.cpp
+    test_runner.cpp
 )
 
 target_include_directories(nav_tests PRIVATE

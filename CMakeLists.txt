@@ -73,6 +73,7 @@ add_library(nav_core STATIC
     src/core/navhal.cpp
     src/core/kconfig_python.cpp
     src/core/board_config.cpp
+    src/core/runner.cpp
     src/core/registry.cpp
     src/core/provision.cpp
     src/core/deps.cpp

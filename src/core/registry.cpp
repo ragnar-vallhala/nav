@@ -59,8 +59,29 @@ std::vector<std::string> str_array(const json& node, const char* key) {
     return out;
 }
 
+std::map<std::string, std::string> str_map(const json& node) {
+    std::map<std::string, std::string> out;
+    if (node.is_object())
+        for (auto& [k, v] : node.items()) out[k] = v.is_string() ? v.get<std::string>() : v.dump();
+    return out;
+}
+
+void load_runners(const json& j, Registry& r) {
+    if (!j.contains("runners")) return;
+    for (auto& [id, d] : j["runners"].items()) {
+        RunnerDef def;
+        def.id = id;
+        def.tool = d.value("tool", id);
+        def.image = d.value("image", std::string{"elf"});
+        def.args = str_array(d, "args");
+        if (d.contains("defaults")) def.defaults = str_map(d["defaults"]);
+        r.add_runner(std::move(def));
+    }
+}
+
 void load_boards(const json& j, Registry& r) {
     load_tools(j, r); // board-specific tools (compilers, flashers)
+    load_runners(j, r);
     if (!j.contains("boards")) return;
     for (auto& [id, b] : j["boards"].items()) {
         // Field-level overlay: start from any existing (baked) board so a user
@@ -78,6 +99,10 @@ void load_boards(const json& j, Registry& r) {
         if (b.contains("compiler"))            board.compiler = b.value("compiler", std::string{});
         if (b.contains("flash_tool"))          board.flash_tool = b.value("flash_tool", std::string{});
         if (b.contains("flash_address"))       board.flash_address = b.value("flash_address", std::string{});
+        if (b.contains("runner"))              board.runner = b.value("runner", std::string{});
+        if (b.contains("runners") && b["runners"].is_object()) {
+            for (auto& [name, vars] : b["runners"].items()) board.runners[name] = str_map(vars);
+        }
         if (b.contains("reset_after_flash"))   board.reset_after_flash = b.value("reset_after_flash", false);
         if (b.contains("reset_command"))       board.reset_command = str_array(b, "reset_command");
         if (b.contains("compile_flags"))       board.compile_flags = str_array(b, "compile_flags");
@@ -176,6 +201,11 @@ const ToolDef* Registry::tool_for_binary(const std::string& binary) const {
 const Board* Registry::board(const std::string& id) const {
     auto it = boards_.find(id);
     return it == boards_.end() ? nullptr : &it->second;
+}
+
+const RunnerDef* Registry::runner(const std::string& id) const {
+    auto it = runners_.find(id);
+    return it == runners_.end() ? nullptr : &it->second;
 }
 
 const Registry& registry() {

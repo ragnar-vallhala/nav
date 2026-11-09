@@ -39,7 +39,7 @@ public:
 class UploadCommand : public ICommand {
 public:
     int run(IExecutionContext& ctx, const std::vector<std::string>& args) override;
-    std::string help_text() const override { return "Push binary payloads to hardware targets."; }
+    std::string help_text() const override { return "Flash the firmware (--runner, --port, --set k=v, --dry-run, --list)."; }
 };
 
 class MonitorCommand : public ICommand {

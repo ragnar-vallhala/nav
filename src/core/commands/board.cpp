@@ -6,6 +6,8 @@
 #include "nav/core/navhal.hpp"
 #include "nav/templates/embedded.hpp"
 #include "nav/core/provision.hpp"
+#include "nav/core/registry.hpp"
+#include "nav/core/runner.hpp"
 #include "nav/core/toolchain.hpp"
 #include "nav/core/ui.hpp"
 
@@ -26,7 +28,7 @@ namespace {
 std::vector<std::string> board_tools(const Board& b) {
     std::vector<std::string> t;
     if (!b.compiler.empty()) t.push_back(b.compiler);
-    if (!b.flash_tool.empty()) t.push_back(b.flash_tool);
+    if (auto flasher = default_flash_binary(b, registry()); !flasher.empty()) t.push_back(flasher);
     return t;
 }
 
@@ -120,7 +122,7 @@ int print_info(const std::string& id) {
     print_str_field("compiler", board->compiler);
     print_array_field("compile_flags", board->compile_flags);
     print_array_field("link_flags",    board->link_flags);
-    print_str_field("flash_tool",     board->flash_tool);
+    print_array_field("runners",      board_runner_names(*board));
     print_str_field("flash_address",  board->flash_address);
     print_str_field("default_framework", board->default_framework);
     print_array_field("supported_frameworks", board->supported_frameworks);
@@ -149,10 +151,10 @@ int board_check(IExecutionContext& ctx, const std::string& id) {
     }
 
     // Flasher — required for `nav upload`, so it counts toward readiness.
-    if (!board->flash_tool.empty()) {
-        auto res = tm.probe_tool(ctx, ToolRequirement{board->flash_tool, board->flash_tool, true});
-        if (res.is_found) ui::tool_ok(board->flash_tool, res.version_info);
-        else { ui::tool_missing_critical(board->flash_tool); ++missing_critical; }
+    if (const auto flasher = default_flash_binary(*board, registry()); !flasher.empty()) {
+        auto res = tm.probe_tool(ctx, ToolRequirement{flasher, flasher, true});
+        if (res.is_found) ui::tool_ok(flasher, res.version_info);
+        else { ui::tool_missing_critical(flasher); ++missing_critical; }
     }
 
     std::cout << "\n";

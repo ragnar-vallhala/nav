@@ -1,4 +1,5 @@
 #include "nav/core/toolchain.hpp"
+#include "nav/core/runner.hpp"
 
 #include "nav/core/registry.hpp"
 
@@ -178,8 +179,8 @@ std::vector<ToolRequirement> ToolchainManager::get_project_requirements(const Bo
     if (!board.compiler.empty()) {
         reqs.push_back({"Cross Compiler", board.compiler, true});
     }
-    if (!board.flash_tool.empty()) {
-        reqs.push_back({"Flasher", board.flash_tool, false});
+    if (auto flasher = default_flash_binary(board, registry()); !flasher.empty()) {
+        reqs.push_back({"Flasher", flasher, false});
     }
 
     // Helpful across all targets.

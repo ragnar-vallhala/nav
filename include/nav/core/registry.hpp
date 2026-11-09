@@ -20,6 +20,17 @@ struct ToolDownload {
 // A tool nav can provision: a system command (`binary`) installable either via a
 // system package manager (`packages`: manager -> package name) or, failing that,
 // via a portable `download` per host platform key.
+// A way to flash a board: a tool plus a command template. Placeholders in
+// `args` ({elf}, {bin}, {hex}, {address}, {port}, or any variable from
+// `defaults` / the board's runner entry) are filled in by `nav upload`.
+struct RunnerDef {
+    std::string id;
+    std::string tool;   // tool id in the registry; its binary is what runs
+    std::string image;  // "elf" | "bin" | "hex": the file the command flashes
+    std::vector<std::string> args;
+    std::map<std::string, std::string> defaults;
+};
+
 struct ToolDef {
     std::string id;
     std::string binary;   // command nav probes / invokes (may differ from id)
@@ -39,6 +50,8 @@ public:
     const std::vector<std::string>& core_tool_ids() const { return core_; }
     const std::map<std::string, ToolDef>& tools() const { return tools_; }
     const std::map<std::string, Board>& boards() const { return boards_; }
+    const std::map<std::string, RunnerDef>& runners() const { return runners_; }
+    const RunnerDef* runner(const std::string& id) const;
 
     const ToolDef* tool(const std::string& id) const;
     const ToolDef* tool_for_binary(const std::string& binary) const;
@@ -47,12 +60,14 @@ public:
     // Mutating builders used by the loader (registry.cpp).
     void add_tool(ToolDef t) { tools_[t.id] = std::move(t); }
     void add_board(Board b) { boards_[b.id] = std::move(b); }
+    void add_runner(RunnerDef d) { runners_[d.id] = std::move(d); }
     void set_core(std::vector<std::string> c) { core_ = std::move(c); }
 
 private:
     std::vector<std::string> core_;
     std::map<std::string, ToolDef> tools_;
     std::map<std::string, Board> boards_;
+    std::map<std::string, RunnerDef> runners_;
 };
 
 // Build a Registry purely from two JSON strings (no filesystem access). Used for
