@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <map>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -19,6 +20,28 @@ namespace nav::core {
 // comments, and "# CONFIG_X is not set" lines are skipped (the last means X is
 // unset, i.e. absent for satisfaction purposes).
 std::map<std::string, std::string> parse_kconfig(const std::filesystem::path& path);
+
+// Symbols a .config explicitly turns off with "# CONFIG_X is not set" (as
+// "CONFIG_X"). parse_kconfig() drops these lines, so this is how an explicit
+// "off" is told apart from a symbol the app never mentioned.
+std::set<std::string> parse_kconfig_unset(const std::filesystem::path& path);
+
+// A dependency requirement the app's own .config contradicts. The app wins.
+struct RequirementOverride {
+    std::string dep, key, need, have; // `have` is "not set" or the app's value
+};
+
+// Merge one dependency's `required` config into the app's view of it without
+// touching any file. `have`/`unset` describe the app's .config (`have` is
+// updated as requirements are accepted so a later dependency sees them).
+// Returns the "KEY=VALUE" assignments to add to the effective config;
+// requirements the app explicitly sets otherwise (another value, or
+// "# ... is not set") go to `overrides` and are left out: the app's choice wins.
+std::vector<std::string> merge_requirements(std::map<std::string, std::string>& have,
+                                            const std::set<std::string>& unset,
+                                            const std::map<std::string, std::string>& required,
+                                            const std::string& dep,
+                                            std::vector<RequirementOverride>& overrides);
 
 // The NavHAL capability config a library ships, if any: <root>/.config (the
 // nav-native name) then <root>/navhal.config. Empty optional when the library
@@ -48,5 +71,20 @@ struct RequirementDiff {
 RequirementDiff diff_requirements(
     const std::map<std::string, std::string>& have,
     const std::map<std::string, std::string>& required);
+
+// Apply Kconfig assignments to .config text. Each entry is "CONFIG_X=value" or
+// "# CONFIG_X is not set". A line for a symbol already in `text` (in either
+// form) is replaced in place; further duplicate lines for it are dropped.
+// Symbols not present are appended after a blank line and `header` comment
+// (omitted when empty). Later entries in `assignments` win over earlier ones.
+std::string apply_config_assignments(const std::string& text,
+                                     const std::vector<std::string>& assignments,
+                                     const std::string& header = "");
+
+// File form of apply_config_assignments; rewrites `path` only on change.
+// Returns false if the file cannot be written.
+bool update_config_file(const std::filesystem::path& path,
+                        const std::vector<std::string>& assignments,
+                        const std::string& header = "");
 
 } // namespace nav::core

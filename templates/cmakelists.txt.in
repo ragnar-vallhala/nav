@@ -43,10 +43,15 @@ project({{PROJECT_NAME}} C CXX ASM)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # 1. Sync global configuration to dependency path
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.config")
+#    A build variant may name another .config (nav passes -DNAV_APP_CONFIG=...).
+set(NAV_APP_CONFIG_FILE "${CMAKE_CURRENT_SOURCE_DIR}/.config")
+if(NAV_APP_CONFIG)
+    set(NAV_APP_CONFIG_FILE "${NAV_APP_CONFIG}")
+endif()
+if(EXISTS "${NAV_APP_CONFIG_FILE}")
     message(STATUS "[Nav] Locking active configuration context...")
     configure_file(
-        "${CMAKE_CURRENT_SOURCE_DIR}/.config"
+        "${NAV_APP_CONFIG_FILE}"
         "${CMAKE_CURRENT_SOURCE_DIR}/extern/NavHAL/.config"
         COPYONLY
     )
@@ -58,12 +63,42 @@ endif()
 #     needs NavHAL built with -DSUBMODULE so it cedes the SysTick/PendSV/SVCall/
 #     HardFault handlers. nav emits this when such a dependency is present; it
 #     MUST run before NavHAL is added.
+#     nav-deps-pre.cmake only names the define (NAV_NAVHAL_DEFINES); it is applied
+#     to the NavHAL targets alone below, so it does not leak into the app or into
+#     other libraries. NAV_TEMPLATE_SCOPED_DEFINES tells the pre file this
+#     template does that.
+set(NAV_TEMPLATE_SCOPED_DEFINES ON)
+set(NAV_NAVHAL_DEFINES)
 if(EXISTS "${CMAKE_BINARY_DIR}/nav-deps-pre.cmake")
     include("${CMAKE_BINARY_DIR}/nav-deps-pre.cmake")
 endif()
 
+# Every target created in a directory and its subdirectories (NavHAL builds its
+# libraries in nested directories, so the top directory holds none of them).
+function(nav_directory_targets dir out)
+    set(_found)
+    set(_todo "${dir}")
+    while(_todo)
+        list(POP_FRONT _todo _d)
+        get_property(_t DIRECTORY "${_d}" PROPERTY BUILDSYSTEM_TARGETS)
+        list(APPEND _found ${_t})
+        get_property(_sub DIRECTORY "${_d}" PROPERTY SUBDIRECTORIES)
+        list(APPEND _todo ${_sub})
+    endwhile()
+    set(${out} ${_found} PARENT_SCOPE)
+endfunction()
+
 # 2. Add NavHAL Dependency Framework
 add_subdirectory(extern/NavHAL)
+if(NAV_NAVHAL_DEFINES)
+    nav_directory_targets(extern/NavHAL _nav_hal_targets)
+    foreach(_nav_t ${_nav_hal_targets})
+        get_target_property(_nav_type ${_nav_t} TYPE)
+        if(NOT _nav_type STREQUAL "INTERFACE_LIBRARY" AND NOT _nav_type STREQUAL "UTILITY")
+            target_compile_definitions(${_nav_t} PRIVATE ${NAV_NAVHAL_DEFINES})
+        endif()
+    endforeach()
+endif()
 
 # 2a. Nav library dependencies (from nav.toml [dependencies]). nav resolves the
 #     transitive graph and writes build/nav-deps-libs.cmake, which
@@ -78,8 +113,77 @@ endif()
 #    FLASHER, FLASH_ADDRESS for backward compatibility with its config flow).
 include("${CMAKE_BINARY_DIR}/config.cmake")
 
-# 4. Declare user application target
-add_executable(${PROJECT_NAME} src/main.c)
+# 4. Declare user application target. The app's sources, include dirs, defines
+#    and flags come from nav.toml [build]: `nav build` expands the globs into
+#    build/nav-app.cmake, so this file carries nothing app-specific. Without that
+#    file (or without [build] keys) the app is src/main.c + include/.
+set(NAV_APP_SOURCES src/main.c)
+set(NAV_APP_INCLUDE_DIRS include)
+set(NAV_APP_DEFINES)
+set(NAV_APP_C_FLAGS)
+set(NAV_APP_C_STANDARD)
+set(NAV_APP_LINKER_FRAGMENT)
+set(NAV_APP_LIBC none)
+set(NAV_APP_OUTPUT)
+set(NAV_APP_LIBS)
+set(NAV_APP_SYSCALLS nosys)
+set(NAV_APP_LINKER_FRAGMENT_POSITION before)
+set(NAV_APP_DEPS_OPT)
+if(EXISTS "${CMAKE_BINARY_DIR}/nav-app.cmake")
+    include("${CMAKE_BINARY_DIR}/nav-app.cmake")
+endif()
+# [build] deps_opt: one -O level for NavHAL and every dependency library. It is a
+# per-target option, which CMake puts after CMAKE_C_FLAGS(_<CONFIG>) and the
+# directory options and after whatever the target itself added at configure
+# time, so it is the last -O on the compile line and wins.
+if(NAV_APP_DEPS_OPT)
+    nav_directory_targets(extern/NavHAL _nav_hal_targets)
+    set(_nav_opt_seen)
+    foreach(_nav_t ${_nav_hal_targets} ${NAV_ALL_DEP_TARGETS})
+        if(TARGET ${_nav_t})
+            # target_compile_options is refused on an ALIAS target; use the real one.
+            get_target_property(_nav_real ${_nav_t} ALIASED_TARGET)
+            if(_nav_real)
+                set(_nav_t ${_nav_real})
+            endif()
+            if("${_nav_t}" IN_LIST _nav_opt_seen)
+                continue()
+            endif()
+            list(APPEND _nav_opt_seen ${_nav_t})
+            get_target_property(_nav_type ${_nav_t} TYPE)
+            get_target_property(_nav_imported ${_nav_t} IMPORTED)
+            if(NOT _nav_imported AND NOT _nav_type STREQUAL "INTERFACE_LIBRARY" AND NOT _nav_type STREQUAL "UTILITY")
+                target_compile_options(${_nav_t} PRIVATE "-${NAV_APP_DEPS_OPT}")
+            endif()
+        endif()
+    endforeach()
+endif()
+add_executable(${PROJECT_NAME} ${NAV_APP_SOURCES})
+# A build variant may rename the firmware file (nav.toml [variant.*] output).
+set(NAV_APP_FILE_NAME "${PROJECT_NAME}")
+if(NAV_APP_OUTPUT)
+    set(NAV_APP_FILE_NAME "${NAV_APP_OUTPUT}")
+    set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME "${NAV_APP_OUTPUT}")
+endif()
+if(NAV_APP_DEFINES)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE ${NAV_APP_DEFINES})
+endif()
+if(NAV_APP_C_FLAGS)
+    target_compile_options(${PROJECT_NAME} PRIVATE
+        "$<$<COMPILE_LANGUAGE:C>:${NAV_APP_C_FLAGS}>")
+endif()
+if(NAV_APP_C_STANDARD)
+    set_target_properties(${PROJECT_NAME} PROPERTIES
+        C_STANDARD ${NAV_APP_C_STANDARD} C_STANDARD_REQUIRED ON)
+endif()
+
+# 4a. App-level Kconfig hook. Only present when the app ships a root Kconfig:
+#     nav writes build/nav-app-kconfig.cmake (CONFIG_* CMake variables and
+#     NAV_APP_AUTOCONF) and force-includes app_autoconf.h into the app's sources.
+if(EXISTS "${CMAKE_BINARY_DIR}/nav-app-kconfig.cmake")
+    include("${CMAKE_BINARY_DIR}/nav-app-kconfig.cmake")
+    target_compile_options(${PROJECT_NAME} PRIVATE "SHELL:-include ${NAV_APP_AUTOCONF}")
+endif()
 
 # 5. Apply board-derived compilation flags.
 if(NAV_BOARD_COMPILE_FLAGS)
@@ -111,43 +215,125 @@ else()
             "${NAV_LINKER_SCRIPT} does not exist. Update NavHAL.")
     endif()
 endif()
+# [build] linker_fragment: an app script layered on the board script. By default
+# its -T comes BEFORE the board's: GNU ld only resolves an `INSERT AFTER .text;`
+# when the fragment is read first ("board then app" fails with ".text not found
+# for insert"). With linker_fragment_position = "after" it comes after the board
+# script instead, so the fragment can refer to MEMORY regions the board script
+# defines. SHELL: keeps CMake from de-duplicating the repeated -T.
+set(NAV_APP_LINK_OPTIONS)
+set(_nav_frag_opt)
+if(NAV_APP_LINKER_FRAGMENT)
+    set(_nav_frag_opt "SHELL:-T \"${NAV_APP_LINKER_FRAGMENT}\"")
+    set_property(TARGET ${PROJECT_NAME} APPEND PROPERTY LINK_DEPENDS "${NAV_APP_LINKER_FRAGMENT}")
+endif()
+if(_nav_frag_opt AND NOT NAV_APP_LINKER_FRAGMENT_POSITION STREQUAL "after")
+    list(APPEND NAV_APP_LINK_OPTIONS "${_nav_frag_opt}")
+endif()
+list(APPEND NAV_APP_LINK_OPTIONS "SHELL:-T \"${NAV_LINKER_SCRIPT}\"")
+if(_nav_frag_opt AND NAV_APP_LINKER_FRAGMENT_POSITION STREQUAL "after")
+    list(APPEND NAV_APP_LINK_OPTIONS "${_nav_frag_opt}")
+endif()
+# [build] libc: "none" is freestanding (-nostdlib); "newlib" drops it and links
+# the C library. The system libraries go in the dependency group (step 7), so ld
+# rescans the dependency archives when libc's objects need _sbrk/_write/...
+# -lnosys goes after that group closes: it only supplies the syscalls no
+# dependency defines. [build] syscalls = "none" leaves it out altogether.
+set(NAV_APP_SYS_LIBS)
+set(NAV_APP_STUB_LIBS)
+if(NAV_APP_LIBC STREQUAL "newlib")
+    list(APPEND NAV_APP_SYS_LIBS -lc -lm)
+else()
+    list(APPEND NAV_APP_LINK_OPTIONS "-nostdlib")
+endif()
+foreach(_nav_lib ${NAV_APP_LIBS})
+    list(APPEND NAV_APP_SYS_LIBS "-l${_nav_lib}")
+endforeach()
+if(NAV_APP_LIBC STREQUAL "newlib" AND NOT NAV_APP_SYSCALLS STREQUAL "none")
+    list(APPEND NAV_APP_STUB_LIBS -lnosys)
+endif()
+list(APPEND NAV_APP_SYS_LIBS -lgcc)
+# nosys.specs makes gcc itself append -lnosys, so syscalls = "none" must drop it.
+set(NAV_APP_SPECS "--specs=nosys.specs")
+if(NAV_APP_LIBC STREQUAL "newlib" AND NAV_APP_SYSCALLS STREQUAL "none")
+    set(NAV_APP_SPECS)
+endif()
 target_link_options(${PROJECT_NAME} PRIVATE
-  "-T" "${NAV_LINKER_SCRIPT}"
-  "-nostdlib"
-  "--specs=nosys.specs"
+  ${NAV_APP_LINK_OPTIONS}
+  ${NAV_APP_SPECS}
   ${NAV_BOARD_LINK_FLAGS}
 )
 
-# 7. Inherit linkage rules (Whole Archive mandatory for static HAL exports)
-target_link_libraries(${PROJECT_NAME} PRIVATE
-  -Wl,--start-group
-    -Wl,--whole-archive hal -Wl,--no-whole-archive
-    -lgcc
-  -Wl,--end-group
-)
+# 8. Bind includes. The app's own directories are ordinary includes; NavHAL and
+#    everything that arrives through a dependency are SYSTEM, so a warning in a
+#    vendor header never trips the app's -Werror.
+target_include_directories(${PROJECT_NAME} PUBLIC ${NAV_APP_INCLUDE_DIRS})
+target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC extern/NavHAL/include)
 
-# 8. Bind includes
-target_include_directories(${PROJECT_NAME} PUBLIC
-    include
-    extern/NavHAL/include
-)
+# Mark the include dirs a dependency (and hal) exports as SYSTEM for whoever
+# links it. Done with INTERFACE_SYSTEM_INCLUDE_DIRECTORIES rather than the
+# SYSTEM target property (CMake 3.25+) because this template supports 3.20.
+# Only the consumer sees the change; the library still builds with its own
+# warnings. Walks the link graph, so a dependency's own dependencies count too.
+set(_nav_todo hal ${NAV_DEP_TARGETS})
+set(_nav_seen)
+while(_nav_todo)
+    list(POP_FRONT _nav_todo _nav_t)
+    if(NOT TARGET ${_nav_t})
+        continue()
+    endif()
+    # set_property is refused on an ALIAS target (e.g. navlink::navlink), so
+    # work on the real target. (NAV_ALIAS_SAFE)
+    get_target_property(_nav_real ${_nav_t} ALIASED_TARGET)
+    if(_nav_real)
+        set(_nav_t ${_nav_real})
+    endif()
+    if("${_nav_t}" IN_LIST _nav_seen)
+        continue()
+    endif()
+    list(APPEND _nav_seen ${_nav_t})
+    get_target_property(_nav_imported ${_nav_t} IMPORTED)
+    if(NOT _nav_imported)
+        set_property(TARGET ${_nav_t} APPEND PROPERTY INTERFACE_SYSTEM_INCLUDE_DIRECTORIES
+            "$<TARGET_PROPERTY:${_nav_t},INTERFACE_INCLUDE_DIRECTORIES>")
+    endif()
+    get_target_property(_nav_links ${_nav_t} INTERFACE_LINK_LIBRARIES)
+    if(_nav_links)
+        list(APPEND _nav_todo ${_nav_links})
+    endif()
+endwhile()
 
 # 8a. Registry library inputs (from nav-deps.cmake): headers, archive search
 #     dirs, and the resolved static archives themselves.
 if(NAV_DEPS_INCLUDE_DIRS)
-    target_include_directories(${PROJECT_NAME} PUBLIC ${NAV_DEPS_INCLUDE_DIRS})
+    target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC ${NAV_DEPS_INCLUDE_DIRS})
 endif()
 if(NAV_DEPS_LINK_DIRS)
     target_link_directories(${PROJECT_NAME} PRIVATE ${NAV_DEPS_LINK_DIRS})
 endif()
-if(NAV_DEPS_LIBRARIES)
-    target_link_libraries(${PROJECT_NAME} PRIVATE ${NAV_DEPS_LIBRARIES})
-endif()
+# 7. Link line. The app's objects come first, then one group holding hal (Whole
+#    Archive mandatory for static HAL exports), the resolved registry archives
+#    and every nav library dependency, followed by libc/libm/libs/libgcc in the
+#    same group, so ld rescans the dependency archives when libc's objects pull
+#    in _write/_sbrk. -lnosys comes after the group: by then every syscall a
+#    dependency defines is resolved, and nosys only fills the rest.
+#    (NAV_LINK_STUBS_AFTER_GROUP)
+target_link_libraries(${PROJECT_NAME} PRIVATE
+  -Wl,--start-group
+    -Wl,--whole-archive hal -Wl,--no-whole-archive
+    ${NAV_DEPS_LIBRARIES}
+    ${NAV_DEP_TARGETS}
+    ${NAV_APP_SYS_LIBS}
+  -Wl,--end-group
+  ${NAV_APP_STUB_LIBS}
+)
 
-# 8b. Nav library dependencies built from source (nav-deps-libs.cmake). Each is
-#     a static target whose PUBLIC include dirs propagate here automatically.
-if(NAV_DEP_TARGETS)
-    target_link_libraries(${PROJECT_NAME} PRIVATE ${NAV_DEP_TARGETS})
+# 8c. Print the image size after every link.
+if(CMAKE_BINARY_SIZE)
+    add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+        COMMAND ${CMAKE_BINARY_SIZE} $<TARGET_FILE:${PROJECT_NAME}>
+        COMMENT "Image size:"
+        VERBATIM)
 endif()
 
 # 9. Flash target support. Prefer Nav-resolved flasher; fall back to NavHAL's
@@ -162,8 +348,8 @@ if(NAV_BOARD_FLASH_ADDRESS)
 endif()
 if(NAV_RESOLVED_FLASHER AND NAV_RESOLVED_FLASH_ADDRESS)
     add_custom_target(flash
-      COMMAND ${CMAKE_OBJCOPY} -O binary $<TARGET_FILE:${PROJECT_NAME}> ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}.bin
-      COMMAND ${NAV_RESOLVED_FLASHER} write ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}.bin ${NAV_RESOLVED_FLASH_ADDRESS}
+      COMMAND ${CMAKE_OBJCOPY} -O binary $<TARGET_FILE:${PROJECT_NAME}> ${CMAKE_CURRENT_BINARY_DIR}/${NAV_APP_FILE_NAME}.bin
+      COMMAND ${NAV_RESOLVED_FLASHER} write ${CMAKE_CURRENT_BINARY_DIR}/${NAV_APP_FILE_NAME}.bin ${NAV_RESOLVED_FLASH_ADDRESS}
       DEPENDS ${PROJECT_NAME}
       COMMENT "Pumping Binary payload onto board..."
     )

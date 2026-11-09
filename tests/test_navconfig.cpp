@@ -113,3 +113,70 @@ TEST(NavConfig, DiffEmptyWhenSatisfied) {
     EXPECT_TRUE(d.missing.empty());
     EXPECT_TRUE(d.conflicts.empty());
 }
+
+TEST(NavConfig, ApplyReplacesInPlaceAndAppendsNew) {
+    const std::string text = "CONFIG_A=y\n# CONFIG_B is not set\nCONFIG_C=1\n";
+    const std::string out = nav::core::apply_config_assignments(
+        text, {"CONFIG_B=y", "CONFIG_C=2", "CONFIG_D=y"}, "# added");
+    EXPECT_EQ(out, "CONFIG_A=y\nCONFIG_B=y\nCONFIG_C=2\n\n# added\nCONFIG_D=y\n");
+}
+
+TEST(NavConfig, ApplyHandlesNotSetAndDropsDuplicates) {
+    const std::string text = "CONFIG_A=y\nCONFIG_B=y\nCONFIG_A=n\n";
+    const std::string out = nav::core::apply_config_assignments(text, {"# CONFIG_A is not set"});
+    EXPECT_EQ(out, "# CONFIG_A is not set\nCONFIG_B=y\n");
+}
+
+TEST(NavConfig, ApplyNoChangeAndRepeatedCallsAreStable) {
+    const std::string text = "CONFIG_A=y\n";
+    EXPECT_EQ(nav::core::apply_config_assignments(text, {"CONFIG_A=y"}), text);
+    const std::string once = nav::core::apply_config_assignments(text, {"CONFIG_X=1"}, "# h");
+    EXPECT_EQ(nav::core::apply_config_assignments(once, {"CONFIG_X=1"}, "# h"), once);
+}
+
+TEST(NavConfig, UpdateConfigFileRewritesFile) {
+    TempDir td;
+    const fs::path p = td.path() / ".config";
+    write_file(p, "CONFIG_A=y\n# CONFIG_B is not set\n");
+    ASSERT_TRUE(nav::core::update_config_file(p, {"CONFIG_B=y", "CONFIG_B=n"}));
+    std::ifstream in(p);
+    std::string all((std::istreambuf_iterator<char>(in)), {});
+    EXPECT_EQ(all, "CONFIG_A=y\nCONFIG_B=n\n");
+}
+
+TEST(NavConfig, ParseUnsetFindsOnlyExplicitNotSetLines) {
+    TempDir td;
+    const fs::path p = td.path() / ".config";
+    write_file(p, "CONFIG_A=y\n# CONFIG_B is not set\n# a comment\n  # CONFIG_C is not set\n");
+    auto u = nav::core::parse_kconfig_unset(p);
+    EXPECT_EQ(u, (std::set<std::string>{"CONFIG_B", "CONFIG_C"}));
+}
+
+TEST(NavConfig, MergeAddsMissingAndAppWinsOnExplicitChoices) {
+    std::map<std::string, std::string> have = {{"CONFIG_A", "y"}, {"CONFIG_V", "2"}};
+    std::set<std::string> unset = {"CONFIG_OFF"};
+    std::map<std::string, std::string> required = {
+        {"CONFIG_A", "y"}, {"CONFIG_NEW", "y"}, {"CONFIG_OFF", "y"}, {"CONFIG_V", "1"}};
+    std::vector<nav::core::RequirementOverride> ov;
+    auto add = nav::core::merge_requirements(have, unset, required, "libx", ov);
+    EXPECT_EQ(add, (std::vector<std::string>{"CONFIG_NEW=y"}));
+    ASSERT_EQ(ov.size(), 2u);
+    EXPECT_EQ(ov[0].dep, "libx");
+    EXPECT_EQ(ov[0].key, "CONFIG_OFF");
+    EXPECT_EQ(ov[0].have, "not set");
+    EXPECT_EQ(ov[1].key, "CONFIG_V");
+    EXPECT_EQ(ov[1].need, "1");
+    EXPECT_EQ(ov[1].have, "2");
+    // A later dependency sees what an earlier one added.
+    std::vector<nav::core::RequirementOverride> ov2;
+    EXPECT_TRUE(nav::core::merge_requirements(have, unset, {{"CONFIG_NEW", "y"}}, "liby", ov2).empty());
+    EXPECT_TRUE(ov2.empty());
+}
+
+TEST(NavConfig, EffectiveConfigLeavesAppTextIntact) {
+    // What `nav build` writes to the build dir: app text + additions; the app's
+    // explicit "not set" line stays when its requirement is overridden.
+    const std::string text = "CONFIG_A=y\n# CONFIG_OFF is not set\n";
+    const std::string eff = nav::core::apply_config_assignments(text, {"CONFIG_NEW=y"}, "# nav");
+    EXPECT_EQ(eff, "CONFIG_A=y\n# CONFIG_OFF is not set\n\n# nav\nCONFIG_NEW=y\n");
+}

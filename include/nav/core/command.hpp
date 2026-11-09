@@ -27,7 +27,7 @@ public:
 class CreateCommand : public ICommand {
 public:
     int run(IExecutionContext& ctx, const std::vector<std::string>& args) override;
-    std::string help_text() const override { return "Create a new project (--lib for a library) directory with config."; }
+    std::string help_text() const override { return "Create a new project (--lib for a library, --board <id> to pick the board)."; }
 };
 
 class BuildCommand : public ICommand {
@@ -36,10 +36,16 @@ public:
     std::string help_text() const override { return "Compile system software sources."; }
 };
 
+class RegenCommand : public ICommand {
+public:
+    int run(IExecutionContext& ctx, const std::vector<std::string>& args) override;
+    std::string help_text() const override { return "Rewrite CMakeLists.txt from nav's current template (old one kept as .old)."; }
+};
+
 class UploadCommand : public ICommand {
 public:
     int run(IExecutionContext& ctx, const std::vector<std::string>& args) override;
-    std::string help_text() const override { return "Push binary payloads to hardware targets."; }
+    std::string help_text() const override { return "Flash the firmware (--runner, --port, --set k=v, --dry-run, --list)."; }
 };
 
 class MonitorCommand : public ICommand {
@@ -69,7 +75,7 @@ public:
 class BoardCommand : public ICommand {
 public:
     int run(IExecutionContext& ctx, const std::vector<std::string>& args) override;
-    std::string help_text() const override { return "Boards: list [--all], info <id>, check <id>, install <id>."; }
+    std::string help_text() const override { return "Boards: list [--all], info <id>, check <id>, install <id>, use <id>."; }
 };
 
 class LibCommand : public ICommand {

@@ -5,7 +5,9 @@
 
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
 #include <fstream>
+#include <iostream>
 #include <sstream>
 #include <string>
 #include <system_error>
@@ -20,10 +22,14 @@ namespace {
 void load_tools(const json& j, Registry& r) {
     if (!j.contains("tools")) return;
     for (auto& [id, t] : j["tools"].items()) {
-        ToolDef def;
+        // Overlay: start from the tool already in the registry (the baked one
+        // when this is a user file) and override only the keys present, so a
+        // stale user entry keeps what it predates. packages/download merge per
+        // key (package manager / platform).
+        ToolDef def = r.tool(id) ? *r.tool(id) : ToolDef{};
         def.id = id;
-        def.binary = t.value("binary", id);
-        def.version = t.value("version", std::string{});
+        if (t.contains("binary") || def.binary.empty()) def.binary = t.value("binary", id);
+        if (t.contains("version")) def.version = t.value("version", std::string{});
         if (t.contains("packages")) {
             for (auto& [pm, pkg] : t["packages"].items())
                 def.packages[pm] = pkg.get<std::string>();
@@ -59,8 +65,61 @@ std::vector<std::string> str_array(const json& node, const char* key) {
     return out;
 }
 
+std::map<std::string, std::string> str_map(const json& node) {
+    std::map<std::string, std::string> out;
+    if (node.is_object())
+        for (auto& [k, v] : node.items()) out[k] = v.is_string() ? v.get<std::string>() : v.dump();
+    return out;
+}
+
+void load_runners(const json& j, Registry& r) {
+    if (!j.contains("runners")) return;
+    for (auto& [id, d] : j["runners"].items()) {
+        // Overlay on the runner already registered (the baked one for a user
+        // file): only keys present override, `defaults` merges per variable.
+        const RunnerDef* base = r.runner(id);
+        RunnerDef def = base ? *base : RunnerDef{};
+        def.id = id;
+        if (d.contains("tool") || !base) def.tool = d.value("tool", id);
+        if (d.contains("image") || !base) def.image = d.value("image", std::string{"elf"});
+        if (d.contains("args")) {
+            std::vector<RunnerArg> args;
+            for (auto& a : d["args"]) {
+                if (a.is_string()) {
+                    args.push_back({"", {a.get<std::string>()}});
+                } else if (a.is_object()) {
+                    RunnerArg g;
+                    g.when = a.value("if", std::string{});
+                    g.argv = str_array(a, "args");
+                    args.push_back(std::move(g));
+                }
+            }
+            // A user runner whose args lack the conditional groups (probe
+            // serial / usb path, ...) the baked one has predates them, and
+            // --probe would silently do nothing: keep the baked args.
+            bool stale = false;
+            if (base)
+                for (const auto& g : base->args)
+                    if (!g.when.empty() &&
+                        std::none_of(args.begin(), args.end(), [&](const RunnerArg& x) { return x.when == g.when; }))
+                        stale = true;
+            if (stale) {
+                r.add_note("runner '" + id + "' in boards.json predates probe support (its args lack the "
+                           "conditional probe groups); using the built-in args. Delete the runner entry "
+                           "from boards.json, or add the groups, to silence this.");
+            } else {
+                def.args = std::move(args);
+            }
+        }
+        if (d.contains("defaults"))
+            for (auto& [k, v] : str_map(d["defaults"])) def.defaults[k] = v;
+        r.add_runner(std::move(def));
+    }
+}
+
 void load_boards(const json& j, Registry& r) {
     load_tools(j, r); // board-specific tools (compilers, flashers)
+    load_runners(j, r);
     if (!j.contains("boards")) return;
     for (auto& [id, b] : j["boards"].items()) {
         // Field-level overlay: start from any existing (baked) board so a user
@@ -78,6 +137,11 @@ void load_boards(const json& j, Registry& r) {
         if (b.contains("compiler"))            board.compiler = b.value("compiler", std::string{});
         if (b.contains("flash_tool"))          board.flash_tool = b.value("flash_tool", std::string{});
         if (b.contains("flash_address"))       board.flash_address = b.value("flash_address", std::string{});
+        if (b.contains("runner"))              board.runner = b.value("runner", std::string{});
+        if (b.contains("runners") && b["runners"].is_object()) {
+            for (auto& [name, vars] : b["runners"].items())
+                for (auto& [k, v] : str_map(vars)) board.runners[name][k] = v;
+        }
         if (b.contains("reset_after_flash"))   board.reset_after_flash = b.value("reset_after_flash", false);
         if (b.contains("reset_command"))       board.reset_command = str_array(b, "reset_command");
         if (b.contains("compile_flags"))       board.compile_flags = str_array(b, "compile_flags");
@@ -178,8 +242,19 @@ const Board* Registry::board(const std::string& id) const {
     return it == boards_.end() ? nullptr : &it->second;
 }
 
+const RunnerDef* Registry::runner(const std::string& id) const {
+    auto it = runners_.find(id);
+    return it == runners_.end() ? nullptr : &it->second;
+}
+
 const Registry& registry() {
-    static const Registry r = build_registry();
+    static const Registry r = [] {
+        Registry built = build_registry();
+        // One-time (the singleton is built once per process); stderr keeps
+        // stdout clean for scripted output.
+        for (const auto& n : built.notes()) std::cerr << "nav: note: " << n << "\n";
+        return built;
+    }();
     return r;
 }
 

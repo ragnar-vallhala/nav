@@ -17,6 +17,13 @@ std::optional<LockedPackage> Lockfile::find(const std::string& name) const {
     return std::nullopt;
 }
 
+const LockedGit* Lockfile::find_git(const std::string& name) const {
+    for (const auto& g : git) {
+        if (g.name == name) return &g;
+    }
+    return nullptr;
+}
+
 std::optional<Lockfile> load_lockfile(const fs::path& path) {
     std::ifstream f(path);
     if (!f) return std::nullopt;
@@ -27,11 +34,33 @@ std::optional<Lockfile> load_lockfile(const fs::path& path) {
     } catch (const json::parse_error&) {
         return std::nullopt;
     }
-    if (!doc.is_object() || !doc.contains("packages") || !doc["packages"].is_array()) {
-        return std::nullopt;
-    }
+    if (!doc.is_object()) return std::nullopt;
+    const bool has_packages = doc.contains("packages") && doc["packages"].is_array();
+    const bool has_git = doc.contains("git") && doc["git"].is_array();
+    const bool has_navhal = doc.contains("navhal") && doc["navhal"].is_object();
+    if (!has_packages && !has_git && !has_navhal) return std::nullopt;
 
     Lockfile lock;
+    if (has_navhal) {
+        const auto& el = doc["navhal"];
+        auto str = [&](const char* k) {
+            return (el.contains(k) && el[k].is_string()) ? el[k].get<std::string>() : std::string{};
+        };
+        LockedNavhal n{str("url"), str("ref"), str("commit")};
+        if (!n.url.empty() && !n.commit.empty()) lock.navhal = std::move(n);
+    }
+    if (has_git) {
+        for (const auto& el : doc["git"]) {
+            if (!el.is_object()) continue;
+            auto str = [&](const char* k) {
+                return (el.contains(k) && el[k].is_string()) ? el[k].get<std::string>() : std::string{};
+            };
+            LockedGit g{str("name"), str("url"), str("ref"), str("commit")};
+            if (g.name.empty() || g.url.empty() || g.commit.empty()) continue;
+            lock.git.push_back(std::move(g));
+        }
+    }
+    if (!has_packages) return lock;
     for (const auto& el : doc["packages"]) {
         if (!el.is_object()) continue;
 
@@ -97,6 +126,21 @@ std::string render_lockfile(const Lockfile& lock) {
 
         doc["packages"].push_back(std::move(e));
     }
+
+    // Git pins, by name. Omitted when empty so a registry-only lock renders
+    // exactly as before.
+    if (!lock.git.empty()) {
+        std::vector<LockedGit> pins = lock.git;
+        std::sort(pins.begin(), pins.end(),
+                  [](const LockedGit& a, const LockedGit& b) { return a.name < b.name; });
+        doc["git"] = json::array();
+        for (const auto& g : pins)
+            doc["git"].push_back({{"name", g.name}, {"url", g.url}, {"ref", g.ref}, {"commit", g.commit}});
+    }
+    // NavHAL pin. Omitted when absent so older locks render exactly as before.
+    if (lock.navhal)
+        doc["navhal"] = {{"url", lock.navhal->url}, {"ref", lock.navhal->ref},
+                         {"commit", lock.navhal->commit}};
     return doc.dump(2) + "\n";
 }
 

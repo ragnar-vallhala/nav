@@ -109,3 +109,38 @@ TEST(Lockfile, FindAbsentReturnsNullopt) {
     auto lock = sample();
     EXPECT_FALSE(lock.find("nope").has_value());
 }
+
+TEST(Lockfile, GitPinsRoundTrip) {
+    using namespace nav::core;
+    TempDir td;
+    Lockfile lock = sample();
+    lock.git.push_back({"vaios", "https://github.com/a/vaios", "v0.2.0", std::string(40, 'a')});
+    lock.git.push_back({"bme280", "https://github.com/a/bme280", "v1.0.0", std::string(40, 'b')});
+    const fs::path p = td.path() / "nav.lock";
+    ASSERT_TRUE(save_lockfile(lock, p));
+
+    auto back = load_lockfile(p);
+    ASSERT_TRUE(back.has_value());
+    EXPECT_EQ(back->packages.size(), 2u);
+    ASSERT_EQ(back->git.size(), 2u);
+    EXPECT_EQ(back->git[0].name, "bme280"); // rendered sorted by name
+    ASSERT_NE(back->find_git("vaios"), nullptr);
+    EXPECT_EQ(*back->find_git("vaios"), lock.git[0]);
+    EXPECT_EQ(back->find_git("absent"), nullptr);
+}
+
+TEST(Lockfile, GitOnlyLockLoads) {
+    TempDir td;
+    const fs::path p = td.path() / "nav.lock";
+    std::ofstream(p) << R"({"git":[{"name":"x","url":"https://h/x","ref":"v1.0.0","commit":")"
+                     << std::string(40, 'c') << R"("}]})";
+    auto lock = nav::core::load_lockfile(p);
+    ASSERT_TRUE(lock.has_value());
+    EXPECT_TRUE(lock->packages.empty());
+    ASSERT_EQ(lock->git.size(), 1u);
+    EXPECT_EQ(lock->git[0].ref, "v1.0.0");
+}
+
+TEST(Lockfile, NoGitKeyWhenNoPins) {
+    EXPECT_EQ(nav::core::render_lockfile(sample()).find("\"git\""), std::string::npos);
+}

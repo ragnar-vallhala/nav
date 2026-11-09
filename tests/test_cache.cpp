@@ -1,4 +1,5 @@
 #include "nav/core/cache.hpp"
+#include "test_env.hpp"
 
 #include <gtest/gtest.h>
 
@@ -43,9 +44,9 @@ TEST(Cache, PackageDirToleratesShortSha) {
 }
 
 TEST(Cache, RootHonoursNavHome) {
-    ::setenv("NAV_HOME", "/opt/navhome", 1);
+    set_env("NAV_HOME", "/opt/navhome");
     EXPECT_EQ(nav::core::cache_root(), fs::path("/opt/navhome") / "packages");
-    ::unsetenv("NAV_HOME");
+    unset_env("NAV_HOME");
 }
 
 TEST(Cache, IsInstalledRequiresMarker) {

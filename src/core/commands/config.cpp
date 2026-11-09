@@ -1,11 +1,14 @@
+#include "nav/core/appkconfig.hpp"
 #include "nav/core/command.hpp"
 #include "nav/core/config.hpp"    // find_project_root
+#include "nav/core/kconfig_python.hpp"
 #include "nav/core/navconfig.hpp" // find_navhal_config, parse_kconfig, unmet_requirements
 #include "nav/core/navhal.hpp"    // ensure_navhal_cached, link_navhal, kDefaultNavhalRef
 #include "nav/core/ui.hpp"
 
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <string>
 
 namespace fs = std::filesystem;
@@ -39,18 +42,32 @@ int ConfigCommand::run(IExecutionContext& ctx, const std::vector<std::string>& /
     // NavHAL carries the Kconfig tree. Restore the link from the shared cache if
     // it's missing, exactly as `nav build` does.
     const fs::path navhal_dir = *root / "extern" / "NavHAL";
-    if (!fs::exists(navhal_dir)) {
-        ui::warning("NavHAL missing at extern/NavHAL — restoring from the shared cache.");
-        const fs::path navhal_src = ensure_navhal_cached(ctx, kDefaultNavhalRef);
-        if (navhal_src.empty() || !link_navhal(ctx, navhal_src, navhal_dir)) {
-            ui::error("Could not restore NavHAL. Run 'nav build' once, then retry.");
-            return 1;
-        }
+    auto pcfg = load_project_config(*root);
+    if (!pcfg) { ui::error("Failed to parse nav.toml."); return 1; }
+    if (sync_project_navhal(ctx, *root, *pcfg).empty()) {
+        ui::error("Could not provision NavHAL. Run 'nav build' once, then retry.");
+        return 1;
     }
     const fs::path kconfig = navhal_dir / "Kconfig";
     if (!fs::exists(kconfig)) {
         ui::error("No Kconfig at " + kconfig.string() + " — is NavHAL intact?");
         return 1;
+    }
+
+    // An app that ships its own Kconfig edits one merged tree (NavHAL's, the
+    // dependencies' and the app's), so its symbols show up here too.
+    fs::path menu_kconfig = kconfig;
+    if (app_has_kconfig(*root)) {
+        auto cfg = load_project_config(*root);
+        std::vector<ResolvedLib> libs;
+        if (cfg && !cfg->dependencies.empty()) {
+            auto r = resolve_library_deps(ctx, *root, *cfg);
+            if (!r) { ui::error("Could not resolve library dependencies."); return 1; }
+            libs = *r;
+        }
+        menu_kconfig = cfg ? write_merged_kconfig(*root, *cfg, libs, navhal_dir) : fs::path{};
+        if (menu_kconfig.empty()) { ui::error("Could not write build/nav-Kconfig."); return 1; }
+        { std::ofstream(*root / "build" / "nav-empty.Kconfig") << "# empty\n"; set_env("NAVHAL_KCONFIG", fs::absolute(*root / "build" / "nav-empty.Kconfig").string()); } // NavHAL is sourced directly; see appkconfig.cpp
     }
 
     const fs::path dotconfig = *root / ".config";
@@ -89,14 +106,17 @@ int ConfigCommand::run(IExecutionContext& ctx, const std::vector<std::string>& /
     ui::step("Config", "Opening NavHAL menuconfig — editing " + dotconfig.string());
     ui::info("Arrow keys / Enter to navigate, Space to toggle, ? for help, Q to save & quit.");
 
+    // menuconfig ships with kconfiglib: use the same interpreter `nav build`
+    // hands CMake (nav's venv when the system Python lacks kconfiglib).
+    const std::string python = ensure_kconfig_python(ctx);
+    if (python.empty()) return 1;
+
     // A full-screen curses TUI must own the real terminal, so launch it directly
-    // (not through the captured execute()). python resolves from PATH — nav
-    // injects its provisioned toolchains, and that python carries kconfiglib.
-    const std::string cmd = "python3 -m menuconfig " + q(kconfig);
+    // (not through the captured execute()).
+    const std::string cmd = q(python) + " -m menuconfig " + q(menu_kconfig);
     int rc = std::system(cmd.c_str());
     if (rc != 0) {
-        ui::error("menuconfig did not run. Ensure kconfiglib is installed for nav's "
-                  "python (nav provisions it; otherwise: pip install kconfiglib).");
+        ui::error("menuconfig exited with an error (" + python + " -m menuconfig).");
         return 1;
     }
 

@@ -191,3 +191,29 @@ vaios = { path = "../vaios", options = ["NAVHAL=ON", "VAIOS_FPU=ON"] }
     EXPECT_EQ(cfg->dependencies[0].options,
               (std::vector<std::string>{"NAVHAL=ON", "VAIOS_FPU=ON"}));
 }
+
+TEST(Config, LoadProjectConfig_ReadsVersionAndHalApi) {
+    TempDir td;
+    write_file(td.path() / "nav.toml", R"(
+[project]
+name = "lib"
+version = "1.2.0"
+type = "library"
+
+[abi]
+hal_api_version = 1
+)");
+    auto cfg = nav::core::load_project_config(td.path());
+    ASSERT_TRUE(cfg.has_value());
+    EXPECT_EQ(cfg->project_version, "1.2.0");
+    EXPECT_EQ(cfg->hal_api_version, 1);
+}
+
+TEST(Config, LoadProjectConfig_HalApiDefaultsToUndeclared) {
+    TempDir td;
+    write_file(td.path() / "nav.toml", "[project]\nname = \"x\"\n");
+    auto cfg = nav::core::load_project_config(td.path());
+    ASSERT_TRUE(cfg.has_value());
+    EXPECT_EQ(cfg->hal_api_version, 0);
+    EXPECT_TRUE(cfg->project_version.empty());
+}

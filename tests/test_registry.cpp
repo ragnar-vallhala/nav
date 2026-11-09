@@ -1,6 +1,9 @@
 #include "nav/core/registry.hpp"
+#include "nav/config/embedded_config.hpp"
 
 #include <gtest/gtest.h>
+
+#include <string>
 
 using namespace nav::core;
 
@@ -95,6 +98,21 @@ TEST(Registry, UserOverrideWins) {
     EXPECT_EQ(r.board("my_board")->name, "Custom");
 }
 
+TEST(Registry, BakedCatalogHasNavixsmF401re) {
+    // vaios targets this board; nav must resolve it out of the box. Its arch is
+    // the core (cortex-m4), not the ISA: NavHAL derives include/port/<arch>
+    // from CMAKE_SYSTEM_PROCESSOR, which nav sets from this field.
+    Registry r = registry_from_json(std::string(nav::config::kBakedToolchainJson),
+                                    std::string(nav::config::kBakedBoardsJson));
+    const Board* b = r.board("navixsmf401re");
+    ASSERT_NE(b, nullptr);
+    EXPECT_EQ(b->navhal_board, "navixsmf401re");
+    EXPECT_EQ(b->arch, "cortex-m4");
+    EXPECT_EQ(b->compiler, "arm-none-eabi-gcc");
+    EXPECT_EQ(b->flash_tool, "st-flash");
+    EXPECT_EQ(b->flash_address, "0x08000000");
+}
+
 TEST(Registry, BoardMergeIsFieldLevel) {
     // Baked board carries the reset config.
     Registry r = registry_from_json(
@@ -114,4 +132,85 @@ TEST(Registry, BoardMergeIsFieldLevel) {
     EXPECT_TRUE(b->reset_after_flash);          // inherited, not reset to false
     EXPECT_EQ(b->reset_command, (std::vector<std::string>{"st-flash", "reset"}));
     EXPECT_EQ(b->name, "B1");                   // untouched keys preserved
+}
+
+namespace {
+const char* kBakedRunner = R"({"runners":{"ocd":{"tool":"openocd","image":"elf",
+    "args":["-f","x.cfg",
+            {"if":"probe_serial","args":["-c","adapter serial {probe_serial}"]},
+            {"if":"probe_usb_path","args":["-c","usb {probe_usb_path}"]}],
+    "defaults":{"a":"1","b":"2"}}}})";
+}
+
+TEST(Registry, StaleUserRunnerKeepsBakedProbeArgsAndNotes) {
+    Registry r = registry_from_json("{}", kBakedRunner);
+    // A materialised user file from before the probe groups: plain args only,
+    // tweaks one default.
+    merge_json(r, "{}", R"({"runners":{"ocd":{"args":["-f","old.cfg"],"defaults":{"a":"9"}}}})");
+    const RunnerDef* d = r.runner("ocd");
+    ASSERT_NE(d, nullptr);
+    ASSERT_EQ(d->args.size(), 4u);              // baked args kept
+    EXPECT_EQ(d->args[1].argv[0], "x.cfg");
+    EXPECT_EQ(d->args[2].when, "probe_serial");
+    EXPECT_EQ(d->defaults.at("a"), "9");        // the user's default still overlays
+    EXPECT_EQ(d->defaults.at("b"), "2");        // baked default inherited
+    EXPECT_EQ(d->tool, "openocd");              // omitted fields inherited
+    ASSERT_EQ(r.notes().size(), 1u);
+    EXPECT_NE(r.notes()[0].find("ocd"), std::string::npos);
+}
+
+TEST(Registry, UserRunnerWithProbeGroupsOverridesArgs) {
+    Registry r = registry_from_json("{}", kBakedRunner);
+    merge_json(r, "{}", R"({"runners":{"ocd":{"args":["-f","mine.cfg",
+        {"if":"probe_serial","args":["-s","{probe_serial}"]},
+        {"if":"probe_usb_path","args":["-u","{probe_usb_path}"]}]}}})");
+    const RunnerDef* d = r.runner("ocd");
+    ASSERT_NE(d, nullptr);
+    EXPECT_EQ(d->args[1].argv[0], "mine.cfg");
+    EXPECT_EQ(d->args[2].argv[0], "-s");
+    EXPECT_TRUE(r.notes().empty());
+}
+
+TEST(Registry, UserOnlyRunnerIsAddedAndBakedRunnerSurvives) {
+    Registry r = registry_from_json("{}", kBakedRunner);
+    merge_json(r, "{}", R"({"runners":{"mine":{"tool":"t","args":["a"]}}})");
+    ASSERT_NE(r.runner("mine"), nullptr);
+    EXPECT_EQ(r.runner("mine")->args.size(), 1u);
+    ASSERT_NE(r.runner("ocd"), nullptr);
+    EXPECT_TRUE(r.notes().empty());
+}
+
+TEST(Registry, BoardMissingFromUserFileComesFromBakedAndRunnerVarsMerge) {
+    Registry r = registry_from_json("{}",
+        R"({"boards":{"b1":{"name":"B1","runners":{"ocd":{"x":"1","y":"2"}}},"b2":{"name":"B2"}}})");
+    merge_json(r, "{}", R"({"boards":{"b1":{"runners":{"ocd":{"x":"7"}}}}})");
+    ASSERT_NE(r.board("b2"), nullptr);          // not in the user file
+    EXPECT_EQ(r.board("b2")->name, "B2");
+    EXPECT_EQ(r.board("b1")->runners.at("ocd").at("x"), "7");
+    EXPECT_EQ(r.board("b1")->runners.at("ocd").at("y"), "2");
+}
+
+TEST(Registry, ToolOverlayKeepsBakedFieldsTheUserFileLacks) {
+    Registry r = registry_from_json(
+        R"({"tools":{"t":{"binary":"tb","version":"1","packages":{"apt":"pa","brew":"pb"}}}})", "{}");
+    merge_json(r, R"({"tools":{"t":{"packages":{"apt":"mine"}}}})", "{}");
+    const ToolDef* t = r.tool("t");
+    ASSERT_NE(t, nullptr);
+    EXPECT_EQ(t->binary, "tb");
+    EXPECT_EQ(t->version, "1");
+    EXPECT_EQ(t->packages.at("apt"), "mine");
+    EXPECT_EQ(t->packages.at("brew"), "pb");
+}
+
+TEST(Registry, BakedDataSurvivesAStaleUserBoardsFile) {
+    Registry r = registry_from_json(std::string(nav::config::kBakedToolchainJson),
+                                    std::string(nav::config::kBakedBoardsJson));
+    EXPECT_NE(r.board("navixdev"), nullptr);
+    // A stale materialised copy (no probe groups, no navixdev) overlays cleanly.
+    merge_json(r, "{}", R"({"boards":{"navixsmf401re":{"name":"Old"}}})");
+    EXPECT_NE(r.board("navixdev"), nullptr);
+    bool any_probe = false;
+    for (const auto& [id, d] : r.runners())
+        for (const auto& g : d.args) any_probe |= !g.when.empty();
+    EXPECT_TRUE(any_probe);
 }

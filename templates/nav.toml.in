@@ -6,9 +6,9 @@ version = "0.1.0"
 type = "executable"
 
 [target]
-arch = "cortex-m4"
-vendor = "stm32"
-board = "nucleo_f401re"
+arch = "{{ARCH}}"
+vendor = "{{VENDOR}}"
+board = "{{BOARD}}"
 
 [build]
 backend = "cmake"

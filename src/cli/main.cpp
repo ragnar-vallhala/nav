@@ -81,6 +81,7 @@ int main(int argc, char* argv[]) {
     std::map<std::string, std::unique_ptr<nav::core::ICommand>> commands;
     commands["create"]  = std::make_unique<nav::core::CreateCommand>();
     commands["build"]   = std::make_unique<nav::core::BuildCommand>();
+    commands["regen"]   = std::make_unique<nav::core::RegenCommand>();
     commands["upload"]  = std::make_unique<nav::core::UploadCommand>();
     commands["monitor"] = std::make_unique<nav::core::MonitorCommand>();
     commands["clean"]   = std::make_unique<nav::core::CleanCommand>();

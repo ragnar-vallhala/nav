@@ -37,6 +37,11 @@
         }
       }
     },
+    "openocd": {
+      "binary": "openocd",
+      "version": "0.12.0",
+      "packages": { "apt": "openocd", "dnf": "openocd", "pacman": "openocd", "brew": "open-ocd" }
+    },
     "avrdude": {
       "binary": "avrdude",
       "version": "7.3",
@@ -50,6 +55,37 @@
       }
     }
   },
+  "runners": {
+    "st-flash": {
+      "tool": "st-flash",
+      "image": "bin",
+      "args": [
+        { "if": "probe_serial", "args": ["--serial", "{probe_serial}"] },
+        { "if": "connect_under_reset", "args": ["--connect-under-reset"] },
+        "write", "{bin}", "{address}"
+      ]
+    },
+    "openocd": {
+      "tool": "openocd",
+      "image": "elf",
+      "args": [
+        "-f", "{interface}",
+        { "if": "probe_serial", "args": ["-c", "adapter serial {probe_serial}"] },
+        { "if": "probe_usb_path", "args": ["-c", "adapter usb location {probe_usb_path}"] },
+        { "if": "probe_serial|probe_usb_path", "args": ["-c", "transport select hla_swd"] },
+        "-f", "{target}",
+        { "if": "connect_under_reset", "args": ["-c", "reset_config srst_only connect_assert_srst"] },
+        "-c", "program \"{elf}\" verify reset exit"
+      ],
+      "defaults": { "interface": "interface/stlink.cfg" }
+    },
+    "avrdude": {
+      "tool": "avrdude",
+      "image": "hex",
+      "args": ["-p", "{part}", "-c", "{programmer}", "-P", "{port}", "-b", "{baud}", "-D", "-U", "flash:w:{hex}:i"],
+      "defaults": { "programmer": "arduino", "baud": "115200" }
+    }
+  },
   "boards": {
     "nucleo_f401re": {
       "name": "STM32 Nucleo-F401RE",
@@ -60,6 +96,53 @@
       "compiler": "arm-none-eabi-gcc",
       "flash_tool": "st-flash",
       "flash_address": "0x08000000",
+      "runner": "st-flash",
+      "runners": {
+        "st-flash": {},
+        "openocd": { "target": "target/stm32f4x.cfg" }
+      },
+      "reset_after_flash": true,
+      "reset_command": ["st-flash", "reset"],
+      "compile_flags": ["-mcpu=cortex-m4", "-mthumb", "-mfloat-abi=hard", "-mfpu=fpv4-sp-d16"],
+      "link_flags": ["-mcpu=cortex-m4", "-mthumb", "-mfloat-abi=hard", "-mfpu=fpv4-sp-d16"],
+      "default_framework": "navhal",
+      "supported_frameworks": ["navhal"]
+    },
+    "navixsmf401re": {
+      "name": "NAVIXSM-F401RE",
+      "arch": "cortex-m4",
+      "vendor": "stm32",
+      "mcu": "stm32f401re",
+      "navhal_board": "navixsmf401re",
+      "compiler": "arm-none-eabi-gcc",
+      "flash_tool": "st-flash",
+      "flash_address": "0x08000000",
+      "runner": "st-flash",
+      "runners": {
+        "st-flash": {},
+        "openocd": { "target": "target/stm32f4x.cfg" }
+      },
+      "reset_after_flash": true,
+      "reset_command": ["st-flash", "reset"],
+      "compile_flags": ["-mcpu=cortex-m4", "-mthumb", "-mfloat-abi=hard", "-mfpu=fpv4-sp-d16"],
+      "link_flags": ["-mcpu=cortex-m4", "-mthumb", "-mfloat-abi=hard", "-mfpu=fpv4-sp-d16"],
+      "default_framework": "navhal",
+      "supported_frameworks": ["navhal"]
+    },
+    "navixdev": {
+      "name": "NAVIXDEV",
+      "arch": "cortex-m4",
+      "vendor": "stm32",
+      "mcu": "stm32f401re",
+      "navhal_board": "navixdev",
+      "compiler": "arm-none-eabi-gcc",
+      "flash_tool": "st-flash",
+      "flash_address": "0x08000000",
+      "runner": "st-flash",
+      "runners": {
+        "st-flash": {},
+        "openocd": { "target": "target/stm32f4x.cfg" }
+      },
       "reset_after_flash": true,
       "reset_command": ["st-flash", "reset"],
       "compile_flags": ["-mcpu=cortex-m4", "-mthumb", "-mfloat-abi=hard", "-mfpu=fpv4-sp-d16"],
@@ -76,6 +159,10 @@
       "compiler": "avr-gcc",
       "flash_tool": "avrdude",
       "flash_address": "",
+      "runner": "avrdude",
+      "runners": {
+        "avrdude": { "part": "m328p" }
+      },
       "reset_after_flash": false,
       "compile_flags": ["-mmcu=atmega328p"],
       "link_flags": ["-mmcu=atmega328p"],

@@ -51,6 +51,11 @@ configure_file(
 # must NOT contain the literal sequence )NAVCFG".
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/data/toolchain.json" NAV_CFG_TOOLCHAIN)
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/data/boards.json"    NAV_CFG_BOARDS)
+# file(READ) is not a configure dependency by itself: without this, editing
+# the JSON left the old copy baked into nav until a manual re-configure.
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/data/toolchain.json"
+    "${CMAKE_CURRENT_SOURCE_DIR}/data/boards.json")
 configure_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/templates/embedded_config.hpp.in"
     "${CMAKE_CURRENT_BINARY_DIR}/generated/include/nav/config/embedded_config.hpp"
@@ -71,13 +76,22 @@ add_library(nav_core STATIC
     src/core/platform.cpp
     src/core/cache.cpp
     src/core/navhal.cpp
+    src/core/kconfig_python.cpp
+    src/core/board_config.cpp
+    src/core/runner.cpp
+    src/core/probe.cpp
+    src/core/variant.cpp
     src/core/registry.cpp
     src/core/provision.cpp
     src/core/deps.cpp
     src/core/libdeps.cpp
     src/core/navconfig.cpp
+    src/core/build_log.cpp
+    src/core/appbuild.cpp
+    src/core/appkconfig.cpp
     src/core/commands/create.cpp
     src/core/commands/build.cpp
+    src/core/commands/regen.cpp
     src/core/commands/upload.cpp
     src/core/commands/monitor.cpp
     src/core/commands/clean.cpp

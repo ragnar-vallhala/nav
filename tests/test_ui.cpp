@@ -1,4 +1,5 @@
 #include "nav/core/ui.hpp"
+#include "test_env.hpp"
 
 #include <gtest/gtest.h>
 
@@ -21,10 +22,10 @@ TEST(Ui, ForceAlwaysProducesEscapes) {
 
 TEST(Ui, AutoModeRespectsNoColorEnv) {
     // Manually flip back to auto and re-resolve with NO_COLOR set.
-    ::setenv("NO_COLOR", "1", 1);
+    set_env("NO_COLOR", "1");
     ui::set_color_mode(ui::ColorMode::Auto);
     EXPECT_FALSE(ui::color_enabled());
-    ::unsetenv("NO_COLOR");
+    unset_env("NO_COLOR");
 }
 
 TEST(Ui, ToolHelpersRouteThroughColorGate) {

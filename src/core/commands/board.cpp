@@ -1,12 +1,21 @@
 #include "nav/core/board.hpp"
+#include "nav/core/board_config.hpp"
 #include "nav/core/command.hpp"
 #include "nav/core/config.hpp"
+#include "nav/core/kconfig_python.hpp"
+#include "nav/core/navhal.hpp"
+#include "nav/templates/embedded.hpp"
 #include "nav/core/provision.hpp"
+#include "nav/core/registry.hpp"
+#include "nav/core/runner.hpp"
 #include "nav/core/toolchain.hpp"
 #include "nav/core/ui.hpp"
 
 #include <algorithm>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -19,7 +28,7 @@ namespace {
 std::vector<std::string> board_tools(const Board& b) {
     std::vector<std::string> t;
     if (!b.compiler.empty()) t.push_back(b.compiler);
-    if (!b.flash_tool.empty()) t.push_back(b.flash_tool);
+    if (auto flasher = default_flash_binary(b, registry()); !flasher.empty()) t.push_back(flasher);
     return t;
 }
 
@@ -113,7 +122,7 @@ int print_info(const std::string& id) {
     print_str_field("compiler", board->compiler);
     print_array_field("compile_flags", board->compile_flags);
     print_array_field("link_flags",    board->link_flags);
-    print_str_field("flash_tool",     board->flash_tool);
+    print_array_field("runners",      board_runner_names(*board));
     print_str_field("flash_address",  board->flash_address);
     print_str_field("default_framework", board->default_framework);
     print_array_field("supported_frameworks", board->supported_frameworks);
@@ -142,10 +151,10 @@ int board_check(IExecutionContext& ctx, const std::string& id) {
     }
 
     // Flasher — required for `nav upload`, so it counts toward readiness.
-    if (!board->flash_tool.empty()) {
-        auto res = tm.probe_tool(ctx, ToolRequirement{board->flash_tool, board->flash_tool, true});
-        if (res.is_found) ui::tool_ok(board->flash_tool, res.version_info);
-        else { ui::tool_missing_critical(board->flash_tool); ++missing_critical; }
+    if (const auto flasher = default_flash_binary(*board, registry()); !flasher.empty()) {
+        auto res = tm.probe_tool(ctx, ToolRequirement{flasher, flasher, true});
+        if (res.is_found) ui::tool_ok(flasher, res.version_info);
+        else { ui::tool_missing_critical(flasher); ++missing_critical; }
     }
 
     std::cout << "\n";
@@ -191,6 +200,66 @@ int board_install(IExecutionContext& ctx, const std::string& id) {
     return 1;
 }
 
+// Point the project at another board: nav.toml [target] and a fresh .config
+// from NavHAL's defconfig for it. The old .config is kept as .config.old.
+int board_use(IExecutionContext& ctx, const std::string& id) {
+    namespace fs = std::filesystem;
+    if (id.empty()) { ui::error("Usage: nav board use <board-id>"); return 1; }
+    auto root = find_project_root();
+    if (!root) { ui::error("No nav.toml found in this directory or any parent."); return 1; }
+    auto cfg = load_project_config(*root);
+    if (!cfg) { ui::error("Failed to parse nav.toml."); return 1; }
+    auto board = default_catalog(root).find(id);
+    if (!board) {
+        ui::error("Unknown board '" + id + "'. Run 'nav board list --all' to see available ids.");
+        return 1;
+    }
+
+    const fs::path dotconfig = *root / ".config";
+    const fs::path fresh = *root / ".config.nav-new";
+    std::error_code ec;
+    // A library has no .config unless its author added one to declare needs.
+    const bool wants_config = !cfg->is_library() || fs::exists(dotconfig, ec);
+    if (wants_config) {
+        const fs::path navhal_dir = *root / "extern" / "NavHAL";
+        if (sync_project_navhal(ctx, *root, *cfg).empty()) {
+            ui::error("Could not provision NavHAL. Check your network connection and retry.");
+            return 1;
+        }
+        const std::string python = ensure_kconfig_python(ctx);
+        if (python.empty()) ui::warning("Writing an unexpanded .config; 'nav build' expands it.");
+        const std::string why =
+            seed_board_config(ctx, navhal_dir, navhal_board_name(*board), templates::kDotConfig, fresh, python);
+        if (!why.empty()) {
+            fs::remove(fresh, ec);
+            ui::error("Could not write .config for board '" + id + "': " + why);
+            return 1;
+        }
+    }
+
+    std::ostringstream toml;
+    toml << std::ifstream(*root / "nav.toml").rdbuf();
+    std::ofstream(*root / "nav.toml", std::ios::trunc) << retarget_nav_toml(toml.str(), *board);
+
+    if (wants_config) {
+        if (fs::exists(dotconfig, ec)) {
+            fs::rename(dotconfig, *root / ".config.old", ec);
+            ui::info("Previous .config kept as .config.old.");
+        }
+        fs::rename(fresh, dotconfig, ec);
+        if (ec) { ui::error("Could not move the new .config into place: " + ec.message()); return 1; }
+    }
+
+    ui::success("Project now targets " + board->id + ".");
+    if (!cfg->dependencies.empty())
+        ui::info("Dependency requirements are merged back into .config on the next 'nav build'.");
+    const auto previous = default_catalog(root).find(cfg->target_board);
+    if (fs::exists(*root / "build", ec) && previous && previous->compiler != board->compiler)
+        ui::info("The compiler changed (" + previous->compiler + " -> " + board->compiler +
+                 "): run 'nav clean' before building.");
+    return 0;
+}
+
 } // namespace
 
 int BoardCommand::run(IExecutionContext& ctx, const std::vector<std::string>& args) {
@@ -208,8 +277,9 @@ int BoardCommand::run(IExecutionContext& ctx, const std::vector<std::string>& ar
     if (sub == "info")    return print_info(id);
     if (sub == "check")   return board_check(ctx, id);
     if (sub == "install") return board_install(ctx, id);
+    if (sub == "use")     return board_use(ctx, id);
 
-    ui::error("Unknown subcommand 'board " + sub + "'. Use: list [--all] | info <id> | check <id> | install <id>.");
+    ui::error("Unknown subcommand 'board " + sub + "'. Use: list [--all] | info <id> | check <id> | install <id> | use <id>.");
     return 1;
 }
 

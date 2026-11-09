@@ -27,7 +27,17 @@ add_executable(nav_tests
     test_cache.cpp
     test_deps.cpp
     test_libdeps.cpp
+    test_depgraph.cpp
+    test_navhal_pin.cpp
     test_navconfig.cpp
+    test_build_log.cpp
+    test_kconfig_python.cpp
+    test_board_config.cpp
+    test_runner.cpp
+    test_probe.cpp
+    test_variant.cpp
+    test_appbuild.cpp
+    test_appkconfig.cpp
 )
 
 target_include_directories(nav_tests PRIVATE
@@ -42,3 +52,10 @@ target_link_libraries(nav_tests PRIVATE
 
 include(GoogleTest)
 gtest_discover_tests(nav_tests)
+
+# End-to-end: the template's dependency-target loops against an ALIAS target.
+if(UNIX)
+    add_test(NAME TemplateAliasTargets
+        COMMAND sh ${CMAKE_SOURCE_DIR}/scripts/check-template-alias.sh
+                   ${CMAKE_SOURCE_DIR}/templates/cmakelists.txt.in)
+endif()

@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <fstream>
+#include <set>
+#include <sstream>
 
 namespace fs = std::filesystem;
 
@@ -16,7 +18,74 @@ std::string trim(const std::string& s) {
     return s.substr(b, e - b + 1);
 }
 
+// Symbol a .config line assigns ("CONFIG_X=v" or "# CONFIG_X is not set"), or "".
+std::string line_symbol(const std::string& line) {
+    const std::string t = trim(line);
+    if (t.rfind("# CONFIG_", 0) == 0) {
+        const auto e = t.find(" is not set");
+        if (e == std::string::npos) return "";
+        return trim(t.substr(2, e - 2));
+    }
+    if (t.rfind("CONFIG_", 0) == 0) {
+        const auto eq = t.find('=');
+        if (eq == std::string::npos) return "";
+        return trim(t.substr(0, eq));
+    }
+    return "";
+}
+
 } // namespace
+
+std::string apply_config_assignments(const std::string& text,
+                                     const std::vector<std::string>& assignments,
+                                     const std::string& header) {
+    std::map<std::string, std::string> want; // last assignment per symbol wins
+    std::vector<std::string> order;
+    for (const auto& a : assignments) {
+        const std::string sym = line_symbol(a);
+        if (sym.empty()) continue;
+        if (!want.count(sym)) order.push_back(sym);
+        want[sym] = trim(a);
+    }
+    std::set<std::string> done;
+    std::ostringstream out;
+    std::istringstream in(text);
+    std::string line;
+    while (std::getline(in, line)) {
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        const std::string sym = line_symbol(line);
+        auto it = sym.empty() ? want.end() : want.find(sym);
+        if (it == want.end()) { out << line << "\n"; continue; }
+        if (done.insert(sym).second) out << it->second << "\n";
+    }
+    bool first = true;
+    for (const auto& sym : order) {
+        if (done.count(sym)) continue;
+        if (first) {
+            out << "\n";
+            if (!header.empty()) out << header << "\n";
+            first = false;
+        }
+        out << want[sym] << "\n";
+    }
+    return out.str();
+}
+
+bool update_config_file(const fs::path& path, const std::vector<std::string>& assignments,
+                        const std::string& header) {
+    std::string old;
+    {
+        std::ifstream in(path);
+        std::ostringstream ss;
+        ss << in.rdbuf();
+        old = ss.str();
+    }
+    const std::string next = apply_config_assignments(old, assignments, header);
+    if (next == old) return true;
+    std::ofstream f(path, std::ios::trunc);
+    f << next;
+    return static_cast<bool>(f);
+}
 
 std::map<std::string, std::string> parse_kconfig(const fs::path& path) {
     std::map<std::string, std::string> out;
@@ -32,6 +101,39 @@ std::map<std::string, std::string> parse_kconfig(const fs::path& path) {
         if (!key.empty()) out[key] = val;
     }
     return out;
+}
+
+std::set<std::string> parse_kconfig_unset(const fs::path& path) {
+    std::set<std::string> out;
+    std::ifstream f(path);
+    std::string line;
+    while (std::getline(f, line)) {
+        const std::string t = trim(line);
+        if (t.rfind("# CONFIG_", 0) != 0) continue;
+        const std::string sym = line_symbol(t);
+        if (!sym.empty()) out.insert(sym);
+    }
+    return out;
+}
+
+std::vector<std::string> merge_requirements(std::map<std::string, std::string>& have,
+                                            const std::set<std::string>& unset,
+                                            const std::map<std::string, std::string>& required,
+                                            const std::string& dep,
+                                            std::vector<RequirementOverride>& overrides) {
+    std::vector<std::string> add;
+    for (const auto& [key, val] : required) {
+        auto it = have.find(key);
+        if (it != have.end()) {
+            if (it->second != val) overrides.push_back({dep, key, val, it->second});
+        } else if (unset.count(key)) {
+            overrides.push_back({dep, key, val, "not set"});
+        } else {
+            add.push_back(key + "=" + val);
+            have[key] = val;
+        }
+    }
+    return add;
 }
 
 std::optional<fs::path> find_navhal_config(const fs::path& root) {
