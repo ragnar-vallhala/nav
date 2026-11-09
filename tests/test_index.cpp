@@ -165,10 +165,10 @@ TEST(Index, ParseKindHelpers) {
 
 TEST(LocalIndexClient, ShardedPath) {
     nav::core::LocalIndexClient cli("/tmp/idx");
-    EXPECT_EQ(cli.index_path("nav-hal").string(),           "/tmp/idx/na/nav-hal.json");
-    EXPECT_EQ(cli.index_path("arm-none-eabi-gcc").string(), "/tmp/idx/ar/arm-none-eabi-gcc.json");
-    EXPECT_EQ(cli.index_path("imu-driver").string(),        "/tmp/idx/im/imu-driver.json");
-    EXPECT_EQ(cli.index_path("x").string(),                 "/tmp/idx/x/x.json");
+    EXPECT_EQ(cli.index_path("nav-hal").generic_string(),           "/tmp/idx/na/nav-hal.json");
+    EXPECT_EQ(cli.index_path("arm-none-eabi-gcc").generic_string(), "/tmp/idx/ar/arm-none-eabi-gcc.json");
+    EXPECT_EQ(cli.index_path("imu-driver").generic_string(),        "/tmp/idx/im/imu-driver.json");
+    EXPECT_EQ(cli.index_path("x").generic_string(),                 "/tmp/idx/x/x.json");
 }
 
 TEST(LocalIndexClient, ShardedFetchSuccess) {

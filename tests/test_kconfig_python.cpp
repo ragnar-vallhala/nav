@@ -1,6 +1,7 @@
 #include "nav/core/kconfig_python.hpp"
 
 #include "mock_execution_context.hpp"
+#include "test_env.hpp"
 
 #include <gtest/gtest.h>
 
@@ -32,7 +33,7 @@ protected:
         home = fs::temp_directory_path() /
                ("nav_kpy_" + std::to_string(::getpid()) + "_" + std::to_string(counter++));
         fs::create_directories(home);
-        ::setenv("NAV_HOME", home.c_str(), 1);
+        set_env("NAV_HOME", home.string());
         mock.handler = [this](const ExecutedCall& c) -> CommandResult {
             const auto& a = c.argv;
             const std::string vpy = nav::core::venv_python(nav::core::kconfig_venv_dir()).string();
@@ -64,7 +65,7 @@ protected:
         };
     }
     void TearDown() override {
-        ::unsetenv("NAV_HOME");
+        unset_env("NAV_HOME");
         std::error_code ec;
         fs::remove_all(home, ec);
     }

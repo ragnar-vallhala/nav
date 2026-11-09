@@ -2,6 +2,7 @@
 #include "nav/core/navhal.hpp"
 
 #include "mock_execution_context.hpp"
+#include "test_env.hpp"
 
 #include <gtest/gtest.h>
 
@@ -182,8 +183,8 @@ TEST(LibDeps, RenderEmitsDependencyOptionsBeforeSubdir) {
     ASSERT_NE(navhal, std::string::npos);
     ASSERT_NE(fpu, std::string::npos);
     ASSERT_NE(subdir, std::string::npos);
-    // Options must be forced into the cache before the library is added.
     EXPECT_NE(out.find("set(NAVLINK_PROFILE \"test\" CACHE STRING"), std::string::npos);
+    // Options must be forced into the cache before the library is added.
     EXPECT_LT(navhal, subdir);
     EXPECT_LT(fpu, subdir);
 }
@@ -197,7 +198,7 @@ namespace {
 class GitDeps : public ::testing::Test {
 protected:
     void SetUp() override {
-        ::setenv("NAV_HOME", (home.path() / "navhome").c_str(), 1);
+        set_env("NAV_HOME", (home.path() / "navhome").string());
         mock.handler = [this](const nav::test::ExecutedCall& c) -> nav::core::CommandResult {
             const auto& a = c.argv;
             if (a.size() >= 2 && a[0] == "git" && a[1] == "clone") {
@@ -212,7 +213,7 @@ protected:
             return {1, ""};
         };
     }
-    void TearDown() override { ::unsetenv("NAV_HOME"); }
+    void TearDown() override { unset_env("NAV_HOME"); }
 
     static std::string lib_toml(const std::string& name, const std::string& version) {
         return "[project]\nname = \"" + name + "\"\nversion = \"" + version +

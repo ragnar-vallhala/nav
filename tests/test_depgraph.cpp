@@ -4,6 +4,7 @@
 #include "nav/core/libdeps.hpp"
 
 #include "mock_execution_context.hpp"
+#include "test_env.hpp"
 
 #include <gtest/gtest.h>
 
@@ -61,7 +62,7 @@ protected:
     struct Repo { std::string toml; std::string commit; };
 
     void SetUp() override {
-        ::setenv("NAV_HOME", (home.path() / "navhome").c_str(), 1);
+        set_env("NAV_HOME", (home.path() / "navhome").string());
         mock.handler = [this](const nav::test::ExecutedCall& c) -> nav::core::CommandResult {
             const auto& a = c.argv;
             if (a.size() >= 2 && a[0] == "git" && a[1] == "clone") {
@@ -87,7 +88,7 @@ protected:
         cfg.root = home.path();
         cfg.project_name = "app";
     }
-    void TearDown() override { ::unsetenv("NAV_HOME"); }
+    void TearDown() override { unset_env("NAV_HOME"); }
 
     void repo(const std::string& url, const std::string& ref, const std::string& toml, char commit) {
         repos[url + "@" + ref] = {toml, std::string(40, commit)};

@@ -30,6 +30,8 @@ TEST(Platform, UnknownTokensFallBack) {
     EXPECT_EQ(platform_key_from_uname("", ""), "unknown_unknown");
 }
 
+// On Windows host_platform_key resolves the arch natively and never runs uname.
+#ifndef _WIN32
 TEST(Platform, HostKeyParsesUnameOutput) {
     MockExecutionContext mock;
     mock.scripted_result = {0, "Linux x86_64\n"};
@@ -44,3 +46,12 @@ TEST(Platform, HostKeyFallsBackWhenUnameFails) {
     mock.scripted_result = {127, ""};  // uname not found
     EXPECT_EQ(host_platform_key(mock), "unknown_unknown");
 }
+#endif // _WIN32
+
+#ifdef _WIN32
+TEST(Platform, HostKeyIsNativeOnWindows) {
+    MockExecutionContext mock;
+    EXPECT_EQ(host_platform_key(mock).rfind("windows_", 0), 0u);
+    EXPECT_TRUE(mock.calls.empty());
+}
+#endif // _WIN32

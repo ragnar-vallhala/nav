@@ -29,6 +29,9 @@ void touch(const fs::path& p) { std::ofstream(p) << ""; }
 
 } // namespace
 
+// The Windows implementation enumerates COMx devices and ignores the directory
+// argument, so the directory-scanning tests only apply to POSIX.
+#ifndef _WIN32
 TEST(Serial, EmptyDirReturnsEmpty) {
     TempDir td;
     EXPECT_TRUE(nav::core::find_serial_ports(td.path()).empty());
@@ -68,3 +71,4 @@ TEST(Serial, ResultIsSortedRegardlessOfFsOrder) {
 TEST(Serial, NonexistentDirReturnsEmpty) {
     EXPECT_TRUE(nav::core::find_serial_ports("/this/does/not/exist/anywhere").empty());
 }
+#endif // _WIN32
