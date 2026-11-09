@@ -435,3 +435,53 @@ TEST(AppBuildTemplate, SystemLibsComeAfterDependencyArchives) {
     // -lnosys is only added for syscalls != "none".
     EXPECT_NE(t.find("NOT NAV_APP_SYSCALLS STREQUAL \"none\""), std::string::npos);
 }
+
+// --- deps_opt ---------------------------------------------------------------
+
+TEST(AppBuildDepsOpt, ParsesAndValidates) {
+    TempDir td;
+    write_toml(td.path(), "[build]\ndeps_opt = \"Os\"\n");
+    auto cfg = load_project_config(td.path());
+    ASSERT_TRUE(cfg);
+    EXPECT_EQ(cfg->build.deps_opt, "Os");
+
+    TempDir def;
+    write_toml(def.path(), "");
+    auto d = load_project_config(def.path());
+    ASSERT_TRUE(d);
+    EXPECT_TRUE(d->build.deps_opt.empty());
+
+    for (const char* bad : {"O4", "-Os", "os", ""}) {
+        TempDir b;
+        write_toml(b.path(), std::string("[build]\ndeps_opt = \"") + bad + "\"\n");
+        EXPECT_FALSE(load_project_config(b.path())) << bad;
+    }
+    for (const char* ok : {"O0", "O1", "O2", "O3", "Os", "Og", "Oz"}) {
+        TempDir g;
+        write_toml(g.path(), std::string("[build]\ndeps_opt = \"") + ok + "\"\n");
+        EXPECT_TRUE(load_project_config(g.path())) << ok;
+    }
+}
+
+TEST(AppBuildDepsOpt, PlanAndRender) {
+    TempDir td;
+    touch(td.path(), "src/main.c");
+    ProjectConfig cfg;
+    cfg.root = td.path();
+    std::string err;
+    auto plan = plan_app_build(cfg, err);
+    ASSERT_TRUE(plan) << err;
+    EXPECT_NE(render_app_cmake(*plan).find("set(NAV_APP_DEPS_OPT)"), std::string::npos);
+    cfg.build.deps_opt = "Oz";
+    plan = plan_app_build(cfg, err);
+    ASSERT_TRUE(plan) << err;
+    EXPECT_EQ(plan->deps_opt, "Oz");
+    EXPECT_NE(render_app_cmake(*plan).find("set(NAV_APP_DEPS_OPT \"Oz\")"), std::string::npos);
+}
+
+TEST(AppBuildDepsOpt, TemplateAppliesPerTarget) {
+    const std::string t = render_app_cmakelists("p");
+    EXPECT_NE(t.find("target_compile_options(${_nav_t} PRIVATE \"-${NAV_APP_DEPS_OPT}\")"), std::string::npos);
+    // It runs after nav-app.cmake is read, i.e. after every library target exists.
+    EXPECT_LT(t.find("include(\"${CMAKE_BINARY_DIR}/nav-app.cmake\")"), t.find("if(NAV_APP_DEPS_OPT)"));
+}

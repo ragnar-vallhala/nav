@@ -400,3 +400,13 @@ TEST(NavHal, GitHeadCommitTrimsAndValidates) {
     mock.scripted_result = {128, ""};
     EXPECT_TRUE(nav::core::git_head_commit(mock, "/repo").empty());
 }
+
+TEST(LibDeps, RenderListsEveryTargetForDepsOpt) {
+    std::vector<ResolvedLib> libs = {
+        {"core", "/abs/core", {}},
+        {"sensors", "/abs/sensors", {"core"}},
+    };
+    const std::string out = nav::core::render_libdeps_cmake(libs, {"sensors"});
+    EXPECT_NE(out.find("set(NAV_ALL_DEP_TARGETS core sensors)"), std::string::npos) << out;
+    EXPECT_NE(out.find("set(NAV_DEP_TARGETS sensors)"), std::string::npos);
+}

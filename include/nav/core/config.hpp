@@ -73,6 +73,9 @@ struct BuildSettings {
     // With libc = "newlib": "nosys" (default) links -lnosys last; "none" drops
     // it so a library or the app provides _sbrk/_write/... itself.
     std::string syscalls;
+    // -O level (e.g. "Os") applied per target to every dependency library and
+    // NavHAL, overriding their defaults. Empty = leave them alone.
+    std::string deps_opt;
     // Extra libraries, each linked as -l<name>.
     std::vector<std::string> libs;
     // Firmware file name (set by a variant's `output`); empty = project name.

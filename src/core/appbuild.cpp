@@ -207,6 +207,7 @@ std::optional<AppBuildPlan> plan_app_build(const ProjectConfig& cfg, std::string
     plan.c_standard = b.c_standard;
     plan.libc = b.libc;
     if (!b.syscalls.empty()) plan.syscalls = b.syscalls;
+    plan.deps_opt = b.deps_opt;
     plan.output = b.output;
     if (!b.linker_fragment.empty()) {
         std::error_code ec;
@@ -274,6 +275,7 @@ std::string render_app_cmake(const AppBuildPlan& plan) {
     os << "set(NAV_APP_LIBC " << cq(plan.libc) << ")\n";
     emit_list(os, "NAV_APP_LIBS", plan.libs);
     os << "set(NAV_APP_SYSCALLS " << cq(plan.syscalls) << ")\n";
+    os << "set(NAV_APP_DEPS_OPT" << (plan.deps_opt.empty() ? "" : " " + cq(plan.deps_opt)) << ")\n";
     for (const auto& ff : plan.file_flags) {
         os << "\nset_property(SOURCE";
         for (const auto& f : ff.files) os << "\n    " << cq(f);

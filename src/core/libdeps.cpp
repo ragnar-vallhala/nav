@@ -523,6 +523,11 @@ std::string render_libdeps_cmake(const std::vector<ResolvedLib>& libs,
     }
     os << "\n";
 
+    // Every library target (direct and transitive), for per-target settings
+    // such as [build] deps_opt.
+    os << "set(NAV_ALL_DEP_TARGETS";
+    for (const auto& l : libs) os << " " << l.name;
+    os << ")\n";
     os << "set(NAV_DEP_TARGETS";
     for (const auto& d : direct) os << " " << d;
     os << ")\n";

@@ -2,6 +2,7 @@
 
 #include <toml++/toml.hpp>
 
+#include <algorithm>
 #include <iostream>
 #include <regex>
 
@@ -174,6 +175,16 @@ bool parse_build_settings(const toml::table& tbl, BuildSettings& b) {
             return false;
         }
         b.syscalls = *v;
+        any = true;
+    }
+    if (const toml::node* n = bt->get("deps_opt")) {
+        auto v = n->value<std::string>();
+        static const char* const kOpt[] = {"O0", "O1", "O2", "O3", "Os", "Og", "Oz"};
+        if (!v || std::find(std::begin(kOpt), std::end(kOpt), *v) == std::end(kOpt)) {
+            std::cerr << "nav.toml: [build].deps_opt must be one of O0 O1 O2 O3 Os Og Oz\n";
+            return false;
+        }
+        b.deps_opt = *v;
         any = true;
     }
     if (const toml::node* n = bt->get("file_flags")) {

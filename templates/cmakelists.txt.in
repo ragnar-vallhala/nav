@@ -67,6 +67,21 @@ if(EXISTS "${CMAKE_BINARY_DIR}/nav-deps-pre.cmake")
     include("${CMAKE_BINARY_DIR}/nav-deps-pre.cmake")
 endif()
 
+# Every target created in a directory and its subdirectories (NavHAL builds its
+# libraries in nested directories, so the top directory holds none of them).
+function(nav_directory_targets dir out)
+    set(_found)
+    set(_todo "${dir}")
+    while(_todo)
+        list(POP_FRONT _todo _d)
+        get_property(_t DIRECTORY "${_d}" PROPERTY BUILDSYSTEM_TARGETS)
+        list(APPEND _found ${_t})
+        get_property(_sub DIRECTORY "${_d}" PROPERTY SUBDIRECTORIES)
+        list(APPEND _todo ${_sub})
+    endwhile()
+    set(${out} ${_found} PARENT_SCOPE)
+endfunction()
+
 # 2. Add NavHAL Dependency Framework
 add_subdirectory(extern/NavHAL)
 
@@ -97,8 +112,25 @@ set(NAV_APP_LIBC none)
 set(NAV_APP_OUTPUT)
 set(NAV_APP_LIBS)
 set(NAV_APP_SYSCALLS nosys)
+set(NAV_APP_DEPS_OPT)
 if(EXISTS "${CMAKE_BINARY_DIR}/nav-app.cmake")
     include("${CMAKE_BINARY_DIR}/nav-app.cmake")
+endif()
+# [build] deps_opt: one -O level for NavHAL and every dependency library. It is a
+# per-target option, which CMake puts after CMAKE_C_FLAGS(_<CONFIG>) and the
+# directory options and after whatever the target itself added at configure
+# time, so it is the last -O on the compile line and wins.
+if(NAV_APP_DEPS_OPT)
+    nav_directory_targets(extern/NavHAL _nav_hal_targets)
+    foreach(_nav_t ${_nav_hal_targets} ${NAV_ALL_DEP_TARGETS})
+        if(TARGET ${_nav_t})
+            get_target_property(_nav_type ${_nav_t} TYPE)
+            get_target_property(_nav_imported ${_nav_t} IMPORTED)
+            if(NOT _nav_imported AND NOT _nav_type STREQUAL "INTERFACE_LIBRARY" AND NOT _nav_type STREQUAL "UTILITY")
+                target_compile_options(${_nav_t} PRIVATE "-${NAV_APP_DEPS_OPT}")
+            endif()
+        endif()
+    endforeach()
 endif()
 add_executable(${PROJECT_NAME} ${NAV_APP_SOURCES})
 # A build variant may rename the firmware file (nav.toml [variant.*] output).
