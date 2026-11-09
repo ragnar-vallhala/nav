@@ -86,6 +86,7 @@ add_library(nav_core STATIC
     src/core/deps.cpp
     src/core/libdeps.cpp
     src/core/navconfig.cpp
+    src/core/build_log.cpp
     src/core/appbuild.cpp
     src/core/appkconfig.cpp
     src/core/commands/create.cpp

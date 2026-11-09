@@ -30,6 +30,7 @@ add_executable(nav_tests
     test_depgraph.cpp
     test_navhal_pin.cpp
     test_navconfig.cpp
+    test_build_log.cpp
     test_kconfig_python.cpp
     test_board_config.cpp
     test_runner.cpp

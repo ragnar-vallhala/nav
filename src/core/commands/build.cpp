@@ -2,6 +2,7 @@
 #include "nav/core/appkconfig.hpp"
 #include "nav/core/board.hpp"
 #include "nav/core/board_config.hpp"
+#include "nav/core/build_log.hpp"
 #include "nav/core/cache.hpp"
 #include "nav/core/command.hpp"
 #include "nav/core/config.hpp"
@@ -30,10 +31,12 @@ namespace nav::core {
 
 int BuildCommand::run(IExecutionContext& ctx, const std::vector<std::string>& args) {
     std::string variant_name;
+    bool verbose = false; // stream the full cmake/compiler output
     for (size_t i = 0; i < args.size(); ++i) {
         if (args[i] == "--variant" && i + 1 < args.size()) variant_name = args[++i];
         else if (args[i].rfind("--variant=", 0) == 0) variant_name = args[i].substr(10);
-        else { ui::error("Usage: nav build [--variant <name>]"); return 1; }
+        else if (args[i] == "-v" || args[i] == "--verbose") verbose = true;
+        else { ui::error("Usage: nav build [--variant <name>] [-v|--verbose]"); return 1; }
     }
     ui::step("Building", variant_name.empty() ? "Scanning project space and verifying build definitions..."
                                               : "Variant '" + variant_name + "': verifying build definitions...");
@@ -440,16 +443,28 @@ int BuildCommand::run(IExecutionContext& ctx, const std::vector<std::string>& ar
 #endif
 
     ui::step("Configuring", "cmake");
-    auto conf_res = ctx.execute(configure_cmd, "", /*silent=*/true);
+    auto conf_res = ctx.execute(configure_cmd, "", /*silent=*/!verbose);
     if (conf_res.exit_code != 0) {
-        std::cerr << conf_res.output << std::endl;
+        if (!verbose) std::cerr << conf_res.output << std::endl;
         ui::error("Configure failed.");
         return conf_res.exit_code;
     }
 
     ui::step("Compiling", "cmake --build");
-    auto build_res = ctx.execute({"cmake", "--build", bdir.generic_string(), "--parallel"}, "", /*silent=*/true);
+    auto build_res = ctx.execute({"cmake", "--build", bdir.generic_string(), "--parallel"}, "", /*silent=*/!verbose);
     if (build_res.exit_code == 0) {
+        // Warnings would otherwise vanish with the captured output: print each
+        // distinct one (with its context lines) and a count. -v already showed all.
+        if (!verbose) {
+            const BuildWarnings w = extract_build_warnings(build_res.output);
+            if (!w.blocks.empty()) {
+                for (const auto& b : w.blocks) std::cout << b << "\n";
+                std::string msg = std::to_string(w.blocks.size()) + " compiler warning(s)";
+                if (w.total > static_cast<int>(w.blocks.size()))
+                    msg += " (" + std::to_string(w.total) + " occurrences)";
+                ui::warning(msg + ". Run 'nav build -v' for the full output.");
+            }
+        }
         // The template's POST_BUILD step runs `size` on the ELF; the build is
         // captured silently, so surface that table (header + its row).
         {
@@ -468,7 +483,7 @@ int BuildCommand::run(IExecutionContext& ctx, const std::vector<std::string>& ar
         }
         ui::success("Build complete. Artifacts in " + bdir.generic_string() + "/");
     } else {
-        std::cerr << build_res.output << std::endl;
+        if (!verbose) std::cerr << build_res.output << std::endl;
         ui::error("Build failed.");
     }
     return build_res.exit_code;
