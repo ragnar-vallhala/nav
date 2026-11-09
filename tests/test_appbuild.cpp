@@ -498,3 +498,50 @@ TEST(AppBuildTemplate, NavhalDefinesAreAppliedToNavhalTargetsOnly) {
     EXPECT_LT(t.find("add_subdirectory(extern/NavHAL)"), t.find("PRIVATE ${NAV_NAVHAL_DEFINES}"));
     EXPECT_LT(t.find("PRIVATE ${NAV_NAVHAL_DEFINES}"), t.find("nav-deps-libs.cmake"));
 }
+
+// --- linker_fragment_position ------------------------------------------------
+
+TEST(AppBuildFragmentPosition, ParsesAndValidates) {
+    TempDir td;
+    write_toml(td.path(), "[build]\nlinker_fragment_position = \"after\"\n");
+    auto cfg = load_project_config(td.path());
+    ASSERT_TRUE(cfg);
+    EXPECT_EQ(cfg->build.linker_fragment_position, "after");
+
+    TempDir def;
+    write_toml(def.path(), "");
+    auto d = load_project_config(def.path());
+    ASSERT_TRUE(d);
+    EXPECT_EQ(d->build.linker_fragment_position, "before");
+
+    TempDir bad;
+    write_toml(bad.path(), "[build]\nlinker_fragment_position = \"middle\"\n");
+    EXPECT_FALSE(load_project_config(bad.path()));
+}
+
+TEST(AppBuildFragmentPosition, PlanAndRender) {
+    TempDir td;
+    touch(td.path(), "src/main.c");
+    ProjectConfig cfg;
+    cfg.root = td.path();
+    std::string err;
+    auto plan = plan_app_build(cfg, err);
+    ASSERT_TRUE(plan) << err;
+    EXPECT_NE(render_app_cmake(*plan).find("set(NAV_APP_LINKER_FRAGMENT_POSITION \"before\")"), std::string::npos);
+    cfg.build.linker_fragment_position = "after";
+    plan = plan_app_build(cfg, err);
+    ASSERT_TRUE(plan) << err;
+    EXPECT_NE(render_app_cmake(*plan).find("set(NAV_APP_LINKER_FRAGMENT_POSITION \"after\")"), std::string::npos);
+}
+
+TEST(AppBuildFragmentPosition, TemplatePlacesFragmentAroundBoardScript) {
+    const std::string t = render_app_cmakelists("p");
+    const auto before = t.find("AND NOT NAV_APP_LINKER_FRAGMENT_POSITION STREQUAL \"after\"");
+    const auto board = t.find("list(APPEND NAV_APP_LINK_OPTIONS \"SHELL:-T \\\"${NAV_LINKER_SCRIPT}\\\"\")");
+    const auto after = t.find("AND NAV_APP_LINKER_FRAGMENT_POSITION STREQUAL \"after\"");
+    ASSERT_NE(before, std::string::npos);
+    ASSERT_NE(board, std::string::npos);
+    ASSERT_NE(after, std::string::npos);
+    EXPECT_LT(before, board);
+    EXPECT_LT(board, after);
+}

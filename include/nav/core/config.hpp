@@ -67,6 +67,9 @@ struct BuildSettings {
     // App linker fragment (relative to the project root), passed as a second
     // -T after NavHAL's board script; it should use `INSERT AFTER ...;`.
     std::string linker_fragment;
+    // "before" (default) or "after": where the fragment's -T goes relative to
+    // the board's -T.
+    std::string linker_fragment_position = "before";
     // "none" (freestanding, -nostdlib: today's behaviour) or "newlib"
     // (-lc -lm -lnosys with nosys.specs).
     std::string libc = "none";

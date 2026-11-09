@@ -127,6 +127,7 @@ set(NAV_APP_LIBC none)
 set(NAV_APP_OUTPUT)
 set(NAV_APP_LIBS)
 set(NAV_APP_SYSCALLS nosys)
+set(NAV_APP_LINKER_FRAGMENT_POSITION before)
 set(NAV_APP_DEPS_OPT)
 if(EXISTS "${CMAKE_BINARY_DIR}/nav-app.cmake")
     include("${CMAKE_BINARY_DIR}/nav-app.cmake")
@@ -204,17 +205,25 @@ else()
             "${NAV_LINKER_SCRIPT} does not exist. Update NavHAL.")
     endif()
 endif()
-# [build] linker_fragment: an app script layered on the board script (it should
-# use INSERT AFTER ...;); NavHAL's script stays the base. GNU ld only resolves
-# an INSERT target when the fragment's -T comes BEFORE the board's -T on its
-# command line ("board then app" fails with ".text not found for insert").
-# SHELL: keeps CMake from de-duplicating the repeated -T.
+# [build] linker_fragment: an app script layered on the board script. By default
+# its -T comes BEFORE the board's: GNU ld only resolves an `INSERT AFTER .text;`
+# when the fragment is read first ("board then app" fails with ".text not found
+# for insert"). With linker_fragment_position = "after" it comes after the board
+# script instead, so the fragment can refer to MEMORY regions the board script
+# defines. SHELL: keeps CMake from de-duplicating the repeated -T.
 set(NAV_APP_LINK_OPTIONS)
+set(_nav_frag_opt)
 if(NAV_APP_LINKER_FRAGMENT)
-    list(APPEND NAV_APP_LINK_OPTIONS "SHELL:-T \"${NAV_APP_LINKER_FRAGMENT}\"")
+    set(_nav_frag_opt "SHELL:-T \"${NAV_APP_LINKER_FRAGMENT}\"")
     set_property(TARGET ${PROJECT_NAME} APPEND PROPERTY LINK_DEPENDS "${NAV_APP_LINKER_FRAGMENT}")
 endif()
+if(_nav_frag_opt AND NOT NAV_APP_LINKER_FRAGMENT_POSITION STREQUAL "after")
+    list(APPEND NAV_APP_LINK_OPTIONS "${_nav_frag_opt}")
+endif()
 list(APPEND NAV_APP_LINK_OPTIONS "SHELL:-T \"${NAV_LINKER_SCRIPT}\"")
+if(_nav_frag_opt AND NAV_APP_LINKER_FRAGMENT_POSITION STREQUAL "after")
+    list(APPEND NAV_APP_LINK_OPTIONS "${_nav_frag_opt}")
+endif()
 # [build] libc: "none" is freestanding (-nostdlib); "newlib" drops it and links
 # the C library. The system libraries are collected here and emitted LAST on the
 # link line (step 7), after the app, hal and every dependency archive, so a

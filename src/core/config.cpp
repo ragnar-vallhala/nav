@@ -187,6 +187,15 @@ bool parse_build_settings(const toml::table& tbl, BuildSettings& b) {
         b.deps_opt = *v;
         any = true;
     }
+    if (const toml::node* n = bt->get("linker_fragment_position")) {
+        auto v = n->value<std::string>();
+        if (!v || (*v != "before" && *v != "after")) {
+            std::cerr << "nav.toml: [build].linker_fragment_position must be \"before\" or \"after\"\n";
+            return false;
+        }
+        b.linker_fragment_position = *v;
+        any = true;
+    }
     if (const toml::node* n = bt->get("file_flags")) {
         if (!parse_file_flags(*n, "[build]", b.file_flags)) return false;
         any = true;

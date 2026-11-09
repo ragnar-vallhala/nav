@@ -28,6 +28,7 @@ struct AppBuildPlan {
     std::string linker_fragment;            // absolute, '/'-separated; empty = none
     std::string libc = "none";
     std::string syscalls = "nosys";
+    std::string linker_fragment_position = "before";
     std::string deps_opt;
     std::vector<std::string> libs;
     struct FileFlags {
