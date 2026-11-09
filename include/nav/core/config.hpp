@@ -95,6 +95,12 @@ struct ProjectConfig {
     // 0 means undeclared (not checked).
     int hal_api_version = 0;
 
+    // [navhal] — which NavHAL this project builds against. `ref` is a tag,
+    // branch or commit; `git` overrides the upstream URL. Both empty when the
+    // table is absent (the NavHAL default then applies, see navhal_spec()).
+    std::string navhal_ref;
+    std::string navhal_git;
+
     bool is_library() const { return project_type == "library"; }
 };
 

@@ -120,6 +120,7 @@ bme280 = { git = "https://github.com/jane/nav-bme280", ref = "v1.2.0" }
 | `[build].backend` | yes | yes | `"cmake"`; implemented |
 | `[build].sources` | yes | yes | glob list † (today: `src/**` by CMake glob) |
 | `[requires].caps` | optional | optional | list of `NAVHAL_HAS_*` (sans prefix) † |
+| `[navhal].ref`, `[navhal].git` | no | optional | the NavHAL the app builds against: a tag, branch or commit (default `"stable"`) and an optional clone URL (default upstream). Pinned to a commit in `nav.lock` (`"navhal"`, §10); a library's own `[navhal]` is ignored when it is a dependency; implemented |
 | `[library].navhal_submodule` | optional | no | library owns the CPU vectors (SysTick/PendSV/SVCall/HardFault); nav builds NavHAL with `-DSUBMODULE`; implemented |
 | `[dependencies]` | optional | optional | name → `{ git, ref }` (or `{ path }` for local development) |
 
@@ -300,6 +301,14 @@ vaios   = { git = "https://github.com/ragnar-vallhala/vaios", ref = "v0.2.0", op
   `nav build` uses the locked SHA; only `nav update` moves it. This is the
   integrity guarantee (§12) — a tag that is force-moved upstream is detected as
   a SHA mismatch and fails the build.
+* **NavHAL is pinned the same way.** The app's NavHAL comes from `[navhal]`
+  (not from the libraries), and `nav.lock` records `{url, ref, commit}` under
+  `"navhal"`. `extern/NavHAL` is linked to that commit's own checkout in the
+  shared cache (`navhal/commits/<repo>/<sha>`), so apps on different NavHAL
+  versions do not share a tree. A ref that no longer resolves to the locked
+  commit fails the build; `nav update` re-resolves NavHAL and the locked
+  library refs and rewrites the pins. Lockfiles without a `"navhal"` entry stay
+  valid: the first build adds it.
 * The graph is walked transitively (git deps clone into the shared cache) and
   resolved with a topological sort. Cycles fail with a path-trace.
 * **The graph is one DAG with one copy of each library.** nav builds the whole

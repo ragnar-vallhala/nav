@@ -72,16 +72,13 @@ int BuildCommand::run(IExecutionContext& ctx, const std::vector<std::string>& /*
     // project root, so point $srctree at the NavHAL clone explicitly. Child
     // processes (cmake -> kconfig.py) inherit it.
     const fs::path navhal_dir = *root / "extern" / "NavHAL";
-    // The project links extern/NavHAL into the shared cache; if that link is
-    // missing or dangling (cache cleared, fresh checkout), restore it before
-    // configuring rather than failing deep inside cmake.
-    if (!fs::exists(navhal_dir)) {
-        ui::warning("NavHAL missing at extern/NavHAL — restoring from the shared cache.");
-        const fs::path navhal_src = ensure_navhal_cached(ctx, kDefaultNavhalRef);
-        if (navhal_src.empty() || !link_navhal(ctx, navhal_src, navhal_dir)) {
-            ui::error("Could not restore NavHAL. Check your network connection and retry.");
-            return 1;
-        }
+    // extern/NavHAL links to the checkout of the commit nav.lock pins for the
+    // project's [navhal] ref (pinning it on the first build). A missing or
+    // dangling link (cache cleared, fresh checkout) is restored here rather
+    // than failing deep inside cmake.
+    if (sync_project_navhal(ctx, *root, *cfg).empty()) {
+        ui::error("Could not provision NavHAL. See errors above.");
+        return 1;
     }
     // The board in nav.toml decides; .config must select that board and no
     // other. Checked before dependency requirements are merged in, so a stale
@@ -189,8 +186,8 @@ int BuildCommand::run(IExecutionContext& ctx, const std::vector<std::string>& /*
             ui::error("A pinned git dependency no longer matches nav.lock:");
             for (const auto& e : pins.errors) ui::error("  " + e);
             ui::error("The ref moved upstream, or the shared cache holds another commit. If the new");
-            ui::error("commit is intended, delete that entry from nav.lock and rebuild; otherwise");
-            ui::error("pin a ref that still points at the locked commit.");
+            ui::error("commit is intended, run 'nav update' (or delete that entry from nav.lock) and");
+            ui::error("rebuild; otherwise pin a ref that still points at the locked commit.");
             return 1;
         }
         if (pins.changed && !save_lockfile(lock, lock_path)) {

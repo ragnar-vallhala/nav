@@ -46,7 +46,7 @@ nav monitor --baud 115200   # open the serial monitor
 | `nav board` | Manage the board / toolchain registry. `nav board use <id>` switches the project's board: it updates `[target]` in `nav.toml` and regenerates `.config` (the old one is kept as `.config.old`). `nav build` stops if `.config` selects a different board from `nav.toml`. |
 | `nav lib` | Work with library dependencies: `add`, `remove`, `list`, and `tree`, which prints the whole dependency graph and marks conflicts (one library requested from two sources, reported with the chain of projects behind each request). `[overrides]` in `nav.toml` picks one source for the whole project. |
 | `nav check` | Verify the toolchain, package manager, and flasher are present and working. |
-| `nav update` | Install missing local tools. |
+| `nav update` | Install missing local tools. In a project it also re-resolves NavHAL's `[navhal]` ref and every locked library ref from upstream and rewrites their `nav.lock` pins. |
 | `nav regen` | Rewrite a nav-generated `CMakeLists.txt` from the current template (old one kept as `CMakeLists.txt.old`); needed before an older project can use `[build]` keys. |
 | `nav clean` | Remove build artifacts. |
 
@@ -101,6 +101,25 @@ gives each supported runner the variables it needs:
 Built-in variables are `{elf}`, `{bin}`, `{hex}`, `{address}` (the board's
 `flash_address`) and `{port}`. Command-line values (`--port`, `--set`) win over
 the board's, which win over the runner's `defaults`.
+
+### Pinning NavHAL
+
+`nav.toml` names the NavHAL a project builds against, and `nav.lock` pins the exact commit:
+
+```toml
+[navhal]
+ref = "v0.4.0"                      # a tag, branch or commit; default "stable"
+# git = "https://example.com/NavHAL.git"   # optional: a fork (default: upstream)
+```
+
+The first `nav build` (and `nav create`) writes the commit to `nav.lock`; every later build
+links `extern/NavHAL` to exactly that commit. Each commit has its own checkout under
+`~/.nav/navhal/commits/`, so apps pinned to different versions build side by side. If a
+branch ref now points somewhere else (seen when the locked commit is not cached, e.g. on a
+clean machine), the build stops; `nav update` takes the new commit and re-pins. A project
+with no `[navhal]` keeps using `stable`, pinned from its first build. `nav create` records
+the release tag `stable` points at, when there is one. An `extern/NavHAL` that is a real
+directory (vendored) is left alone.
 
 ---
 

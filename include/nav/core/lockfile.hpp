@@ -40,9 +40,21 @@ struct LockedGit {
     bool operator==(const LockedGit&) const = default;
 };
 
+// The NavHAL commit the project's [navhal] ref resolved to. Same guarantee as
+// LockedGit: later builds use exactly this commit, and a ref that now resolves
+// elsewhere is refused. Absent in lockfiles written before NavHAL was pinned.
+struct LockedNavhal {
+    std::string url;     // clone URL
+    std::string ref;     // tag / branch / commit as written in nav.toml
+    std::string commit;  // full object name the ref resolved to
+
+    bool operator==(const LockedNavhal&) const = default;
+};
+
 struct Lockfile {
     std::vector<LockedPackage> packages;
     std::vector<LockedGit> git;
+    std::optional<LockedNavhal> navhal;
 
     // Lookup by name; nullopt if absent.
     std::optional<LockedPackage> find(const std::string& name) const;

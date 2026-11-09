@@ -144,6 +144,8 @@ std::optional<ProjectConfig> load_project_config(const fs::path& project_root) {
     cfg.target_vendor = tbl["target"]["vendor"].value_or<std::string>("");
     cfg.target_board  = tbl["target"]["board"].value_or<std::string>("");
     cfg.build_backend = tbl["build"]["backend"].value_or<std::string>("");
+    cfg.navhal_ref = tbl["navhal"]["ref"].value_or<std::string>("");
+    cfg.navhal_git = tbl["navhal"]["git"].value_or<std::string>("");
     cfg.navhal_submodule = tbl["library"]["navhal_submodule"].value_or(false);
     cfg.hal_api_version = static_cast<int>(tbl["abi"]["hal_api_version"].value_or<int64_t>(0));
 

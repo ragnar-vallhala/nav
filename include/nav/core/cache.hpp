@@ -32,6 +32,14 @@ bool navhal_is_cached(const std::filesystem::path& dir);
 // sanitised to a filesystem-safe token; <ref> defaults to "default" when empty.
 std::filesystem::path git_cache_dir(const std::string& url, const std::string& ref);
 
+// Filesystem-safe token for a repo URL: its final path component minus ".git".
+std::string repo_slug(const std::string& url);
+
+// Immutable per-commit NavHAL checkout, shared by every project locked to that
+// commit (apps on different commits never share or fight over a directory):
+//   <nav_home_base>/navhal/commits/<repo-slug>/<full-commit-sha>
+std::filesystem::path navhal_commit_dir(const std::string& url, const std::string& commit);
+
 // Per-package install directory under `root`:
 //   <root>/<name>-<version>-<sha12>
 // where <sha12> is the first 12 hex chars of the download's SHA256. Including

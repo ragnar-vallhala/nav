@@ -37,9 +37,18 @@ std::optional<Lockfile> load_lockfile(const fs::path& path) {
     if (!doc.is_object()) return std::nullopt;
     const bool has_packages = doc.contains("packages") && doc["packages"].is_array();
     const bool has_git = doc.contains("git") && doc["git"].is_array();
-    if (!has_packages && !has_git) return std::nullopt;
+    const bool has_navhal = doc.contains("navhal") && doc["navhal"].is_object();
+    if (!has_packages && !has_git && !has_navhal) return std::nullopt;
 
     Lockfile lock;
+    if (has_navhal) {
+        const auto& el = doc["navhal"];
+        auto str = [&](const char* k) {
+            return (el.contains(k) && el[k].is_string()) ? el[k].get<std::string>() : std::string{};
+        };
+        LockedNavhal n{str("url"), str("ref"), str("commit")};
+        if (!n.url.empty() && !n.commit.empty()) lock.navhal = std::move(n);
+    }
     if (has_git) {
         for (const auto& el : doc["git"]) {
             if (!el.is_object()) continue;
@@ -128,6 +137,10 @@ std::string render_lockfile(const Lockfile& lock) {
         for (const auto& g : pins)
             doc["git"].push_back({{"name", g.name}, {"url", g.url}, {"ref", g.ref}, {"commit", g.commit}});
     }
+    // NavHAL pin. Omitted when absent so older locks render exactly as before.
+    if (lock.navhal)
+        doc["navhal"] = {{"url", lock.navhal->url}, {"ref", lock.navhal->ref},
+                         {"commit", lock.navhal->commit}};
     return doc.dump(2) + "\n";
 }
 

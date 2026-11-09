@@ -2,6 +2,7 @@
 #include "nav/core/board_config.hpp"
 #include "nav/core/command.hpp"
 #include "nav/core/kconfig_python.hpp"
+#include "nav/core/lockfile.hpp"
 #include "nav/core/navhal.hpp"
 #include "nav/core/project_name.hpp"
 #include "nav/core/ui.hpp"
@@ -139,25 +140,49 @@ int CreateCommand::run(IExecutionContext& ctx, const std::vector<std::string>& a
     // Fetch NavHAL into the shared per-user cache (cloned at most once per ref,
     // then reused by every project) and link it into the project rather than
     // re-cloning a full copy here.
-    ui::step("Linking", "Resolving NavHAL " + std::string(kDefaultNavhalRef) + " from the shared cache");
-    const fs::path navhal_src = ensure_navhal_cached(ctx, kDefaultNavhalRef);
-    if (navhal_src.empty()) {
+    NavhalSpec navhal;  // the default NavHAL; see below for what is recorded
+    ui::step("Linking", "Resolving NavHAL " + navhal.ref + " from the shared cache");
+    const auto resolved = resolve_navhal(ctx, navhal, "");
+    if (!resolved) {
         ui::error("Could not provision NavHAL. Aborting; no files were placed in the working directory.");
         cleanup_tmp();
         return 1;
     }
+    const fs::path navhal_src = resolved->dir;
     if (!link_navhal(ctx, navhal_src, tmp_path / "extern" / "NavHAL")) {
         ui::error("Failed to link NavHAL into the project.");
         cleanup_tmp();
         return 1;
     }
-    ui::info("NavHAL ready (cache: " + navhal_src.string() + ").");
+    ui::info("NavHAL ready at " + resolved->commit.substr(0, 12) + " (cache: " + navhal_src.string() + ").");
+
+    // Record the version the project was created against: the release tag the
+    // default ref points at when there is one (immutable), else the ref itself.
+    // nav.lock pins the exact commit either way.
+    {
+        auto tags = ctx.execute({"git", "ls-remote", "--tags", navhal.git}, "", /*silent=*/true);
+        if (tags.exit_code == 0) {
+            const std::string tag = tag_at_commit(tags.output, resolved->commit);
+            if (!tag.empty()) navhal.ref = tag;
+        }
+        Lockfile lock;
+        pin_navhal(lock, navhal, resolved->commit);
+        if (!save_lockfile(lock, tmp_path / "nav.lock")) {
+            ui::error("Failed to write nav.lock.");
+            cleanup_tmp();
+            return 1;
+        }
+    }
+    const std::string navhal_toml =
+        "\n# NavHAL this project builds against: a tag, branch or commit. nav.lock pins the\n"
+        "# exact commit; `nav update` re-resolves it. Add `git = \"<url>\"` to use a fork.\n"
+        "[navhal]\nref = \"" + navhal.ref + "\"\n";
 
     // Now that the network step has succeeded, lay down the local files. A
     // library project gets a static-archive CMake + exported header/source and
     // no main(); a firmware project gets the executable scaffold + .config.
     if (as_library) {
-        std::ofstream(tmp_path / "nav.toml")                     << substitute(templates::kNavTomlLib, vars);
+        std::ofstream(tmp_path / "nav.toml")                     << substitute(templates::kNavTomlLib, vars) << navhal_toml;
         std::ofstream(tmp_path / "include" / (proj_name + ".h")) << substitute(templates::kLibHeader, vars);
         std::ofstream(tmp_path / "src" / (proj_name + ".c"))     << substitute(templates::kLibSource, vars);
         std::ofstream(tmp_path / "CMakeLists.txt")               << substitute(templates::kCMakeListsLib, vars);
@@ -174,7 +199,7 @@ int CreateCommand::run(IExecutionContext& ctx, const std::vector<std::string>& a
             cleanup_tmp();
             return 1;
         }
-        std::ofstream(tmp_path / "nav.toml")        << substitute(templates::kNavToml, vars);
+        std::ofstream(tmp_path / "nav.toml")        << substitute(templates::kNavToml, vars) << navhal_toml;
         std::ofstream(tmp_path / "src" / "main.c")  << templates::kMainC;
         std::ofstream(tmp_path / "CMakeLists.txt")  << substitute(templates::kCMakeLists, vars);
         ui::info("Default config files and starter code populated.");

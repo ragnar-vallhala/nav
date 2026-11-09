@@ -222,13 +222,9 @@ int board_use(IExecutionContext& ctx, const std::string& id) {
     const bool wants_config = !cfg->is_library() || fs::exists(dotconfig, ec);
     if (wants_config) {
         const fs::path navhal_dir = *root / "extern" / "NavHAL";
-        if (!fs::exists(navhal_dir, ec)) {
-            ui::warning("NavHAL missing at extern/NavHAL — restoring from the shared cache.");
-            const fs::path src = ensure_navhal_cached(ctx, kDefaultNavhalRef);
-            if (src.empty() || !link_navhal(ctx, src, navhal_dir)) {
-                ui::error("Could not restore NavHAL. Check your network connection and retry.");
-                return 1;
-            }
+        if (sync_project_navhal(ctx, *root, *cfg).empty()) {
+            ui::error("Could not provision NavHAL. Check your network connection and retry.");
+            return 1;
         }
         const std::string python = ensure_kconfig_python(ctx);
         if (python.empty()) ui::warning("Writing an unexpanded .config; 'nav build' expands it.");

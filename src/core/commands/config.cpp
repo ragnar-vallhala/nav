@@ -42,13 +42,11 @@ int ConfigCommand::run(IExecutionContext& ctx, const std::vector<std::string>& /
     // NavHAL carries the Kconfig tree. Restore the link from the shared cache if
     // it's missing, exactly as `nav build` does.
     const fs::path navhal_dir = *root / "extern" / "NavHAL";
-    if (!fs::exists(navhal_dir)) {
-        ui::warning("NavHAL missing at extern/NavHAL — restoring from the shared cache.");
-        const fs::path navhal_src = ensure_navhal_cached(ctx, kDefaultNavhalRef);
-        if (navhal_src.empty() || !link_navhal(ctx, navhal_src, navhal_dir)) {
-            ui::error("Could not restore NavHAL. Run 'nav build' once, then retry.");
-            return 1;
-        }
+    auto pcfg = load_project_config(*root);
+    if (!pcfg) { ui::error("Failed to parse nav.toml."); return 1; }
+    if (sync_project_navhal(ctx, *root, *pcfg).empty()) {
+        ui::error("Could not provision NavHAL. Run 'nav build' once, then retry.");
+        return 1;
     }
     const fs::path kconfig = navhal_dir / "Kconfig";
     if (!fs::exists(kconfig)) {
