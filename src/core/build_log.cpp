@@ -18,6 +18,13 @@ bool is_error(const std::string& l) {
     return !is_indented(l) && (contains(l, ": error: ") || contains(l, ": fatal error: "));
 }
 
+// GNU ld prints this one without a "warning:" marker ("<ld>: missing
+// --end-group; added as last command line option"). It means a link group was
+// left open, so show it with the other warnings.
+bool is_linker_notice(const std::string& l) {
+    return !is_indented(l) && contains(l, "missing --end-group; added as last command line option");
+}
+
 // "[ 12%] Building ..." (make) or "[12/50] Building ..." (ninja).
 bool is_progress(const std::string& l) {
     if (l.size() < 3 || l[0] != '[') return false;
@@ -56,7 +63,14 @@ BuildWarnings extract_build_warnings(const std::string& output) {
     std::string line;
     while (std::getline(in, line)) {
         if (!line.empty() && line.back() == '\r') line.pop_back();
-        if (is_warning(line)) {
+        if (is_linker_notice(line)) {
+            // A one-line diagnostic: keep it as its own block so the lines after
+            // it (map output, the size table) are not swallowed as context.
+            flush();
+            open = true;
+            block = line + "\n";
+            flush();
+        } else if (is_warning(line)) {
             flush();
             open = true;
             block = line + "\n";
