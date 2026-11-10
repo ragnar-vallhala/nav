@@ -599,6 +599,75 @@ TEST(AppBuildTemplate, OlderTemplateWithoutAliasHandlingIsStale) {
     EXPECT_FALSE(cmakelists_supports_dep_opts(t));
 }
 
+TEST(AppBuildTemplate, OlderTemplateWithoutConfigFileMarkerIsStale) {
+    std::string t = render_app_cmakelists("p");
+    ASSERT_TRUE(cmakelists_supports_dep_opts(t));
+    const std::string marker = "NAV_NAVHAL_CONFIG_FILE";
+    for (auto pos = t.find(marker); pos != std::string::npos; pos = t.find(marker))
+        t.erase(pos, marker.size());
+    EXPECT_FALSE(cmakelists_supports_dep_opts(t));
+}
+
+TEST(AppBuildTemplate, PassesConfigToNavhalByPathWhenSupported) {
+    const std::string t = render_app_cmakelists("p");
+    const auto by_path = t.find("set(NAVHAL_CONFIG_FILE \"${NAV_APP_CONFIG_FILE}\")");
+    const auto gate = t.find("if(NAV_NAVHAL_HAS_CONFIG_FILE AND NAV_APP_CONFIG)");
+    const auto copy = t.find("COPYONLY");
+    const auto add = t.find("add_subdirectory(extern/NavHAL)");
+    ASSERT_NE(by_path, std::string::npos);
+    ASSERT_NE(gate, std::string::npos);
+    ASSERT_NE(copy, std::string::npos);
+    ASSERT_NE(add, std::string::npos);
+    // Path branch first; the copy lives only in the else branch; all before NavHAL is added.
+    EXPECT_LT(gate, by_path);
+    EXPECT_LT(by_path, t.find("else()", gate));
+    EXPECT_LT(t.find("else()", gate), copy);
+    EXPECT_LT(copy, add);
+    // The copy is written once, in the fallback only.
+    EXPECT_EQ(t.find("COPYONLY", copy + 1), std::string::npos);
+}
+
+namespace {
+std::string navhal_header(const std::string& ma, const std::string& mi, const std::string& pa) {
+    return "#define VERSION_MAJOR " + ma + "\n#define VERSION_MINOR " + mi + "\n#define VERSION_PATCH " + pa +
+           "\n#define VERSION \"x\"\n";
+}
+bool header_supports(const std::string& text) {
+    TempDir d;
+    fs::create_directories(d.path() / "include");
+    std::ofstream(d.path() / "include" / "navhal.h") << text;
+    return navhal_supports_config_file(d.path());
+}
+}
+
+TEST(NavhalConfigFile, SupportedFromVersion042) {
+    EXPECT_TRUE(header_supports(navhal_header("0", "4", "2")));
+    EXPECT_TRUE(header_supports(navhal_header("0", "4", "3")));
+    EXPECT_TRUE(header_supports(navhal_header("0", "5", "0")));
+    EXPECT_TRUE(header_supports(navhal_header("1", "0", "0")));
+    EXPECT_TRUE(header_supports(navhal_header("0", "10", "0")));
+}
+
+TEST(NavhalConfigFile, OlderVersionsFallBack) {
+    EXPECT_FALSE(header_supports(navhal_header("0", "4", "1")));
+    EXPECT_FALSE(header_supports(navhal_header("0", "3", "16")));
+}
+
+TEST(NavhalConfigFile, MissingOrUnparsableHeaderFallsBack) {
+    TempDir d;
+    EXPECT_FALSE(navhal_supports_config_file(d.path()));
+    EXPECT_FALSE(header_supports("#define VERSION_MAJOR 0\n"));
+    EXPECT_FALSE(header_supports("\x01\x02 garbage {{{ \n#define VERSION_MAJOR x\n"));
+    EXPECT_FALSE(header_supports(""));
+}
+
+TEST(NavhalConfigFile, ParsesNavhalPrefixedNumbers) {
+    int a = 0, b = 0, c = 0;
+    ASSERT_TRUE(parse_navhal_version("#define NAVHAL_VERSION_MAJOR 1\n# define NAVHAL_VERSION_MINOR 2\n"
+                                     "#define NAVHAL_VERSION_PATCH 3\n", a, b, c));
+    EXPECT_EQ(a, 1); EXPECT_EQ(b, 2); EXPECT_EQ(c, 3);
+}
+
 TEST(AppBuildTemplate, ResolvesAliasTargetsBeforeMutatingThem) {
     const std::string t = render_app_cmakelists("p");
     // Both loops that mutate dependency targets resolve ALIASED_TARGET first.

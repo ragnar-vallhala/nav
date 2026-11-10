@@ -215,6 +215,14 @@ with no `[navhal]` keeps using `stable`, pinned from its first build. `nav creat
 the release tag `stable` points at, when there is one. An `extern/NavHAL` that is a real
 directory (vendored) is left alone.
 
+The app's configuration reaches NavHAL by path, not by copy. Every `nav build` rewrites
+`<build dir>/nav-effective.config` from the app's `.config` (plus dependency requirements) and the
+generated `CMakeLists.txt` passes it as `NAVHAL_CONFIG_FILE`, so the shared checkout is never written
+and concurrent builds (two projects, a base build and a variant) do not race. This needs a
+`CMakeLists.txt` from the current template (`nav regen`) and a NavHAL that supports it (0.4.2 or
+newer, judged from the version in its `include/navhal.h`). With an older pinned NavHAL nav prints a
+note and copies the config into `extern/NavHAL/.config` as before.
+
 ---
 
 ## Install

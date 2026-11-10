@@ -2,6 +2,8 @@
 #include "nav/templates/embedded.hpp"
 
 #include <algorithm>
+#include <cctype>
+#include <fstream>
 #include <set>
 #include <sstream>
 #include <system_error>
@@ -352,7 +354,43 @@ bool cmakelists_supports_dep_opts(const std::string& t) {
     // such as navlink::navlink made set_property fail in older templates).
     return t.find("NAV_APP_LINKER_FRAGMENT_POSITION") != std::string::npos &&
            t.find("NAV_LINK_STUBS_AFTER_GROUP") != std::string::npos &&
-           t.find("NAV_ALIAS_SAFE") != std::string::npos;
+           t.find("NAV_ALIAS_SAFE") != std::string::npos &&
+           t.find("NAV_NAVHAL_CONFIG_FILE") != std::string::npos;
+}
+
+bool parse_navhal_version(const std::string& text, int& major, int& minor, int& patch) {
+    auto field = [&](const char* name, int& out) {
+        // `#define <name> <digits>`, or the same with a NAVHAL_ prefix.
+        std::istringstream in(text);
+        std::string line;
+        while (std::getline(in, line)) {
+            std::istringstream ls(line);
+            std::string hash, key, val;
+            ls >> hash;
+            if (hash == "#") ls >> hash; else if (hash.rfind("#", 0) == 0) hash.erase(0, 1);
+            if (hash != "define") continue;
+            ls >> key >> val;
+            if (key != name && key != std::string("NAVHAL_") + name) continue;
+            if (val.empty() || val.size() > 6 ||
+                !std::all_of(val.begin(), val.end(), [](unsigned char c) { return std::isdigit(c); }))
+                continue;
+            out = std::stoi(val);
+            return true;
+        }
+        return false;
+    };
+    return field("VERSION_MAJOR", major) && field("VERSION_MINOR", minor) && field("VERSION_PATCH", patch);
+}
+
+bool navhal_supports_config_file(const fs::path& navhal_dir) {
+    std::ifstream in(navhal_dir / "include" / "navhal.h");
+    if (!in) return false;
+    std::ostringstream ss;
+    ss << in.rdbuf();
+    int ma = 0, mi = 0, pa = 0;
+    if (!parse_navhal_version(ss.str(), ma, mi, pa)) return false;
+    if (ma != 0) return ma > 0;
+    return mi > 4 || (mi == 4 && pa >= 2);
 }
 
 bool cmakelists_is_nav_generated_app(const std::string& t) {

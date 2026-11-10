@@ -42,19 +42,32 @@ project({{PROJECT_NAME}} C CXX ASM)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# 1. Sync global configuration to dependency path
-#    A build variant may name another .config (nav passes -DNAV_APP_CONFIG=...).
+# 1. Hand the app's configuration to NavHAL.
+#    nav passes -DNAV_APP_CONFIG=<build>/nav-effective.config, regenerated from
+#    the app's .config at every `nav build`. A build variant may name another.
 set(NAV_APP_CONFIG_FILE "${CMAKE_CURRENT_SOURCE_DIR}/.config")
 if(NAV_APP_CONFIG)
     set(NAV_APP_CONFIG_FILE "${NAV_APP_CONFIG}")
 endif()
 if(EXISTS "${NAV_APP_CONFIG_FILE}")
     message(STATUS "[Nav] Locking active configuration context...")
-    configure_file(
-        "${NAV_APP_CONFIG_FILE}"
-        "${CMAKE_CURRENT_SOURCE_DIR}/extern/NavHAL/.config"
-        COPYONLY
-    )
+    # NAV_NAVHAL_CONFIG_FILE: nav sets NAV_NAVHAL_HAS_CONFIG_FILE when the pinned
+    # NavHAL honours -DNAVHAL_CONFIG_FILE (NavHAL >= 0.4.2). NavHAL then reads and
+    # writes that file in place, so the shared extern/NavHAL checkout is never
+    # touched and concurrent builds do not race on it. Only a nav-written file is
+    # handed over: never the tracked .config, which NavHAL would write back to.
+    if(NAV_NAVHAL_HAS_CONFIG_FILE AND NAV_APP_CONFIG)
+        set(NAVHAL_CONFIG_FILE "${NAV_APP_CONFIG_FILE}")
+    else()
+        # Older NavHAL reads only extern/NavHAL/.config, so copy into it.
+        configure_file(
+            "${NAV_APP_CONFIG_FILE}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/extern/NavHAL/.config"
+            COPYONLY
+        )
+        # Libraries (e.g. vaios) read NAVHAL_CONFIG_FILE; NavHAL itself ignores it.
+        set(NAVHAL_CONFIG_FILE "${NAV_APP_CONFIG_FILE}")
+    endif()
 else()
     message(WARNING "[Nav] Master '.config' not detected in project root! Utilizing ambient internal repository defaults.")
 endif()
