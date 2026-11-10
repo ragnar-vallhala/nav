@@ -62,4 +62,7 @@ jobs:
           dpkg-deb -I build/nav-*.deb | tee /dev/stderr | grep -E "Depends:.*libc6"
           max=$(objdump -T build/nav | grep -oE "GLIBC_[0-9.]+" | sed 's/GLIBC_//' | sort -V | tail -1)
           echo "highest GLIBC symbol: $max"
+          # An empty value (objdump failed, or the binary has no GLIBC symbols)
+          # must fail the job, not pass the comparison below.
+          [ -n "$max" ] || { echo "could not read GLIBC symbols from build/nav"; exit 1; }
           [ "$(printf '%s\n' "$max" 2.35 | sort -V | tail -1)" = "2.35" ]
