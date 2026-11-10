@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(Nav VERSION 1.3.0 LANGUAGES CXX)
+project(Nav VERSION 1.3.1 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -186,6 +186,9 @@ else()
     set(CPACK_DEBIAN_PACKAGE_SECTION "devel")
     set(CPACK_DEBIAN_PACKAGE_PRIORITY "optional")
     set(CPACK_DEBIAN_PACKAGE_DEPENDS "git, cmake, python3, build-essential")
+    # Let dpkg-shlibdeps add the libc6 (>= N) / libstdc++6 lines the binary really
+    # needs, so apt refuses an install the binary could not run on.
+    set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
 endif()
 
 include(CPack)

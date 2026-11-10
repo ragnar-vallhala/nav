@@ -32,3 +32,37 @@ jobs:
 
       - name: Smoke check nav binary
         run: ./build/nav --version
+
+  deb-floor:
+    name: Linux .deb on the oldest Ubuntu
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake git libssl-dev
+
+      - name: Build
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --config Release -j $(nproc)
+
+      - name: Package
+        run: cd build && cpack -G DEB
+
+      # The package must declare the libc it needs, and must not need more than
+      # the oldest supported release ships (Ubuntu 22.04: glibc 2.35).
+      - name: Check the glibc floor and the Depends line
+        run: |
+          dpkg-deb -I build/nav-*.deb | tee /dev/stderr | grep -E "Depends:.*libc6"
+          max=$(objdump -T build/nav | grep -oE "GLIBC_[0-9.]+" | sed 's/GLIBC_//' | sort -V | tail -1)
+          echo "highest GLIBC symbol: $max"
+          # An empty value (objdump failed, or the binary has no GLIBC symbols)
+          # must fail the job, not pass the comparison below.
+          [ -n "$max" ] || { echo "could not read GLIBC symbols from build/nav"; exit 1; }
+          [ "$(printf '%s\n' "$max" 2.35 | sort -V | tail -1)" = "2.35" ]
