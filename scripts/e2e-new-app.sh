@@ -46,7 +46,10 @@ cd "$APP"
 
 if [ -n "${NAV_E2E_NAVHAL_REF:-}" ]; then
     echo "== overriding NavHAL ref with '$NAV_E2E_NAVHAL_REF' (negative test)"
-    sed -i "s|^ref = .*|ref = \"$NAV_E2E_NAVHAL_REF\"|" nav.toml
+    # Only inside the [navhal] table (up to the next table header).
+    sed -i "/^\[navhal\]/,/^\[/ s|^ref = .*|ref = \"$NAV_E2E_NAVHAL_REF\"|" nav.toml
+    grep -q "^ref = \"$NAV_E2E_NAVHAL_REF\"" nav.toml \
+        || { echo "e2e: could not set the [navhal] ref in nav.toml" >&2; exit 2; }
     rm -f nav.lock
 fi
 

@@ -94,3 +94,12 @@ jobs:
 
       - name: Create and build a new app
         run: scripts/e2e-new-app.sh build/nav
+
+      # The check must be able to fail: a NavHAL ref that does not exist has to
+      # make the script exit non-zero (exit 2 means the script itself broke).
+      - name: A bad NavHAL pin must fail
+        run: |
+          set +e
+          NAV_E2E_NAVHAL_REF=no-such-ref-xyz scripts/e2e-new-app.sh build/nav
+          rc=$?
+          [ "$rc" -eq 1 ] || { echo "expected exit 1 for a bad pin, got $rc"; exit 1; }
