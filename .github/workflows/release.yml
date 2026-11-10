@@ -11,7 +11,10 @@ permissions:
 jobs:
   linux:
     name: Linux (.deb)
-    runs-on: ubuntu-latest
+    # Build on the oldest supported Ubuntu: the binary needs the glibc it was
+    # linked against (ubuntu-latest moved to 26.04 and produced a package that
+    # would not start on 24.04).
+    runs-on: ubuntu-22.04
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -51,25 +54,17 @@ jobs:
             - Windows: `nav-*-win64.exe` (installer) or `nav-*-win64.zip` (portable)
 
             **Highlights in this release**
-            - Build settings for apps: `[build.board.<name>]` and
-              `[build.kconfig.<SYMBOL>]` tables, full `[variant.<name>]` images in
-              their own build directory with per-variant dependency options,
-              `[navhal] exclude`, `syscalls`, `deps_opt` and
-              `linker_fragment_position`.
-            - Link order: libc, libm and your libraries share the dependency
-              group and `-lnosys` comes after it, so a library's own syscalls win.
-            - Each build hands NavHAL 0.4.2 or later its own config file
-              (`<build>/nav-effective.config`) instead of copying into the shared
-              NavHAL checkout; dependency Kconfig needs never edit your `.config`.
-            - Flashing: choose the debug probe (`--probe`, `--list-probes`,
-              connect under reset); `~/.nav/boards.json` overlays the built-in
-              boards, runners and tools.
-            - Compiler warnings are listed after a successful build; `nav build
-              -v` streams the full output.
-            - Git URLs and refs that start with `-` are rejected.
+            - Fixes the Linux package: v1.3.0's `.deb` was built on Ubuntu 26.04
+              and needs glibc 2.42, so it failed to start on Ubuntu 24.04. This
+              one is built on Ubuntu 22.04 (glibc 2.35) and declares its libc
+              dependency, so it runs on 22.04, 24.04 and later and apt refuses
+              an install the binary could not run on.
+            - Everything in v1.3.0: conditional `[build]` tables, variants,
+              link order, per-build NavHAL config, probe selection, build
+              warnings.
 
             **Upgrading:** a project whose `CMakeLists.txt` came from nav 1.2
-            needs `nav regen` to use the new settings; nav tells you when so.
+            needs `nav regen` to use the 1.3 settings; nav tells you when so.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
