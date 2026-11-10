@@ -385,6 +385,20 @@ int BuildCommand::run(IExecutionContext& ctx, const std::vector<std::string>& ar
 #endif
     }
 
+    // With no dependency requirements to merge there is still a build-dir copy of
+    // the config, so NavHAL gets a file of its own (and may write back into it)
+    // instead of the shared checkout's .config. Rewritten from the app's .config
+    // on every build, so a write-back never carries over to the next one.
+    if (effective_config.empty() && fs::exists(app_config)) {
+        effective_config = bdir / "nav-effective.config";
+        std::error_code copy_ec;
+        fs::copy_file(app_config, effective_config, fs::copy_options::overwrite_existing, copy_ec);
+        if (copy_ec) {
+            ui::error("Failed to write " + effective_config.string() + ": " + copy_ec.message());
+            return 1;
+        }
+    }
+
     // App-level Kconfig: merge NavHAL's, the dependencies' and the app's Kconfig,
     // validate .config against it, and generate app_autoconf.h + nav.config.
     // Without a root Kconfig nothing here runs and any stale output is removed.
@@ -465,11 +479,18 @@ int BuildCommand::run(IExecutionContext& ctx, const std::vector<std::string>& ar
 
     // Windows ships no `make`, so drive cmake through Ninja (provisioned above).
     // NAV_APP_CONFIG: the effective config (.config + dependency requirements).
+    // NAV_NAVHAL_HAS_CONFIG_FILE: the pinned NavHAL takes its config by path
+    // (-DNAVHAL_CONFIG_FILE, NavHAL >= 0.4.2), judged from its version header.
+    const bool navhal_by_path = !effective_config.empty() && navhal_supports_config_file(navhal_dir);
+    if (!effective_config.empty() && !navhal_by_path && !cfg->is_library())
+        ui::info("pinned NavHAL predates NAVHAL_CONFIG_FILE; concurrent builds of this project share "
+                 "extern/NavHAL/.config");
     std::vector<std::string> configure_cmd = {
         "cmake", "-S", ".", "-B", bdir.generic_string(), "-DPython3_EXECUTABLE=" + kconfig_python,
         "-DNAV_APP_CONFIG=" + (!effective_config.empty() ? fs::absolute(effective_config).generic_string()
                                : variant && !variant->kconfig.empty() ? app_config.generic_string()
-                                                                      : std::string{})};
+                                                                      : std::string{}),
+        std::string("-DNAV_NAVHAL_HAS_CONFIG_FILE=") + (navhal_by_path ? "ON" : "OFF")};
 #ifdef _WIN32
     configure_cmd.push_back("-G");
     configure_cmd.push_back("Ninja");
