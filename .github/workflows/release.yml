@@ -51,12 +51,25 @@ jobs:
             - Windows: `nav-*-win64.exe` (installer) or `nav-*-win64.zip` (portable)
 
             **Highlights in this release**
-            - Native Windows support: self-contained `nav.exe` + NSIS installer.
-            - JSON-driven toolchain/board registry (user-extensible under `~/.nav`).
-            - Library projects and dependencies (path + git), with NavHAL
-              capability requirements unioned into the app `.config`.
-            - `nav config`: a Kconfig menuconfig TUI over the project `.config`.
-            - Registry-driven reset-after-flash.
+            - Build settings for apps: `[build.board.<name>]` and
+              `[build.kconfig.<SYMBOL>]` tables, full `[variant.<name>]` images in
+              their own build directory with per-variant dependency options,
+              `[navhal] exclude`, `syscalls`, `deps_opt` and
+              `linker_fragment_position`.
+            - Link order: libc, libm and your libraries share the dependency
+              group and `-lnosys` comes after it, so a library's own syscalls win.
+            - Each build hands NavHAL 0.4.2 or later its own config file
+              (`<build>/nav-effective.config`) instead of copying into the shared
+              NavHAL checkout; dependency Kconfig needs never edit your `.config`.
+            - Flashing: choose the debug probe (`--probe`, `--list-probes`,
+              connect under reset); `~/.nav/boards.json` overlays the built-in
+              boards, runners and tools.
+            - Compiler warnings are listed after a successful build; `nav build
+              -v` streams the full output.
+            - Git URLs and refs that start with `-` are rejected.
+
+            **Upgrading:** a project whose `CMakeLists.txt` came from nav 1.2
+            needs `nav regen` to use the new settings; nav tells you when so.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
