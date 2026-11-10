@@ -66,3 +66,40 @@ jobs:
           # must fail the job, not pass the comparison below.
           [ -n "$max" ] || { echo "could not read GLIBC symbols from build/nav"; exit 1; }
           [ "$(printf '%s\n' "$max" 2.35 | sort -V | tail -1)" = "2.35" ]
+
+  # A freshly created app must build against the NavHAL version nav pins. This
+  # clones NavHAL from GitHub and pip-installs kconfiglib, so it needs network.
+  # Linux only: Windows is not covered until the Win11 runner of todo #293 exists.
+  new-app-build:
+    name: New app builds against pinned NavHAL
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # python3-venv/pip: nav creates a venv and pip-installs kconfiglib for
+      # NavHAL's Kconfig step. gcc-arm-none-eabi: nav uses the system toolchain.
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake git libssl-dev \
+            gcc-arm-none-eabi python3 python3-venv python3-pip
+
+      - name: Build nav
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DNAV_BUILD_TESTS=OFF
+          cmake --build build --config Release -j $(nproc)
+
+      - name: Create and build a new app
+        run: scripts/e2e-new-app.sh build/nav
+
+      # The check must be able to fail: a NavHAL ref that does not exist has to
+      # make the script exit non-zero (exit 2 means the script itself broke).
+      - name: A bad NavHAL pin must fail
+        run: |
+          set +e
+          NAV_E2E_NAVHAL_REF=no-such-ref-xyz scripts/e2e-new-app.sh build/nav
+          rc=$?
+          [ "$rc" -eq 1 ] || { echo "expected exit 1 for a bad pin, got $rc"; exit 1; }
