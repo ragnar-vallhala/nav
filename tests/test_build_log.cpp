@@ -54,3 +54,21 @@ TEST(BuildLog, LinkerWarningWithoutLineNumber) {
     auto w = extract_build_warnings("ld: warning: foo.elf has a LOAD segment with RWX permissions\n");
     ASSERT_EQ(w.blocks.size(), 1u);
 }
+
+TEST(BuildLog, LinkerMissingEndGroupIsAWarningWithoutSwallowingTheNextLines) {
+    const std::string out =
+        "[ 90%] Linking C executable app.elf\n"
+        "/opt/arm/bin/ld: missing --end-group; added as last command line option\n"
+        "Memory region         Used Size  Region Size  %age Used\n"
+        "[100%] Built target app\n";
+    auto w = extract_build_warnings(out);
+    ASSERT_EQ(w.blocks.size(), 1u);
+    EXPECT_EQ(w.total, 1);
+    EXPECT_EQ(w.blocks[0], "/opt/arm/bin/ld: missing --end-group; added as last command line option");
+}
+
+TEST(BuildLog, MissingEndGroupWordsInsideSourceContextAreNotAWarning) {
+    auto w = extract_build_warnings(
+        "    1 | // missing --end-group; added as last command line option\n");
+    EXPECT_TRUE(w.blocks.empty());
+}
