@@ -390,18 +390,11 @@ int BuildCommand::run(IExecutionContext& ctx, const std::vector<std::string>& ar
     // instead of the shared checkout's .config. Rewritten from the app's .config
     // on every build, so a write-back never carries over to the next one.
     if (effective_config.empty() && fs::exists(app_config)) {
-        std::string text;
-        {
-            std::ifstream in(app_config);
-            std::ostringstream ss;
-            ss << in.rdbuf();
-            text = ss.str();
-        }
         effective_config = bdir / "nav-effective.config";
-        std::ofstream out(effective_config, std::ios::trunc);
-        out << text;
-        if (!out.good()) {
-            ui::error("Failed to write " + effective_config.string() + ".");
+        std::error_code copy_ec;
+        fs::copy_file(app_config, effective_config, fs::copy_options::overwrite_existing, copy_ec);
+        if (copy_ec) {
+            ui::error("Failed to write " + effective_config.string() + ": " + copy_ec.message());
             return 1;
         }
     }
