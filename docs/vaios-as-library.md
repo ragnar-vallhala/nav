@@ -51,7 +51,7 @@ shared cache) → emits `build/nav-deps-libs.cmake` which `add_subdirectory()`s 
 (running the dependency's **own** CMakeLists) and `target_link_libraries()`s the edges. The
 consumer links its direct deps; CMake propagates PUBLIC includes and the inherited
 compiler/flags. nav passes **no** CMake options to a dependency, and clones git deps with
-`--depth 1 --branch` (**no** `--recurse-submodules`).
+`--depth 1 --branch --recurse-submodules --shallow-submodules`.
 
 ---
 
@@ -148,13 +148,17 @@ RTOS boots on a nucleo_f401re (or Renode/QEMU) and runs a task.
 
 ## Cross-cutting: git dependencies + submodules *(optional, 1-line)*
 
-vaios pulls NavHAL as a submodule. nav's `ensure_git_cached` clones with `--depth 1 --branch`
-and **no** `--recurse-submodules`, so a `git`-sourced vaios would have an empty
-`extern/NavHAL`. Options:
+**Done.** `ensure_git_cached` now clones with `--recurse-submodules --shallow-submodules`
+(`navhal.cpp`), so a `git`-sourced vaios arrives with `extern/NavHAL` populated. The text below is
+the original analysis, kept for the reasoning.
+
+vaios pulls NavHAL as a submodule. nav's `ensure_git_cached` cloned with `--depth 1 --branch`
+and **no** `--recurse-submodules`, so a `git`-sourced vaios would have had an empty
+`extern/NavHAL`. Options were:
 - Use a local `path` dep (submodule already populated) — fine for now.
 - Rely on the Tier-A NavHAL-reuse guard (consumer provides NavHAL; vaios's empty submodule
   is never entered).
-- Add `--recurse-submodules` to `ensure_git_cached` to make git deps self-contained generally.
+- Add `--recurse-submodules` to `ensure_git_cached` to make git deps self-contained generally. *(chosen)*
 
 ---
 
@@ -170,4 +174,4 @@ not just wiring.
 - **vaios**: add `nav.toml` (A1); guard NavHAL block + conditional `hal`/`common` link (A2).
 - **nav**: per-dependency `options` — `config.{hpp,cpp}`, `libdeps.{hpp,cpp}`, `commands/lib.cpp`
   (A3); firmware-template startup/linker/`SUBMODULE` hooks (B1); NavHAL `.config` ownership
-  rule (B2); optional `--recurse-submodules` in `navhal.cpp` (cross-cutting).
+  rule (B2); `--recurse-submodules` in `navhal.cpp` (cross-cutting, done).
