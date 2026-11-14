@@ -5,7 +5,7 @@
 > authoritative.
 
 The contract that any library or application built by `nav` must satisfy. The
-goal is for `nav build` and `nav add` to operate on third-party code the
+goal is for `nav build` and `nav lib add` to operate on third-party code the
 same way they operate on first-party code — versioned, capability-declared,
 and reproducibly buildable across targets. There is no package server:
 **a library is a Git repository, and GitHub is the host** (§12).
@@ -173,8 +173,14 @@ optional caps on for the build.
 
 ## 5. Build interface
 
-Libraries don't ship `CMakeLists.txt`. nav generates one from the manifest at
-build time. The generated rule is roughly:
+Libraries ship their own `CMakeLists.txt`. `nav create --lib` scaffolds one from
+`templates/cmakelists_lib.txt.in`; nav does not generate or replace it. The
+scaffold implements the core of the rule below (a STATIC target over the
+library's sources, `include/` exported PUBLIC) and differs in detail: it globs
+`src/`, adds NavHAL's include path itself and links the library's own
+dependencies. The `NAV_LIBRARY_NAME`/`NAV_LIBRARY_VERSION` definitions and the
+`cmake/extras.cmake` hook are part of the contract but nav does not implement
+them yet. The rule is roughly:
 
 ```cmake
 add_library(<name> STATIC ${SOURCES})
@@ -290,8 +296,11 @@ mylib   = { path = "../mylib" }
 vaios   = { git = "https://github.com/ragnar-vallhala/vaios", ref = "v0.2.2", options = ["NAVHAL=ON"] }
 ```
 
-* Exactly one of `git` or `path` per entry. `ref` is a tag, branch or commit;
-  **tags are the supported release mechanism** — a release is a Git tag
+* Exactly one of `git` or `path` per entry. A dependency's `ref` is a tag or a
+  branch, not a commit hash: nav fetches it with `git clone --depth 1 --branch
+  <ref>`, which takes a name only. (The `[navhal].ref` of an app is different and
+  may also be a commit, see above.)
+  **Tags are the supported release mechanism** — a release is a Git tag
   `vMAJOR.MINOR.PATCH` matching the manifest `[project].version`.
 * `ref` is mandatory for published libraries. An empty `ref` (default branch) is
   allowed for local experiments and `nav` warns, because it is not reproducible.
@@ -379,7 +388,7 @@ A library that defines `main()` is rejected by nav's validator.
 * **Release = tag.** `vMAJOR.MINOR.PATCH` on the repo, equal to
   `[project].version` in the manifest at that commit. `nav` rejects a fetched
   ref whose manifest version disagrees with a `v*` tag it was fetched by.
-* **Sublibraries.** `nav` clones with `--recurse-sublibraries`, so a library that
+* **Sublibraries.** `nav` clones with `--recurse-submodules --shallow-submodules`, so a library that
   vendors NavHAL (as vaios does) arrives complete. Libraries SHOULD NOT depend
   on a sublibrary for anything the consuming app already provides — a library
   must reuse the app's NavHAL rather than building a second one.
@@ -395,7 +404,7 @@ A library that defines `main()` is rejected by nav's validator.
 ---
 ## 13. Validation rules nav enforces
 
-At `nav add` time (and for every transitive dependency fetched at `nav build`):
+At `nav lib add` time (and for every transitive dependency fetched at `nav build`):
 
 1. Manifest parses; required fields present.
 2. semver well-formed.
