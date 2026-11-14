@@ -208,25 +208,21 @@ endif()
 # The board's linker script comes from NavHAL by name where NavHAL offers it.
 # NavHAL publishes NAVHAL_LINKER_SCRIPT and carries the -L its INCLUDE needs on
 # the `hal` target, so which file describes this board's memory stays NavHAL's
-# business -- naming the path here made every generated project depend on
-# NavHAL's directory layout. The path is kept only as a fallback for older
-# NavHAL, and should go when the resolved ref always exports the variable.
+# business and this template never names NavHAL's directory layout. NavHAL has
+# exported it since v0.3.11.
+#   - ARM: no export means a NavHAL older than that. Failing here beats passing
+#     no -T at all: ld would quietly fall back to its own default script and
+#     produce an image that does not boot.
+#   - AVR: avr-gcc picks the device's own linker script from -mmcu, and NavHAL
+#     has none to export, so no board -T is passed.
+set(NAV_LINKER_SCRIPT "")
 if(NAVHAL_LINKER_SCRIPT)
     set(NAV_LINKER_SCRIPT "${NAVHAL_LINKER_SCRIPT}")
-else()
-    # Deprecated fallback for a NavHAL that predates the export: name the path,
-    # the way this template used to. Kept only so a project built against an
-    # older NavHAL still links -- delete it once the NavHAL ref nav resolves
-    # publishes the variable, since the whole point is not knowing this layout.
-    set(NAV_LINKER_SCRIPT
-        "${CMAKE_CURRENT_SOURCE_DIR}/extern/NavHAL/src/board/${BOARD}/linker.ld")
-    if(NOT EXISTS "${NAV_LINKER_SCRIPT}")
-        # Failing here beats passing no -T at all: ld would quietly fall back to
-        # its own default script and produce an image that does not boot.
-        message(FATAL_ERROR
-            "No linker script: extern/NavHAL exports no NAVHAL_LINKER_SCRIPT and "
-            "${NAV_LINKER_SCRIPT} does not exist. Update NavHAL.")
-    endif()
+elseif(NOT NAV_BOARD_ARCH STREQUAL "avr")
+    message(FATAL_ERROR
+        "No linker script: extern/NavHAL exports no NAVHAL_LINKER_SCRIPT. "
+        "Update NavHAL to v0.3.11 or later (set [navhal] ref in nav.toml to a "
+        "release that has it).")
 endif()
 # [build] linker_fragment: an app script layered on the board script. By default
 # its -T comes BEFORE the board's: GNU ld only resolves an `INSERT AFTER .text;`
@@ -243,7 +239,9 @@ endif()
 if(_nav_frag_opt AND NOT NAV_APP_LINKER_FRAGMENT_POSITION STREQUAL "after")
     list(APPEND NAV_APP_LINK_OPTIONS "${_nav_frag_opt}")
 endif()
-list(APPEND NAV_APP_LINK_OPTIONS "SHELL:-T \"${NAV_LINKER_SCRIPT}\"")
+if(NAV_LINKER_SCRIPT)
+    list(APPEND NAV_APP_LINK_OPTIONS "SHELL:-T \"${NAV_LINKER_SCRIPT}\"")
+endif()
 if(_nav_frag_opt AND NAV_APP_LINKER_FRAGMENT_POSITION STREQUAL "after")
     list(APPEND NAV_APP_LINK_OPTIONS "${_nav_frag_opt}")
 endif()
