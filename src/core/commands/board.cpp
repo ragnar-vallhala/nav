@@ -4,6 +4,7 @@
 #include "nav/core/config.hpp"
 #include "nav/core/kconfig_python.hpp"
 #include "nav/core/navhal.hpp"
+#include "nav/core/template_source.hpp"
 #include "nav/templates/embedded.hpp"
 #include "nav/core/provision.hpp"
 #include "nav/core/registry.hpp"
@@ -229,7 +230,7 @@ int board_use(IExecutionContext& ctx, const std::string& id) {
         const std::string python = ensure_kconfig_python(ctx);
         if (python.empty()) ui::warning("Writing an unexpanded .config; 'nav build' expands it.");
         const std::string why =
-            seed_board_config(ctx, navhal_dir, navhal_board_name(*board), templates::kDotConfig, fresh, python);
+            seed_board_config(ctx, navhal_dir, navhal_board_name(*board), template_text("dot_config.in", templates::kDotConfig), fresh, python);
         if (!why.empty()) {
             fs::remove(fresh, ec);
             ui::error("Could not write .config for board '" + id + "': " + why);

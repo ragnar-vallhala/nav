@@ -6,6 +6,7 @@
 #include "nav/core/navhal.hpp"
 #include "nav/core/project_name.hpp"
 #include "nav/core/ui.hpp"
+#include "nav/core/template_source.hpp"
 #include "nav/templates/embedded.hpp"
 
 #include <chrono>
@@ -182,10 +183,10 @@ int CreateCommand::run(IExecutionContext& ctx, const std::vector<std::string>& a
     // library project gets a static-archive CMake + exported header/source and
     // no main(); a firmware project gets the executable scaffold + .config.
     if (as_library) {
-        std::ofstream(tmp_path / "nav.toml")                     << substitute(templates::kNavTomlLib, vars) << navhal_toml;
-        std::ofstream(tmp_path / "include" / (proj_name + ".h")) << substitute(templates::kLibHeader, vars);
-        std::ofstream(tmp_path / "src" / (proj_name + ".c"))     << substitute(templates::kLibSource, vars);
-        std::ofstream(tmp_path / "CMakeLists.txt")               << substitute(templates::kCMakeListsLib, vars);
+        std::ofstream(tmp_path / "nav.toml")                     << substitute(template_text("nav_lib.toml.in", templates::kNavTomlLib), vars) << navhal_toml;
+        std::ofstream(tmp_path / "include" / (proj_name + ".h")) << substitute(template_text("lib_header.h.in", templates::kLibHeader), vars);
+        std::ofstream(tmp_path / "src" / (proj_name + ".c"))     << substitute(template_text("lib_source.c.in", templates::kLibSource), vars);
+        std::ofstream(tmp_path / "CMakeLists.txt")               << substitute(template_text("cmakelists_lib.txt.in", templates::kCMakeListsLib), vars);
         ui::info("Library scaffold and starter code populated.");
     } else {
         // .config comes from NavHAL's defconfig for the chosen board, so it
@@ -193,15 +194,15 @@ int CreateCommand::run(IExecutionContext& ctx, const std::vector<std::string>& a
         const std::string python = ensure_kconfig_python(ctx);
         if (python.empty()) ui::warning("Writing an unexpanded .config; 'nav build' expands it.");
         const std::string why = seed_board_config(ctx, tmp_path / "extern" / "NavHAL", navhal_board_name(*board),
-                                                  templates::kDotConfig, tmp_path / ".config", python);
+                                                  template_text("dot_config.in", templates::kDotConfig), tmp_path / ".config", python);
         if (!why.empty()) {
             ui::error("Could not write .config for board '" + board->id + "': " + why);
             cleanup_tmp();
             return 1;
         }
-        std::ofstream(tmp_path / "nav.toml")        << substitute(templates::kNavToml, vars) << navhal_toml;
-        std::ofstream(tmp_path / "src" / "main.c")  << templates::kMainC;
-        std::ofstream(tmp_path / "CMakeLists.txt")  << substitute(templates::kCMakeLists, vars);
+        std::ofstream(tmp_path / "nav.toml")        << substitute(template_text("nav.toml.in", templates::kNavToml), vars) << navhal_toml;
+        std::ofstream(tmp_path / "src" / "main.c")  << template_text("main.c.in", templates::kMainC);
+        std::ofstream(tmp_path / "CMakeLists.txt")  << substitute(template_text("cmakelists.txt.in", templates::kCMakeLists), vars);
         ui::info("Default config files and starter code populated.");
     }
 

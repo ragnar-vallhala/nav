@@ -38,6 +38,7 @@ add_executable(nav_tests
     test_variant.cpp
     test_appbuild.cpp
     test_appkconfig.cpp
+    test_template_source.cpp
 )
 
 target_include_directories(nav_tests PRIVATE

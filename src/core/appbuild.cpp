@@ -1,4 +1,5 @@
 #include "nav/core/appbuild.hpp"
+#include "nav/core/template_source.hpp"
 #include "nav/templates/embedded.hpp"
 
 #include <algorithm>
@@ -399,7 +400,7 @@ bool cmakelists_is_nav_generated_app(const std::string& t) {
 }
 
 std::string render_app_cmakelists(const std::string& project_name) {
-    std::string out(templates::kCMakeLists);
+    std::string out = template_text("cmakelists.txt.in", templates::kCMakeLists);
     const std::string token = "{{PROJECT_NAME}}";
     for (size_t pos = 0; (pos = out.find(token, pos)) != std::string::npos; pos += project_name.size())
         out.replace(pos, token.size(), project_name);
