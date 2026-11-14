@@ -59,4 +59,8 @@ if(UNIX)
     add_test(NAME TemplateAliasTargets
         COMMAND sh ${CMAKE_SOURCE_DIR}/scripts/check-template-alias.sh
                    ${CMAKE_SOURCE_DIR}/templates/cmakelists.txt.in)
+    # The linker-script block: exported script, AVR without one, ARM without one.
+    add_test(NAME TemplateLinkerScript
+        COMMAND sh ${CMAKE_SOURCE_DIR}/scripts/check-template-linker.sh
+                   ${CMAKE_SOURCE_DIR}/templates/cmakelists.txt.in)
 endif()
