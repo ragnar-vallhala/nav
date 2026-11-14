@@ -175,7 +175,7 @@ jobs:
         run: |
           export NAV_HOME="$RUNNER_TEMP/diag-home"; mkdir -p "$NAV_HOME"
           cd "$RUNNER_TEMP" && rm -rf diag-app
-          build/nav.exe create diag-app >/dev/null 2>&1 || true
+          "$GITHUB_WORKSPACE/build/nav.exe" create diag-app 2>&1 | tail -3
           cd "$GITHUB_WORKSPACE" 2>/dev/null; cd "$RUNNER_TEMP/diag-app" || exit 0
           echo "--- dir extern:"; cmd //c "dir extern" | grep -i "navhal" || true
           echo "--- nav.lock present:"; ls nav.lock 2>&1
