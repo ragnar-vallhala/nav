@@ -3,10 +3,15 @@ name: Build and Release Artifacts
 on:
   push:
     tags:
-      - 'v*' # Trigger workflow whenever you push a version tag (e.g. v1.0.0)
+      - 'v*' # a version tag publishes a release
+  workflow_dispatch: # dry run without a tag: builds, checksums, uploads a workflow artifact, publishes nothing
+  pull_request:
+    paths:
+      - '.github/workflows/release.yml'
+      - 'scripts/windows/**'
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   linux:
@@ -36,37 +41,11 @@ jobs:
           cd build
           cpack -G DEB
 
-      - name: Deploy to GitHub Releases
-        uses: softprops/action-gh-release@v1
+      - uses: actions/upload-artifact@v4
         with:
-          name: Release ${{ github.ref_name }}
-          draft: false
-          prerelease: false
-          files: build/*.deb
-          body: |
-            # Nav — Embedded Development Orchestrator
-
-            Nav is a unified embedded systems development tool focused on
-            robotics, firmware, and hardware deployment workflows.
-
-            **Downloads**
-            - Linux (Debian/Ubuntu): `nav-*.deb`
-            - Windows: `nav-*-win64.exe` (installer) or `nav-*-win64.zip` (portable)
-
-            **Highlights in this release**
-            - Fixes the Linux package: v1.3.0's `.deb` was built on Ubuntu 26.04
-              and needs glibc 2.42, so it failed to start on Ubuntu 24.04. This
-              one is built on Ubuntu 22.04 (glibc 2.35) and declares its libc
-              dependency, so it runs on 22.04, 24.04 and later and apt refuses
-              an install the binary could not run on.
-            - Everything in v1.3.0: conditional `[build]` tables, variants,
-              link order, per-build NavHAL config, probe selection, build
-              warnings.
-
-            **Upgrading:** a project whose `CMakeLists.txt` came from nav 1.2
-            needs `nav regen` to use the 1.3 settings; nav tells you when so.
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          name: dist-linux
+          path: build/*.deb
+          if-no-files-found: error
 
   windows:
     name: Windows (installer + zip)
@@ -86,14 +65,80 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: .\scripts\windows\ci-build.ps1 -SourceDir "${{ github.workspace }}"
 
-      - name: Deploy to GitHub Releases
-        uses: softprops/action-gh-release@v1
+      - uses: actions/upload-artifact@v4
         with:
-          name: Release ${{ github.ref_name }}
-          draft: false
-          prerelease: false
-          files: |
+          name: dist-windows
+          path: |
             build/nav-*-win64.exe
             build/nav-*-win64.zip
+          if-no-files-found: error
+
+  release:
+    name: Checksums and publish
+    needs: [linux, windows]
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write # only used by the publish step, which runs on tags
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: dist-*
+          path: dist
+          merge-multiple: true
+
+      # A missing asset must fail the run, not publish a partial release.
+      - name: Check the asset set
+        run: |
+          cd dist
+          ls -l
+          test "$(ls nav-*.deb 2>/dev/null | wc -l)" -eq 1 || { echo "expected exactly one .deb"; exit 1; }
+          test "$(ls nav-*-win64.exe 2>/dev/null | wc -l)" -eq 1 || { echo "expected exactly one win64.exe"; exit 1; }
+          test "$(ls nav-*-win64.zip 2>/dev/null | wc -l)" -eq 1 || { echo "expected exactly one win64.zip"; exit 1; }
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            ver="${GITHUB_REF_NAME#v}"
+            for f in nav-*; do
+              case "$f" in *"-${ver}-"*) ;; *) echo "$f does not carry version ${ver}"; exit 1 ;; esac
+            done
+          fi
+
+      - name: Write SHA256SUMS
+        run: |
+          cd dist
+          sha256sum nav-* > SHA256SUMS
+          cat SHA256SUMS
+          sha256sum -c SHA256SUMS
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-assets
+          path: dist/*
+          if-no-files-found: error
+
+      # Notes come from the tag, not from this file: the commits since the
+      # previous tag, under a fixed downloads header.
+      - name: Publish to GitHub Releases
+        if: github.ref_type == 'tag'
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          cat > header.md <<'EOF'
+          # Nav, Embedded Development Orchestrator
+
+          **Downloads**
+          - Linux (Debian/Ubuntu 22.04+): `nav-*.deb`
+          - Windows: `nav-*-win64.exe` (installer) or `nav-*-win64.zip` (portable)
+          - `SHA256SUMS`: check with `sha256sum -c SHA256SUMS` (Windows: `Get-FileHash -Algorithm SHA256 <file>`)
+
+          EOF
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --clobber
+          else
+            gh release create "$TAG" dist/* --title "Release $TAG" \
+              --notes-file header.md --generate-notes --verify-tag
+          fi
+
+      # Stub: the mirror upload to get.navrobotec.in waits for the publish
+      # contract. Nothing is uploaded anywhere from this step.
+      - name: Mirror to get.navrobotec.in (not enabled)
+        run: echo "mirror upload not enabled; waiting for the publish contract"
