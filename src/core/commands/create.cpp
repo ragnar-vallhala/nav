@@ -201,7 +201,8 @@ int CreateCommand::run(IExecutionContext& ctx, const std::vector<std::string>& a
             return 1;
         }
         std::ofstream(tmp_path / "nav.toml")        << substitute(template_text("nav.toml.in", templates::kNavToml), vars) << navhal_toml;
-        std::ofstream(tmp_path / "src" / "main.c")  << template_text("main.c.in", templates::kMainC);
+        std::ofstream(tmp_path / "src" / "main.c")  << (board->arch == "avr" ? template_text("main_avr.c.in", templates::kMainAvrC)
+                                                                       : template_text("main.c.in", templates::kMainC));
         std::ofstream(tmp_path / "CMakeLists.txt")  << substitute(template_text("cmakelists.txt.in", templates::kCMakeLists), vars);
         ui::info("Default config files and starter code populated.");
     }

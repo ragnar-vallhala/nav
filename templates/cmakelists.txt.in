@@ -265,8 +265,9 @@ if(NAV_APP_LIBC STREQUAL "newlib" AND NOT NAV_APP_SYSCALLS STREQUAL "none")
 endif()
 list(APPEND NAV_APP_SYS_LIBS -lgcc)
 # nosys.specs makes gcc itself append -lnosys, so syscalls = "none" must drop it.
+# AVR has no newlib/nosys specs file, so it never gets it.
 set(NAV_APP_SPECS "--specs=nosys.specs")
-if(NAV_APP_LIBC STREQUAL "newlib" AND NAV_APP_SYSCALLS STREQUAL "none")
+if(NAV_BOARD_ARCH STREQUAL "avr" OR (NAV_APP_LIBC STREQUAL "newlib" AND NAV_APP_SYSCALLS STREQUAL "none"))
     set(NAV_APP_SPECS)
 endif()
 target_link_options(${PROJECT_NAME} PRIVATE

@@ -14,13 +14,19 @@
 #   NAV_E2E_NAVHAL_REF   if set, rewrite [navhal] ref in the new app's nav.toml
 #                        (and drop nav.lock) before building. Used to prove the
 #                        check fails when the pin is bad.
+#   NAV_E2E_BOARD        board id for `nav create --board` (default: nav's own
+#                        default, an ARM board). `atmega328p` needs avr-gcc and
+#                        checks for an AVR ELF instead of an ARM one.
 set -euo pipefail
 
 NAV=${1:-build/nav}
 [ -x "$NAV" ] || { echo "e2e: nav binary not found or not executable: $NAV" >&2; exit 2; }
 NAV=$(cd "$(dirname "$NAV")" && pwd)/$(basename "$NAV")
 
-for tool in git cmake python3 arm-none-eabi-gcc file; do
+BOARD=${NAV_E2E_BOARD:-}
+if [ "$BOARD" = atmega328p ]; then CC=avr-gcc; SIZE=avr-size; ARCH_RE='*ELF*Atmel AVR*'; else CC=arm-none-eabi-gcc; SIZE=arm-none-eabi-size; ARCH_RE='*ELF*ARM*'; fi
+
+for tool in git cmake python3 "$CC" file; do
     command -v "$tool" >/dev/null || { echo "e2e: '$tool' not found on PATH" >&2; exit 2; }
 done
 
@@ -35,7 +41,7 @@ cd "$work"
 
 echo "== nav create $APP"
 # git clone progress is very noisy; keep the full log for failures only.
-if ! "$NAV" create "$APP" >"$work/create.log" 2>&1; then
+if ! "$NAV" create "$APP" ${BOARD:+--board "$BOARD"} >"$work/create.log" 2>&1; then
     tail -n 40 "$work/create.log" >&2
     echo "e2e FAIL: nav create" >&2
     exit 1
@@ -73,11 +79,11 @@ desc=$(file -b "$elf")
 echo "== firmware: $elf"
 echo "   $desc"
 case "$desc" in
-    *ELF*ARM*) ;;
-    *) echo "e2e FAIL: $elf is not an ARM ELF" >&2; exit 1 ;;
+    $ARCH_RE) ;;
+    *) echo "e2e FAIL: $elf is not the expected ELF ($ARCH_RE)" >&2; exit 1 ;;
 esac
 
 echo "== size"
-arm-none-eabi-size "$elf"
+"$SIZE" "$elf"
 
 echo "e2e PASS: new app built against NavHAL ${pin_ref:-?} (${pin_commit:0:12})"
