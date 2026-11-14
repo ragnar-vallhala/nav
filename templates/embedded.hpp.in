@@ -10,6 +10,7 @@ constexpr std::string_view kNavToml = R"NAVTPL(@NAV_TPL_TOML@)NAVTPL";
 constexpr std::string_view kDotConfig = R"NAVTPL(@NAV_TPL_CONFIG@)NAVTPL";
 
 constexpr std::string_view kMainC = R"NAVTPL(@NAV_TPL_MAIN_C@)NAVTPL";
+constexpr std::string_view kMainAvrC = R"NAVTPL(@NAV_TPL_MAIN_AVR_C@)NAVTPL";
 
 constexpr std::string_view kCMakeLists = R"NAVTPL(@NAV_TPL_CMAKELISTS@)NAVTPL";
 
