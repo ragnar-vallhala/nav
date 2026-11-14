@@ -6,7 +6,7 @@
 #
 # Builds nothing itself. Runs `nav create` + `nav build` in a throwaway
 # NAV_HOME and temp directory, then checks the firmware ELF is an ARM binary.
-# Needs on PATH: git, cmake, python3 (+venv/pip), arm-none-eabi-gcc, file.
+# Needs on PATH: git, cmake, python3 or python (+venv/pip), arm-none-eabi-gcc, file.
 # Needs network: NavHAL is cloned from GitHub and kconfiglib is pip-installed
 # into the throwaway NAV_HOME.
 #
@@ -26,7 +26,11 @@ NAV=$(cd "$(dirname "$NAV")" && pwd)/$(basename "$NAV")
 BOARD=${NAV_E2E_BOARD:-}
 if [ "$BOARD" = atmega328p ]; then CC=avr-gcc; SIZE=avr-size; ARCH_RE='*ELF*Atmel AVR*'; else CC=arm-none-eabi-gcc; SIZE=arm-none-eabi-size; ARCH_RE='*ELF*ARM*'; fi
 
-for tool in git cmake python3 "$CC" file; do
+# Windows has `python`, not always `python3`; the script only needs one of them.
+PY=$(command -v python3 || command -v python || true)
+[ -n "$PY" ] || { echo "e2e: neither python3 nor python found on PATH" >&2; exit 2; }
+
+for tool in git cmake "$CC" file; do
     command -v "$tool" >/dev/null || { echo "e2e: '$tool' not found on PATH" >&2; exit 2; }
 done
 
@@ -60,7 +64,7 @@ if [ -n "${NAV_E2E_NAVHAL_REF:-}" ]; then
 fi
 
 pin_ref=$(sed -n 's/^ref = "\(.*\)"/\1/p' nav.toml | tail -n1)
-pin_commit=$(python3 -I -c 'import json,sys; print(json.load(open("nav.lock")).get("navhal",{}).get("commit",""))' 2>/dev/null || true)
+pin_commit=$("$PY" -I -c 'import json,sys; print(json.load(open("nav.lock")).get("navhal",{}).get("commit",""))' 2>/dev/null || true)
 echo "== NavHAL pinned by nav: ref=${pin_ref:-?} commit=${pin_commit:-<no nav.lock>}"
 
 echo "== nav build"
