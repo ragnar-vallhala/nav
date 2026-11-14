@@ -94,7 +94,7 @@ jobs:
           test "$(ls nav-*.deb 2>/dev/null | wc -l)" -eq 1 || { echo "expected exactly one .deb"; exit 1; }
           test "$(ls nav-*-win64.exe 2>/dev/null | wc -l)" -eq 1 || { echo "expected exactly one win64.exe"; exit 1; }
           test "$(ls nav-*-win64.zip 2>/dev/null | wc -l)" -eq 1 || { echo "expected exactly one win64.zip"; exit 1; }
-          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+          if [ "${GITHUB_EVENT_NAME}" = "push" ] && [ "${GITHUB_REF_TYPE}" = "tag" ]; then
             ver="${GITHUB_REF_NAME#v}"
             for f in nav-*; do
               case "$f" in *"-${ver}-"*) ;; *) echo "$f does not carry version ${ver}"; exit 1 ;; esac
@@ -117,7 +117,7 @@ jobs:
       # Notes come from the tag, not from this file: the commits since the
       # previous tag, under a fixed downloads header.
       - name: Publish to GitHub Releases
-        if: github.ref_type == 'tag'
+        if: github.event_name == 'push' && github.ref_type == 'tag'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.ref_name }}
