@@ -170,6 +170,21 @@ jobs:
         shell: bash
         run: scripts/e2e-new-app.sh build/nav.exe
 
+      - name: DIAGNOSTIC what extern/NavHAL is after nav create (temporary)
+        shell: bash
+        run: |
+          export NAV_HOME="$RUNNER_TEMP/diag-home"; mkdir -p "$NAV_HOME"
+          cd "$RUNNER_TEMP" && rm -rf diag-app
+          build/nav.exe create diag-app >/dev/null 2>&1 || true
+          cd "$GITHUB_WORKSPACE" 2>/dev/null; cd "$RUNNER_TEMP/diag-app" || exit 0
+          echo "--- dir extern:"; cmd //c "dir extern" | grep -i "navhal" || true
+          echo "--- nav.lock present:"; ls nav.lock 2>&1
+          echo "--- a nav build with a bad ref and no lock, verbose:"
+          sed -i "/^\\[navhal\\]/,/^\\[/ s|^ref = .*|ref = \"no-such-ref-xyz\"|" nav.toml; rm -f nav.lock
+          grep -n "ref" nav.toml | head -3
+          "$GITHUB_WORKSPACE/build/nav.exe" build 2>&1 | head -12 || true
+          echo "--- nav.lock after:"; ls nav.lock 2>&1
+
       # The check must be able to fail here too: a NavHAL ref that does not exist
       # has to make the script exit 1 (2 means the script itself broke).
       - name: A bad NavHAL pin must fail
