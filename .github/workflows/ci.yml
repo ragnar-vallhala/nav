@@ -170,8 +170,14 @@ jobs:
         shell: bash
         run: scripts/e2e-new-app.sh build/nav.exe
 
-      # No bad-pin case here yet, unlike the Linux job. On Windows nav build does
-      # not re-resolve a changed [navhal] ref: extern/NavHAL ends up a plain copy,
-      # which nav treats as the user's own vendored NavHAL (nav bug, todo #307).
-      # Add the case back when that is fixed.
+      # The check must be able to fail here too: a NavHAL ref that does not exist
+      # has to make the script exit 1 (2 means the script itself broke). This case
+      # caught todo #307: extern/NavHAL was a plain copy that nav ignored.
+      - name: A bad NavHAL pin must fail
+        shell: bash
+        run: |
+          set +e
+          NAV_E2E_NAVHAL_REF=no-such-ref-xyz scripts/e2e-new-app.sh build/nav.exe
+          rc=$?
+          [ "$rc" -eq 1 ] || { echo "expected exit 1 for a bad pin, got $rc"; exit 1; }
 

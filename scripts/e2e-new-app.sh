@@ -54,6 +54,20 @@ grep -E "NavHAL ready|Complete" "$work/create.log" | sed 's/(cache:.*//' || true
 
 cd "$APP"
 
+# On Windows nav must link extern/NavHAL (symlink or junction). A plain copy is
+# treated as the user's own vendored NavHAL, so a changed [navhal] ref would be
+# ignored (todo #307).
+case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*)
+        if ! cmd //c "dir extern" | grep -E '<(JUNCTION|SYMLINKD)>.*NavHAL' >/dev/null; then
+            cmd //c "dir extern" >&2
+            echo "e2e FAIL: extern/NavHAL is not a symlink or junction" >&2
+            exit 1
+        fi
+        echo "== extern/NavHAL is a link"
+        ;;
+esac
+
 if [ -n "${NAV_E2E_NAVHAL_REF:-}" ]; then
     echo "== overriding NavHAL ref with '$NAV_E2E_NAVHAL_REF' (negative test)"
     # Only inside the [navhal] table (up to the next table header).

@@ -279,6 +279,42 @@ TEST_F(Pin, AVendoredNavhalDirectoryIsLeftAlone) {
     EXPECT_EQ(clones(), 0u);
 }
 
+// On Windows nav's link can be a junction (a plain directory to std::filesystem)
+// or a copy. Both carry the cache's install marker and must still follow nav.toml.
+TEST_F(Pin, ACopyOfTheCheckoutIsStillNavsAndFollowsTheRef) {
+    project("[navhal]\nref = \"v1\"\n");
+    tips[std::string(nav::core::kNavhalRepoUrl) + "@v1"] = kA;
+    tips[std::string(nav::core::kNavhalRepoUrl) + "@v2"] = kB;
+    ASSERT_FALSE(nav::core::sync_project_navhal(mock, root, cfg()).empty());
+
+    // Stand in for the Windows copy fallback: extern/NavHAL becomes a real directory.
+    const fs::path dest = root / "extern" / "NavHAL";
+    const fs::path first = nav::core::navhal_commit_dir(nav::core::kNavhalRepoUrl, kA);
+    fs::remove(dest);
+    fs::copy(first, dest, fs::copy_options::recursive);
+    ASSERT_FALSE(fs::is_symlink(dest));
+
+    project("[navhal]\nref = \"v2\"\n");
+    ASSERT_FALSE(nav::core::sync_project_navhal(mock, root, cfg()).empty());
+    EXPECT_EQ(lock()->navhal->commit, kB);
+    EXPECT_EQ(slurp(dest / ".fake-commit"), kB);
+    EXPECT_TRUE(fs::equivalent(dest, nav::core::navhal_commit_dir(nav::core::kNavhalRepoUrl, kB)));
+    // Replacing the copy must not touch the cache entry it was copied from.
+    EXPECT_EQ(slurp(first / ".fake-commit"), kA);
+}
+
+TEST_F(Pin, RelinkingLeavesTheOldCacheEntryIntact) {
+    project("[navhal]\nref = \"v1\"\n");
+    tips[std::string(nav::core::kNavhalRepoUrl) + "@v1"] = kA;
+    tips[std::string(nav::core::kNavhalRepoUrl) + "@v2"] = kB;
+    ASSERT_FALSE(nav::core::sync_project_navhal(mock, root, cfg()).empty());
+    project("[navhal]\nref = \"v2\"\n");
+    ASSERT_FALSE(nav::core::sync_project_navhal(mock, root, cfg()).empty());
+    const fs::path first = nav::core::navhal_commit_dir(nav::core::kNavhalRepoUrl, kA);
+    EXPECT_EQ(slurp(first / ".fake-commit"), kA);
+    EXPECT_TRUE(fs::exists(first / ".nav-ok"));
+}
+
 // ---- legacy per-ref cache --------------------------------------------------
 
 TEST_F(Pin, AnUnpinnedProjectAdoptsTheOldPerRefCloneItBuiltWith) {

@@ -296,8 +296,10 @@ fs::path sync_project_navhal(IExecutionContext& ctx, const fs::path& root, const
     const fs::path dest = root / "extern" / "NavHAL";
     std::error_code ec;
     // A real directory is the user's own (vendored or a submodule): not ours to
-    // pin or replace.
-    if (fs::exists(dest, ec) && !fs::is_symlink(dest, ec)) return dest;
+    // pin or replace. nav's own link is not always a symlink: on Windows it is a
+    // junction (reported as a plain directory) or, if linking fails, a copy. Both
+    // carry the cache's install marker, which a vendored NavHAL does not.
+    if (fs::exists(dest, ec) && !fs::is_symlink(dest, ec) && !is_installed(dest)) return dest;
 
     const fs::path lock_path = root / "nav.lock";
     Lockfile lock;
@@ -414,7 +416,12 @@ std::string refresh_git_cache(IExecutionContext& ctx, const std::string& url, co
 
 bool link_navhal(IExecutionContext& ctx, const fs::path& src, const fs::path& dest) {
     std::error_code ec;
-    fs::remove_all(dest, ec); // replace whatever is there
+    // Replace whatever is there. remove() first: on a symlink or junction it
+    // removes only the link, where remove_all() may follow a junction into the
+    // shared cache entry. It fails on a real non-empty directory (an earlier
+    // copy), which remove_all() then deletes.
+    fs::remove(dest, ec);
+    if (fs::exists(dest, ec) || fs::is_symlink(dest, ec)) fs::remove_all(dest, ec);
     if (dest.has_parent_path()) {
         fs::create_directories(dest.parent_path(), ec);
     }
@@ -429,7 +436,11 @@ bool link_navhal(IExecutionContext& ctx, const fs::path& src, const fs::path& de
 #ifdef _WIN32
     // 2. Directory junction — no special privilege required. mklink is a cmd
     //    builtin, so it must run through cmd /c.
-    auto res = ctx.execute({"cmd", "/c", "mklink", "/J", dest.string(), target.string()});
+    // mklink rejects forward slashes, and fs::path keeps the mixed separators it
+    // was built from, so pass the native form.
+    fs::path native_dest = dest, native_target = target;
+    auto res = ctx.execute({"cmd", "/c", "mklink", "/J", native_dest.make_preferred().string(),
+                            native_target.make_preferred().string()});
     if (res.exit_code == 0) return true;
 #else
     (void)ctx;
