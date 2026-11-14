@@ -17,6 +17,7 @@
 
 #ifdef _WIN32
 #include <process.h>
+#include <windows.h>
 #else
 #include <unistd.h>
 #endif
@@ -38,6 +39,33 @@ bool check_git_args(const std::string& url, const std::string& ref) {
         return false;
     }
     return true;
+}
+
+// Written into extern/NavHAL only by link_navhal's copy fallback, holding the
+// cache directory the copy was made from. It is what marks a copy as nav's own:
+// the cache's .nav-ok is also in any copy a user makes of NavHAL, so it cannot.
+constexpr const char* kManagedMarker = ".nav-managed";
+
+// nav's own link: a symlink, or on Windows a junction (any reparse point), which
+// std::filesystem on MinGW reports as a plain directory.
+bool is_link(const fs::path& p) {
+    std::error_code ec;
+    if (fs::is_symlink(p, ec)) return true;
+#ifdef _WIN32
+    const DWORD attrs = ::GetFileAttributesW(p.c_str());
+    return attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_REPARSE_POINT) != 0;
+#else
+    return false;
+#endif
+}
+
+// The cache directory a nav-made copy at `p` was copied from, or empty when `p`
+// is not such a copy.
+std::string managed_copy_source(const fs::path& p) {
+    std::ifstream in(p / kManagedMarker);
+    std::string line;
+    if (!in || !std::getline(in, line)) return {};
+    return line;
 }
 
 // Per-run unique suffix so a partial clone never collides with another run.
@@ -296,8 +324,10 @@ fs::path sync_project_navhal(IExecutionContext& ctx, const fs::path& root, const
     const fs::path dest = root / "extern" / "NavHAL";
     std::error_code ec;
     // A real directory is the user's own (vendored or a submodule): not ours to
-    // pin or replace.
-    if (fs::exists(dest, ec) && !fs::is_symlink(dest, ec)) return dest;
+    // pin or replace. nav's own is a symlink, a Windows junction, or the copy that
+    // link_navhal falls back to and marks with .nav-managed. Not the cache's
+    // .nav-ok: any user copy of NavHAL carries that too.
+    if (fs::exists(dest, ec) && !is_link(dest) && managed_copy_source(dest).empty()) return dest;
 
     const fs::path lock_path = root / "nav.lock";
     Lockfile lock;
@@ -337,6 +367,9 @@ fs::path sync_project_navhal(IExecutionContext& ctx, const fs::path& root, const
     if (linked) {
         std::error_code e1, e2;
         linked = fs::equivalent(dest, r->dir, e1) && !e1 && !e2;
+        // A nav-made copy is current when it was copied from this commit's checkout.
+        if (!linked && !is_link(dest))
+            linked = managed_copy_source(dest) == fs::absolute(r->dir).generic_string();
     }
     if (!linked) {
         if (fs::is_symlink(dest, ec) || fs::exists(dest, ec))
@@ -414,7 +447,12 @@ std::string refresh_git_cache(IExecutionContext& ctx, const std::string& url, co
 
 bool link_navhal(IExecutionContext& ctx, const fs::path& src, const fs::path& dest) {
     std::error_code ec;
-    fs::remove_all(dest, ec); // replace whatever is there
+    // Replace whatever is there. remove() first: on a symlink or junction it
+    // removes only the link, where remove_all() may follow a junction into the
+    // shared cache entry. It fails on a real non-empty directory (an earlier
+    // copy), which remove_all() then deletes.
+    fs::remove(dest, ec);
+    if (fs::exists(dest, ec) || fs::is_symlink(dest, ec)) fs::remove_all(dest, ec);
     if (dest.has_parent_path()) {
         fs::create_directories(dest.parent_path(), ec);
     }
@@ -429,7 +467,11 @@ bool link_navhal(IExecutionContext& ctx, const fs::path& src, const fs::path& de
 #ifdef _WIN32
     // 2. Directory junction — no special privilege required. mklink is a cmd
     //    builtin, so it must run through cmd /c.
-    auto res = ctx.execute({"cmd", "/c", "mklink", "/J", dest.string(), target.string()});
+    // mklink rejects forward slashes, and fs::path keeps the mixed separators it
+    // was built from, so pass the native form.
+    fs::path native_dest = dest, native_target = target;
+    auto res = ctx.execute({"cmd", "/c", "mklink", "/J", native_dest.make_preferred().string(),
+                            native_target.make_preferred().string()});
     if (res.exit_code == 0) return true;
 #else
     (void)ctx;
@@ -439,7 +481,10 @@ bool link_navhal(IExecutionContext& ctx, const fs::path& src, const fs::path& de
     std::error_code cec;
     fs::copy(target, dest,
              fs::copy_options::recursive | fs::copy_options::copy_symlinks, cec);
-    return !cec;
+    if (cec) return false;
+    // Mark the copy as nav's own, so a later build may replace it.
+    std::ofstream(dest / kManagedMarker) << target.generic_string() << "\n";
+    return true;
 }
 
 } // namespace nav::core
