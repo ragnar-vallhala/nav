@@ -1,6 +1,6 @@
 # Chapter 9: Flashing and monitoring
 
-This chapter covers `nav upload`, which puts a built image on a board, and `nav monitor`, which reads the board's serial output. Chapter 4 named the `runner` and `probe` modules; chapter 5 documented the `[upload]` table. Installing the flash tools is covered in chapter 8.
+This chapter covers `nav upload`, which puts a built image on a board, and `nav monitor`, which reads the board's serial output. Chapter 4 named the `runner` and `probe` modules; chapter 5 documented the `[upload]` table. `nav upload` installs a missing flash tool itself (see "A real run" below); chapter 4 describes the provisioning modules, and chapter 8 covers only the compiler check that `nav build` makes.
 
 This chapter was written from the source and the unit tests, not from flashing a board. No hardware was touched and no serial port was opened.
 
@@ -86,7 +86,7 @@ Anything else, including a value-taking flag with no value, prints the usage lin
 
 `--dry-run` prints `Runner: <id>` and then one line per step, `Converting: <argv>` and `Flashing: <argv>`, quoting any argument with a space or `"` in single quotes. It runs nothing and skips the firmware check, the tool check and the reset. It still needs a project, still resolves probes, and skips serial-port auto-detect, so an `avrdude` dry run without `--port` reports the missing `port`.
 
-A real run installs the tool if it is missing (chapter 8), then runs each step. A failed flash prints "'<runner>' failed (exit N). Check the probe/cable and board power; see its output above." and returns the tool's exit code.
+A real run first looks for the runner's tool and, if it is missing, installs it: "'<tool>' not found — installing it.", and on failure "Could not install '<tool>'. Install it yourself, or pick another runner (--list)." and exit 1 (`UploadCommand::run`, `install_tools`). This is separate from `nav build`, which checks only the board's compiler (chapter 8). Then it runs each step. A failed flash prints "'<runner>' failed (exit N). Check the probe/cable and board power; see its output above." and returns the tool's exit code.
 
 For a runner that uses `{port}` with no `--port`, nav lists serial ports with the monitor's scanner. One port is used; none gives "No serial port found for the board. Connect it, or pass --port <dev>."; several give a list and ask for `--port`.
 

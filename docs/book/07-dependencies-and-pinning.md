@@ -22,7 +22,7 @@ A `ref` is not limited to a branch or tag name: no such rule is enforced anywher
 
 What the code does with a commit-like ref depends on the table:
 
-- For `[navhal]`, `fetch_ref_into` tests `looks_like_commit` (7 to 64 hex characters). A 40- or 64-character value is fetched directly with `git fetch --depth 1`. Any other length falls back to a full clone and `checkout --detach`. Anything that does not look like a commit is cloned with `--branch`.
+- For `[navhal]`, `fetch_ref_into` tests `looks_like_commit` (7 to 64 hex characters). A 40- or 64-character value is fetched directly with `git fetch --depth 1`; if that fails, and for any other length, nav falls back to a full clone and `checkout --detach`. Anything that does not look like a commit is cloned with `--branch`.
 - For library dependencies, `ensure_git_cached` always runs `git clone --branch <ref>`. There is no commit path. The source does not say what git does with a SHA there; the code simply has no handling for one.
 
 The only check on a ref's content is `is_unsafe_git_arg`: a URL or ref that starts with `-` is refused, with "Refusing git ref '...': it starts with '-' and would be read as a git option." The practical advice, pin a tag, comes from the code's own warning for a library with no ref: "tracking the default branch is not reproducible. Pin a release tag: ref = \"vX.Y.Z\"."
