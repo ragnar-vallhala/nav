@@ -69,7 +69,7 @@ jobs:
 
   # A freshly created app must build against the NavHAL version nav pins. This
   # clones NavHAL from GitHub and pip-installs kconfiglib, so it needs network.
-  # Linux only: Windows is not covered until the Win11 runner of todo #293 exists.
+  # This job is Linux; new-app-build-windows below runs the build on Windows.
   new-app-build:
     name: New app builds against pinned NavHAL
     runs-on: ubuntu-22.04
@@ -129,3 +129,49 @@ jobs:
 
       - name: Create and build a new AVR app (atmega328p)
         run: NAV_E2E_BOARD=atmega328p scripts/e2e-new-app.sh build/nav
+
+  # The same check on Windows: nav built the way the release builds it (static
+  # MinGW nav.exe), then `nav create` + `nav build` of a new app against the
+  # pinned NavHAL, run by the same script under Git Bash.
+  new-app-build-windows:
+    name: New app builds against pinned NavHAL (Windows)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Build nav (MinGW, static)
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: .\scripts\windows\ci-build.ps1 -SourceDir "${{ github.workspace }}"
+
+      - name: Install the ARM toolchain
+        shell: pwsh
+        run: |
+          choco install gcc-arm-embedded -y --no-progress
+          $bin = (Get-ChildItem 'C:\Program Files (x86)\GNU Arm Embedded Toolchain', 'C:\Program Files (x86)\GNU Tools Arm Embedded', 'C:\ProgramData\chocolatey\lib\gcc-arm-embedded' -Recurse -Filter arm-none-eabi-gcc.exe -ErrorAction SilentlyContinue | Select-Object -First 1).DirectoryName
+          if (-not $bin) { throw 'arm-none-eabi-gcc.exe not found after install' }
+          "$bin" | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
+          Write-Host "arm-none-eabi-gcc in $bin"
+
+      - name: What the runner has
+        shell: bash
+        run: |
+          for t in git cmake python3 python ninja make arm-none-eabi-gcc file; do
+            printf '%-18s' "$t"; command -v "$t" || echo "(not found)"
+          done
+          arm-none-eabi-gcc --version | head -1
+          cmake --version | head -1
+
+      - name: Create and build a new app
+        shell: bash
+        run: scripts/e2e-new-app.sh build/nav.exe
+
+      # No bad-pin case here yet, unlike the Linux job. On Windows nav build does
+      # not re-resolve a changed [navhal] ref: extern/NavHAL ends up a plain copy,
+      # which nav treats as the user's own vendored NavHAL (nav bug, todo #307).
+      # Add the case back when that is fixed.
+
