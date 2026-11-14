@@ -98,4 +98,8 @@ std::optional<int> read_hal_api_version(const std::filesystem::path& navhal_dir)
 bool link_navhal(IExecutionContext& ctx, const std::filesystem::path& src,
                  const std::filesystem::path& dest);
 
+// link_navhal's last resort: copy `target` to `dest` and mark the copy as nav's
+// own (.nav-managed). On failure nothing is left at `dest`. Exposed for tests.
+bool copy_navhal_tree(const std::filesystem::path& target, const std::filesystem::path& dest);
+
 } // namespace nav::core

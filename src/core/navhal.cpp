@@ -478,10 +478,20 @@ bool link_navhal(IExecutionContext& ctx, const fs::path& src, const fs::path& de
 #endif
 
     // 3. Copy the tree as a last resort (costs disk, but always works).
+    return copy_navhal_tree(target, dest);
+}
+
+bool copy_navhal_tree(const fs::path& target, const fs::path& dest) {
     std::error_code cec;
     fs::copy(target, dest,
              fs::copy_options::recursive | fs::copy_options::copy_symlinks, cec);
-    if (cec) return false;
+    if (cec) {
+        // A half-made copy has no marker, so later builds would take it for the
+        // user's own NavHAL and leave it broken. Leave nothing behind.
+        std::error_code rec;
+        fs::remove_all(dest, rec);
+        return false;
+    }
     // Mark the copy as nav's own, so a later build may replace it.
     std::ofstream(dest / kManagedMarker) << target.generic_string() << "\n";
     return true;

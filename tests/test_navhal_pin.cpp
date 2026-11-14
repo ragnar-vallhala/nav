@@ -345,6 +345,33 @@ TEST_F(Pin, RelinkingLeavesTheOldCacheEntryIntact) {
     EXPECT_TRUE(fs::exists(first / ".nav-ok"));
 }
 
+// A copy that fails partway must not be left behind: with no .nav-managed it
+// would be taken for the user's own NavHAL and never repaired.
+TEST_F(Pin, AFailedCopyLeavesNothingBehind) {
+    if (::geteuid() == 0) GTEST_SKIP() << "root can read a mode-000 file";
+    const fs::path src = root / "src-navhal";
+    write(src / "a.txt", "a");
+    write(src / "z" / "locked.txt", "z");
+    fs::permissions(src / "z" / "locked.txt", fs::perms::none);
+    const fs::path dest = root / "extern" / "NavHAL";
+    fs::create_directories(dest.parent_path());
+
+    EXPECT_FALSE(nav::core::copy_navhal_tree(src, dest));
+    EXPECT_FALSE(fs::exists(dest));
+
+    fs::permissions(src / "z" / "locked.txt", fs::perms::owner_all);
+}
+
+TEST_F(Pin, ASuccessfulCopyIsMarkedAsNavs) {
+    const fs::path src = root / "src-navhal";
+    write(src / "a.txt", "a");
+    const fs::path dest = root / "extern" / "NavHAL";
+    fs::create_directories(dest.parent_path());
+    ASSERT_TRUE(nav::core::copy_navhal_tree(src, dest));
+    EXPECT_EQ(slurp(dest / "a.txt"), "a");
+    EXPECT_FALSE(slurp(dest / ".nav-managed").empty());
+}
+
 // ---- legacy per-ref cache --------------------------------------------------
 
 TEST_F(Pin, AnUnpinnedProjectAdoptsTheOldPerRefCloneItBuiltWith) {
