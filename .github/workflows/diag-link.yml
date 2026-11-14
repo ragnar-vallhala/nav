@@ -1,0 +1,26 @@
+name: diag-link
+on:
+  push:
+    branches: ['diag/**']
+jobs:
+  link:
+    runs-on: windows-latest
+    steps:
+      - shell: pwsh
+        run: |
+          $t = Join-Path $env:RUNNER_TEMP 'src'; New-Item -ItemType Directory $t | Out-Null
+          "x" | Out-File "$t\f.txt"
+          $base = $env:RUNNER_TEMP
+          Write-Host "== symlink (New-Item)"
+          try { New-Item -ItemType SymbolicLink -Path "$base\sl" -Target $t -ErrorAction Stop | Out-Null; Write-Host "symlink OK" } catch { Write-Host "symlink FAILED: $_" }
+          Write-Host "== mklink /J, backslashes"
+          cmd /c mklink /J "$base\j1" "$t"; Write-Host "exit $LASTEXITCODE"
+          Write-Host "== mklink /J, mixed separators (what nav passes)"
+          $mixed = ($base -replace '\\','/') + '/j2'
+          $mixedT = $base + '/src'
+          cmd /c mklink /J "$base\x\..\..\nonexistent" "$t" 2>&1 | Out-Null
+          cmd /c mklink /J "$mixed" "$mixedT"; Write-Host "exit $LASTEXITCODE"
+          Write-Host "== mklink /J, backslash dest + forward-slash target"
+          cmd /c mklink /J "$base\j3" "$mixedT"; Write-Host "exit $LASTEXITCODE"
+          Write-Host "== dir"
+          cmd /c dir "$base" | Select-String "sl|j1|j2|j3"
