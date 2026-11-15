@@ -61,6 +61,9 @@ std::vector<std::string> baked_flash(const std::string& runner, std::map<std::st
 // --- enumeration over a fake sysfs tree ------------------------------------
 
 TEST(ProbeScan, FindsOnlyStLinksAndSortsByPath) {
+#ifdef _WIN32
+    GTEST_SKIP() << "the fake sysfs tree needs a ':' in a directory name (1-3.4:1.0), which Windows forbids";
+#endif
     TempDir td;
     usb_device(td.path(), "1-3.4", "0483", "374b", "SN4", "STM32 STLink");
     usb_device(td.path(), "1-3.3", "0483", "3748", "SN3");
