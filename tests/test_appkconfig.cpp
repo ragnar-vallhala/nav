@@ -42,8 +42,23 @@ std::string read_file(const fs::path& p) {
     return ss.str();
 }
 
+// The interpreter prepare_app_kconfig runs. A stock Windows has only the
+// python.exe launcher; "python3" there is a Store stub that does not run.
+const char* test_python() {
+#ifdef _WIN32
+    return "python";
+#else
+    return "python3";
+#endif
+}
+
 bool have_kconfiglib() {
+#ifdef _WIN32
+    return std::system("python -c \"import kconfiglib\" >NUL 2>&1") == 0 ||
+           std::system("python3 -c \"import kconfiglib\" >NUL 2>&1") == 0;
+#else
     return std::system("python3 -c 'import kconfiglib' >/dev/null 2>&1") == 0;
+#endif
 }
 
 bool contains(const std::string& s, const std::string& n) { return s.find(n) != std::string::npos; }
@@ -150,7 +165,7 @@ TEST(AppKconfig, ValidatesAndGeneratesAutoconf) {
     write_file(f.root / ".config", "CONFIG_DRV_UART=y\nCONFIG_APP_FOO=y\nCONFIG_APP_COUNT=9\nCONFIG_APP_NAME=\"hi\"\n");
     HostExecutionContext ctx;
     std::string err;
-    ASSERT_TRUE(prepare_app_kconfig(ctx, f.root, f.cfg, {}, f.navhal, &err)) << err;
+    ASSERT_TRUE(prepare_app_kconfig(ctx, f.root, f.cfg, {}, f.navhal, &err, nullptr, test_python())) << err;
     const auto h = read_file(f.root / "build" / "app_autoconf.h");
     EXPECT_TRUE(contains(h, "#define CONFIG_APP_FOO 1"));
     EXPECT_TRUE(contains(h, "#define CONFIG_APP_COUNT 9"));
@@ -168,7 +183,7 @@ TEST(AppKconfig, UnsetBoolIsAbsent) {
     write_file(f.root / ".config", "CONFIG_DRV_UART=y\n");
     HostExecutionContext ctx;
     std::string err;
-    ASSERT_TRUE(prepare_app_kconfig(ctx, f.root, f.cfg, {}, f.navhal, &err)) << err;
+    ASSERT_TRUE(prepare_app_kconfig(ctx, f.root, f.cfg, {}, f.navhal, &err, nullptr, test_python())) << err;
     EXPECT_FALSE(contains(read_file(f.root / "build" / "app_autoconf.h"), "#define CONFIG_APP_FOO"));
 }
 
@@ -178,7 +193,7 @@ TEST(AppKconfig, UnknownSymbolIsAnErrorNamingIt) {
     write_file(f.root / ".config", "CONFIG_DRV_UART=y\nCONFIG_APP_FOOO=y\n");
     HostExecutionContext ctx;
     std::string err;
-    EXPECT_FALSE(prepare_app_kconfig(ctx, f.root, f.cfg, {}, f.navhal, &err));
+    EXPECT_FALSE(prepare_app_kconfig(ctx, f.root, f.cfg, {}, f.navhal, &err, nullptr, test_python()));
     EXPECT_TRUE(contains(err, "APP_FOOO")) << err;
 }
 
@@ -188,7 +203,7 @@ TEST(AppKconfig, InvalidValueIsAnError) {
     write_file(f.root / ".config", "CONFIG_DRV_UART=y\nCONFIG_APP_COUNT=lots\n");
     HostExecutionContext ctx;
     std::string err;
-    EXPECT_FALSE(prepare_app_kconfig(ctx, f.root, f.cfg, {}, f.navhal, &err));
+    EXPECT_FALSE(prepare_app_kconfig(ctx, f.root, f.cfg, {}, f.navhal, &err, nullptr, test_python()));
     EXPECT_TRUE(contains(err, "APP_COUNT")) << err;
 }
 
@@ -206,10 +221,10 @@ TEST(AppKconfig, DependencyKconfigIsMergedAndNavhalNotDuplicated) {
     write_file(f.root / ".config", "CONFIG_DRV_UART=y\nCONFIG_DEP_HEAP=4096\n");
     HostExecutionContext ctx;
     std::string err;
-    EXPECT_TRUE(prepare_app_kconfig(ctx, f.root, f.cfg, {lib}, f.navhal, &err)) << err;
+    EXPECT_TRUE(prepare_app_kconfig(ctx, f.root, f.cfg, {lib}, f.navhal, &err, nullptr, test_python())) << err;
     EXPECT_TRUE(contains(read_file(f.root / "build" / "nav.config"), "CONFIG_DEP_HEAP=4096"));
     // The caller's environment is restored.
-    EXPECT_STREQ(std::getenv("NAVHAL_KCONFIG"), (f.navhal / "Kconfig").c_str());
+    EXPECT_STREQ(std::getenv("NAVHAL_KCONFIG"), (f.navhal / "Kconfig").string().c_str());
     unset_env("NAVHAL_KCONFIG");
     EXPECT_FALSE(contains(read_file(f.root / "build" / "app_autoconf.h"), "DEP_HEAP"));
 }

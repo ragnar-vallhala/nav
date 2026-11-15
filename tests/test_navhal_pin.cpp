@@ -6,6 +6,7 @@
 #include "nav/core/navhal.hpp"
 
 #include "mock_execution_context.hpp"
+#include "test_env.hpp"
 
 #include <gtest/gtest.h>
 
@@ -60,7 +61,7 @@ std::string slurp(const fs::path& p) {
 class Pin : public ::testing::Test {
 protected:
     void SetUp() override {
-        ::setenv("NAV_HOME", (tmp.path() / "navhome").c_str(), 1);
+        set_env("NAV_HOME", (tmp.path() / "navhome").string());
         root = tmp.path() / "app";
         mock.handler = [this](const nav::test::ExecutedCall& c) -> nav::core::CommandResult {
             const auto& a = c.argv;
@@ -77,10 +78,18 @@ protected:
                 std::string sha = slurp(fs::path(a[2]) / ".fake-commit");
                 return {sha.empty() ? 1 : 0, sha + "\n"};
             }
+#ifdef _WIN32
+            // link_navhal's junction step: `cmd /c mklink /J <link> <target>`. The
+            // mock runs nothing, so make the junction for real, as cmd would.
+            if (a.size() == 6 && a[0] == "cmd" && a[2] == "mklink" && a[3] == "/J") {
+                const std::string cmd = "cmd /c \"mklink /J \"" + a[4] + "\" \"" + a[5] + "\" >NUL 2>&1\"";
+                return {std::system(cmd.c_str()) == 0 ? 0 : 1, ""};
+            }
+#endif
             return {1, ""};
         };
     }
-    void TearDown() override { ::unsetenv("NAV_HOME"); }
+    void TearDown() override { unset_env("NAV_HOME"); }
 
     void project(const std::string& extra = "") {
         write(root / "nav.toml", "[project]\nname = \"app\"\n[target]\nboard = \"x\"\n" + extra);
@@ -348,7 +357,10 @@ TEST_F(Pin, RelinkingLeavesTheOldCacheEntryIntact) {
 // A copy that fails partway must not be left behind: with no .nav-managed it
 // would be taken for the user's own NavHAL and never repaired.
 TEST_F(Pin, AFailedCopyLeavesNothingBehind) {
-    if (::geteuid() == 0) GTEST_SKIP() << "root can read a mode-000 file";
+#ifdef _WIN32
+    GTEST_SKIP() << "Windows has no mode-000 files; fs::permissions cannot make a file unreadable";
+#endif
+    if (is_root()) GTEST_SKIP() << "root can read a mode-000 file";
     const fs::path src = root / "src-navhal";
     write(src / "a.txt", "a");
     write(src / "z" / "locked.txt", "z");
