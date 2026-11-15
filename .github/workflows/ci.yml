@@ -131,8 +131,8 @@ jobs:
         run: NAV_E2E_BOARD=atmega328p scripts/e2e-new-app.sh build/nav
 
   # The same check on Windows: nav built the way the release builds it (static
-  # MinGW nav.exe), then `nav create` + `nav build` of a new app against the
-  # pinned NavHAL, run by the same script under Git Bash.
+  # MinGW nav.exe), the unit tests under ctest, then `nav create` + `nav build`
+  # of a new app against the pinned NavHAL, run by the same script under Git Bash.
   new-app-build-windows:
     name: New app builds against pinned NavHAL (Windows)
     runs-on: windows-latest
@@ -147,6 +147,26 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: .\scripts\windows\ci-build.ps1 -SourceDir "${{ github.workspace }}"
+
+      # Unit tests, in the build tree ci-build.ps1 just made: re-running configure
+      # keeps the cache (Ninja, g++, Release), so only googletest and nav_tests
+      # are built on top. ci-build.ps1 puts its toolchain on PATH for its own
+      # process only, so put it back (MinGW runtime DLLs, ninja). kconfiglib goes
+      # into the runner's python at the version nav pins; without it the
+      # kconfiglib tests skip instead of running.
+      - name: Unit tests (ctest)
+        shell: pwsh
+        run: |
+          $tools = Join-Path $env:TEMP 'navtools'
+          $env:PATH = "$tools\mingw64\bin;$tools\ninja;$env:PATH"
+          python -m pip install kconfiglib==14.1.0
+          if ($LASTEXITCODE -ne 0) { throw 'pip install kconfiglib failed' }
+          cmake -S . -B build -DNAV_BUILD_TESTS=ON
+          if ($LASTEXITCODE -ne 0) { throw 'configure failed' }
+          cmake --build build --target nav_tests -j
+          if ($LASTEXITCODE -ne 0) { throw 'build nav_tests failed' }
+          ctest --test-dir build --output-on-failure
+          if ($LASTEXITCODE -ne 0) { throw 'ctest failed' }
 
       - name: Install the ARM toolchain
         shell: pwsh
