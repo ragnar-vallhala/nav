@@ -201,3 +201,16 @@ jobs:
           rc=$?
           [ "$rc" -eq 1 ] || { echo "expected exit 1 for a bad pin, got $rc"; exit 1; }
 
+
+  no-tracker-refs:
+    name: no tracker numbers
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0          # need history to diff against the base
+      - name: No todo/room/stack/ashu numbers in added lines or commit messages
+        env:
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+        run: scripts/check-no-tracker-refs.sh "$PR_BASE" HEAD
