@@ -51,16 +51,27 @@ std::string merge_path_entries(const std::string& current, const std::string& ma
 
 #ifdef _WIN32
 static std::string read_registry_path(HKEY root, const char* subkey) {
+    // RRF_RT_REG_SZ also matches REG_EXPAND_SZ values and expands %VARS% (unless
+    // RRF_NOEXPAND is given). The expanded size is only an estimate, so grow
+    // the buffer and retry on ERROR_MORE_DATA.
+    const DWORD flags = RRF_RT_REG_SZ;
     DWORD size = 0;
-    const DWORD flags = RRF_RT_REG_SZ | RRF_RT_REG_EXPAND_SZ; // expands %VARS%
-    if (RegGetValueA(root, subkey, "Path", flags, nullptr, nullptr, &size) != ERROR_SUCCESS || size == 0)
-        return {};
-    std::string buf(size, '\0');
-    if (RegGetValueA(root, subkey, "Path", flags, nullptr, buf.data(), &size) != ERROR_SUCCESS)
-        return {};
-    buf.resize(size);
-    while (!buf.empty() && buf.back() == '\0') buf.pop_back();
-    return buf;
+    LONG rc = RegGetValueA(root, subkey, "Path", flags, nullptr, nullptr, &size);
+    if (rc != ERROR_SUCCESS && rc != ERROR_MORE_DATA) return {};
+    std::string buf;
+    for (int attempt = 0; attempt < 4; ++attempt) {
+        buf.assign(size + 1, '\0');
+        DWORD got = size;
+        rc = RegGetValueA(root, subkey, "Path", flags, nullptr, buf.data(), &got);
+        if (rc == ERROR_SUCCESS) {
+            buf.resize(got);
+            while (!buf.empty() && buf.back() == '\0') buf.pop_back();
+            return buf;
+        }
+        if (rc != ERROR_MORE_DATA) return {};
+        size = got;
+    }
+    return {};
 }
 
 void refresh_path_from_environment() {
