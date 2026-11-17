@@ -79,7 +79,19 @@ void refresh_path_from_environment() {
         HKEY_LOCAL_MACHINE, "SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment");
     const std::string user = read_registry_path(HKEY_CURRENT_USER, "Environment");
     const char* cur = std::getenv("PATH");
-    const std::string merged = merge_path_entries(cur ? cur : "", machine, user, ';', true);
+    std::string merged = merge_path_entries(cur ? cur : "", machine, user, ';', true);
+    // Stock Windows has "App execution alias" stubs (python.exe, python3.exe)
+    // in WindowsApps that only open the Store. A Python installed just now is
+    // appended after them, so running "python" would hit the stub. Move those
+    // directories to the end; the aliases there (winget) are still found.
+    std::string front, back;
+    std::stringstream ss(merged);
+    for (std::string e; std::getline(ss, e, ';');) {
+        std::string& dst = e.find("WindowsApps") != std::string::npos ? back : front;
+        if (!dst.empty()) dst += ';';
+        dst += e;
+    }
+    merged = front.empty() ? back : (back.empty() ? front : front + ';' + back);
     if (!merged.empty()) ::_putenv_s("PATH", merged.c_str());
 }
 #else
