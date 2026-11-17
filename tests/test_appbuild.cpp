@@ -1,5 +1,6 @@
 #include "nav/core/appbuild.hpp"
 #include "nav/core/config.hpp"
+#include "nav/core/variant.hpp"
 
 #include <gtest/gtest.h>
 
@@ -686,4 +687,77 @@ TEST(AppBuildTemplate, ResolvesAliasTargetsBeforeMutatingThem) {
     ASSERT_NE(opt_alias, std::string::npos);
     ASSERT_NE(opt_set, std::string::npos);
     EXPECT_LT(opt_alias, opt_set);
+}
+
+// --- boot_image ---------------------------------------------------------------
+
+TEST(AppBuildBootImage, ParsesInBuildAndVariantAndValidates) {
+    TempDir td;
+    write_toml(td.path(), "[build]\nboot_image = \"app\"\n[variant.x]\nboot_image = \"other\"\n[variant.y]\ndefines = [\"A\"]\n");
+    auto cfg = load_project_config(td.path());
+    ASSERT_TRUE(cfg);
+    EXPECT_EQ(cfg->build.boot_image, "app");
+    EXPECT_TRUE(cfg->build.declared);
+    std::string err;
+    // A variant's boot_image overrides [build]'s; an unset variant inherits it.
+    EXPECT_EQ(apply_variant(*cfg, "x", err)->build.boot_image, "other");
+    EXPECT_EQ(apply_variant(*cfg, "y", err)->build.boot_image, "app");
+
+    for (const char* bad : {"\"\"", "\"a/b\"", "\"a\\\\b\"", "\"..\"", "\"../x\"", "3"}) {
+        TempDir b1, b2;
+        write_toml(b1.path(), std::string("[build]\nboot_image = ") + bad + "\n");
+        EXPECT_FALSE(load_project_config(b1.path())) << bad;
+        write_toml(b2.path(), std::string("[variant.x]\nboot_image = ") + bad + "\n");
+        EXPECT_FALSE(load_project_config(b2.path())) << bad;
+    }
+    // linker_fragment is still not a variant key.
+    TempDir lf;
+    write_toml(lf.path(), "[variant.x]\nlinker_fragment = \"a.ld\"\n");
+    EXPECT_FALSE(load_project_config(lf.path()));
+}
+
+TEST(AppBuildBootImage, SelectsBootScriptInsteadOfBoardScript) {
+    TempDir td, hal;
+    touch(td.path(), "src/main.c");
+    touch(hal.path(), "src/board/b/boot/app.ld");
+    touch(hal.path(), "src/board/b/linker.ld");
+    ProjectConfig cfg;
+    cfg.root = td.path();
+    cfg.build.boot_image = "app";
+    std::string err;
+    auto bi = plan_boot_image(cfg, hal.path(), "b", err);
+    ASSERT_TRUE(bi) << err;
+    EXPECT_EQ(*bi, (hal.path() / "src/board/b/boot/app.ld").generic_string());
+    auto plan = plan_app_build(cfg, err);
+    ASSERT_TRUE(plan) << err;
+    plan->boot_image = *bi;
+    const std::string out = render_app_cmake(*plan);
+    EXPECT_NE(out.find("set(NAV_APP_BOOT_IMAGE \"" + *bi + "\")"), std::string::npos) << out;
+    EXPECT_EQ(out.find("linker.ld"), std::string::npos) << out;
+    // The template swaps NAV_LINKER_SCRIPT (the board -T) rather than adding a -T.
+    const std::string t = render_app_cmakelists("demo");
+    EXPECT_NE(t.find("set(NAV_LINKER_SCRIPT \"${NAV_APP_BOOT_IMAGE}\")"), std::string::npos);
+    EXPECT_TRUE(cmakelists_supports_boot_image(t));
+    EXPECT_FALSE(cmakelists_supports_boot_image("add_executable(x)\n"));
+}
+
+TEST(AppBuildBootImage, MissingFileNamesThePath) {
+    TempDir td, hal;
+    ProjectConfig cfg;
+    cfg.root = td.path();
+    cfg.build.boot_image = "nope";
+    std::string err;
+    EXPECT_FALSE(plan_boot_image(cfg, hal.path(), "b", err));
+    EXPECT_NE(err.find((hal.path() / "src/board/b/boot/nope.ld").generic_string()), std::string::npos) << err;
+}
+
+TEST(AppBuildBootImage, UnsetLeavesOutputUnchanged) {
+    TempDir td, hal;
+    ProjectConfig cfg;
+    cfg.root = td.path();
+    std::string err;
+    auto bi = plan_boot_image(cfg, hal.path(), "b", err);
+    ASSERT_TRUE(bi);
+    EXPECT_TRUE(bi->empty());
+    EXPECT_EQ(render_app_cmake(AppBuildPlan{}).find("BOOT_IMAGE"), std::string::npos);
 }

@@ -30,6 +30,7 @@ struct AppBuildPlan {
     std::string syscalls = "nosys";
     std::string linker_fragment_position = "before";
     std::string deps_opt;
+    std::string boot_image;                 // absolute, '/'-separated; empty = the board's linker.ld
     std::vector<std::string> libs;
     struct FileFlags {
         std::vector<std::string> files;     // absolute, '/'-separated, sorted
@@ -63,6 +64,15 @@ inline bool build_needs_config(const ProjectConfig& cfg) { return !cfg.build.kco
 std::optional<std::vector<std::string>> plan_navhal_exclude(const ProjectConfig& cfg,
                                                             const std::filesystem::path& navhal_root,
                                                             std::string& error);
+
+// Absolute, '/'-separated path of <navhal_root>/src/board/<navhal_board>/boot/
+// <cfg.build.boot_image>.ld; empty when no boot_image is set. nullopt with
+// `error` set when that file does not exist.
+std::optional<std::string> plan_boot_image(const ProjectConfig& cfg, const std::filesystem::path& navhal_root,
+                                           const std::string& navhal_board, std::string& error);
+
+// True when a CMakeLists.txt honours NAV_APP_BOOT_IMAGE.
+bool cmakelists_supports_boot_image(const std::string& cmakelists_text);
 
 // Render the plan as build/nav-app.cmake (see templates/cmakelists.txt.in).
 std::string render_app_cmake(const AppBuildPlan& plan);
