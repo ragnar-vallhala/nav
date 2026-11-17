@@ -56,7 +56,7 @@ cd "$APP"
 
 # On Windows nav must link extern/NavHAL (symlink or junction). A plain copy is
 # treated as the user's own vendored NavHAL, so a changed [navhal] ref would be
-# ignored (todo #307).
+# ignored.
 case "$(uname -s)" in
     MINGW*|MSYS*|CYGWIN*)
         if ! cmd //c "dir extern" | grep -E '<(JUNCTION|SYMLINKD)>.*NavHAL' >/dev/null; then

@@ -192,7 +192,7 @@ jobs:
 
       # The check must be able to fail here too: a NavHAL ref that does not exist
       # has to make the script exit 1 (2 means the script itself broke). This case
-      # caught todo #307: extern/NavHAL was a plain copy that nav ignored.
+      # caught a real bug: extern/NavHAL was a plain copy that nav ignored.
       - name: A bad NavHAL pin must fail
         shell: bash
         run: |
