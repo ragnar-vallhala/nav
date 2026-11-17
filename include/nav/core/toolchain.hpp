@@ -41,6 +41,20 @@ std::vector<std::string> build_install_command(
 std::optional<std::string> map_binary_to_package(
     PackageManager pm, const std::string& binary_name);
 
+// Merges PATH-style lists: `current` entries first (in order), then any entry
+// from `machine` and `user` not already present. Empty entries are dropped and
+// a trailing '/' or '\\' is ignored when comparing. The separator and case
+// folding are parameters so the Windows behaviour (';', case-insensitive) is
+// testable on any host.
+std::string merge_path_entries(const std::string& current, const std::string& machine,
+                               const std::string& user, char sep = ';',
+                               bool case_insensitive = true);
+
+// Windows: pulls the Machine and User PATH from the registry into this
+// process's PATH, so tools a package manager just installed are visible without
+// restarting nav. No-op elsewhere.
+void refresh_path_from_environment();
+
 class ToolchainManager {
 public:
     ToolchainManager();

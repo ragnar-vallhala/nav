@@ -3,12 +3,17 @@
 
 #include "nav/core/registry.hpp"
 
+#include <cctype>
 #include <chrono>
+#include <cstdlib>
 #include <filesystem>
+#include <set>
 #include <sstream>
 #include <system_error>
 
-#ifndef _WIN32
+#ifdef _WIN32
+#include <windows.h>
+#else
 #include <unistd.h>
 #endif
 namespace fs = std::filesystem;
@@ -16,6 +21,59 @@ namespace fs = std::filesystem;
 namespace nav::core {
 
 ToolchainManager::ToolchainManager() {}
+
+std::string merge_path_entries(const std::string& current, const std::string& machine,
+                               const std::string& user, char sep, bool case_insensitive) {
+    auto key = [&](std::string e) {
+        while (!e.empty() && (e.back() == '/' || e.back() == '\\')) e.pop_back();
+        if (case_insensitive)
+            for (char& c : e) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        return e;
+    };
+    std::set<std::string> seen;
+    std::string out;
+    auto add = [&](const std::string& list, bool keep_duplicates) {
+        std::stringstream ss(list);
+        std::string e;
+        while (std::getline(ss, e, sep)) {
+            if (e.empty()) continue;
+            const std::string k = key(e);
+            if (!seen.insert(k).second && !keep_duplicates) continue;
+            if (!out.empty()) out += sep;
+            out += e;
+        }
+    };
+    add(current, /*keep_duplicates=*/true);
+    add(machine, false);
+    add(user, false);
+    return out;
+}
+
+#ifdef _WIN32
+static std::string read_registry_path(HKEY root, const char* subkey) {
+    DWORD size = 0;
+    const DWORD flags = RRF_RT_REG_SZ | RRF_RT_REG_EXPAND_SZ; // expands %VARS%
+    if (RegGetValueA(root, subkey, "Path", flags, nullptr, nullptr, &size) != ERROR_SUCCESS || size == 0)
+        return {};
+    std::string buf(size, '\0');
+    if (RegGetValueA(root, subkey, "Path", flags, nullptr, buf.data(), &size) != ERROR_SUCCESS)
+        return {};
+    buf.resize(size);
+    while (!buf.empty() && buf.back() == '\0') buf.pop_back();
+    return buf;
+}
+
+void refresh_path_from_environment() {
+    const std::string machine = read_registry_path(
+        HKEY_LOCAL_MACHINE, "SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment");
+    const std::string user = read_registry_path(HKEY_CURRENT_USER, "Environment");
+    const char* cur = std::getenv("PATH");
+    const std::string merged = merge_path_entries(cur ? cur : "", machine, user, ';', true);
+    if (!merged.empty()) ::_putenv_s("PATH", merged.c_str());
+}
+#else
+void refresh_path_from_environment() {}
+#endif
 
 static bool find_binary_in_path_exact(const std::string& name) {
     const char* path_env = std::getenv("PATH");

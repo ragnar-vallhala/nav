@@ -113,6 +113,9 @@ target_include_directories(nav_core PUBLIC
 target_link_libraries(nav_core
     PUBLIC tomlplusplus::tomlplusplus
     PRIVATE nlohmann_json::nlohmann_json)
+if(WIN32)
+    target_link_libraries(nav_core PRIVATE advapi32) # registry PATH refresh
+endif()
 
 # CLI executable
 add_executable(nav
