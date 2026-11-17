@@ -70,6 +70,9 @@ struct BuildSettings {
     // "before" (default) or "after": where the fragment's -T goes relative to
     // the board's -T.
     std::string linker_fragment_position = "before";
+    // Name (no path) of a NavHAL boot image: src/board/<board>/boot/<name>.ld
+    // replaces the board's linker.ld as the main -T. Empty = the board script.
+    std::string boot_image;
     // "none" (freestanding, -nostdlib: today's behaviour) or "newlib"
     // (-lc -lm -lnosys with nosys.specs).
     std::string libc = "none";
@@ -114,6 +117,7 @@ struct Variant {
     std::vector<std::string> defines;         // appended to [build].defines
     std::string output;                       // ELF name; empty = project name
     std::string kconfig;                      // alternative .config; empty = .config
+    std::string boot_image;                   // overrides [build].boot_image; empty = inherit
     // Every other [build] key, additive on top of the base ([variant.<n>] sources,
     // exclude, include_dirs, defines, c_flags, libs, file_flags). `defines`,
     // `sources_add` and `sources_remove` above are folded in as well.

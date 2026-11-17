@@ -33,6 +33,7 @@ An app is `nav.toml`, `.config` and sources. If no `[build]` keys are present, t
 | `file_flags` | none | Array of tables, each with a non-empty `match` and `flags`. A rule that matches none of the build's sources is an error. |
 | `linker_fragment` | unset | Path to an extra linker script, a second `-T`. Must be a non-empty string, and the file must exist at build time. |
 | `linker_fragment_position` | `"before"` | `"before"` or `"after"` the board's `-T`. |
+| `boot_image` | unset | Name (no path separators, no `..`) of a NavHAL boot script. The app links `<navhal>/src/board/<board>/boot/<name>.ld` instead of the board's `linker.ld`, as its main `-T`; it can be combined with `linker_fragment`. The build fails naming the path if the file does not exist. |
 | `libc` | `"none"` | `"none"` (freestanding, `-nostdlib`) or `"newlib"`. |
 | `syscalls` | `"nosys"` | `"nosys"` or `"none"`. The README ties it to `libc = "newlib"`. |
 | `libs` | empty | Extra `-l` libraries. |
@@ -56,6 +57,7 @@ Layers apply in this order: `[build]`, the matching board table, the matching Kc
 
 - `sources_add` and `sources_remove`: the older names for `sources` and `exclude`.
 - `output`: the firmware file name. The default is the project name.
+- `boot_image`: same as the `[build]` key; a variant's value overrides `[build]`'s, and a variant that leaves it unset inherits it. (`linker_fragment` is still not accepted in a variant.)
 - `kconfig`: a path to an alternative `.config`. `nav build` fails with "[variant.<name>].kconfig '<file>' does not exist." if the file is missing.
 - `[variant.<name>.board.<board>]` and `[variant.<name>.kconfig_when.<SYMBOL>]`: conditional sub-tables. `[variant.<name>.kconfig.<SYMBOL>]` is accepted as well, but a `kconfig` string and a `kconfig` table cannot share a name.
 - `[variant.<name>.dependencies.<lib>]` with `options = [...]`: `KEY=VALUE` entries merged over the library's own options for that variant. An entry with the same `KEY` replaces the original, and others are added. Naming a dependency the project lacks is an error ("no such dependency").

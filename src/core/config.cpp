@@ -128,6 +128,20 @@ bool parse_conditionals(const toml::table& parent, const std::string& prefix,
     return true;
 }
 
+// boot_image = "<name>": a bare file name (no separators, no "..").
+bool read_boot_image(const toml::table& t, const std::string& where, std::string& out) {
+    const toml::node* n = t.get("boot_image");
+    if (!n) return true;
+    auto v = n->value<std::string>();
+    if (!v || v->empty() || v->find('/') != std::string::npos || v->find('\\') != std::string::npos ||
+        v->find("..") != std::string::npos) {
+        std::cerr << "nav.toml: " << where << ".boot_image must be a non-empty name without path separators or '..'\n";
+        return false;
+    }
+    out = *v;
+    return true;
+}
+
 bool parse_build_settings(const toml::table& tbl, BuildSettings& b) {
     const auto* bt = tbl["build"].as_table();
     if (!bt) return true;
@@ -157,6 +171,10 @@ bool parse_build_settings(const toml::table& tbl, BuildSettings& b) {
             return false;
         }
         b.linker_fragment = *v;
+        any = true;
+    }
+    if (bt->get("boot_image")) {
+        if (!read_boot_image(*bt, "[build]", b.boot_image)) return false;
         any = true;
     }
     if (const toml::node* n = bt->get("libc")) {
@@ -290,12 +308,12 @@ bool parse_variants(const toml::table& tbl, std::vector<Variant>& out) {
         }
         if (!parse_additions(*t, where, v.add,
                              {"sources_add", "sources_remove", "output", "kconfig", "kconfig_when", "dependencies",
-                              "board"}))
+                              "board", "boot_image"}))
             return false;
         // sources_add / sources_remove are the older names for sources / exclude.
         if (!read_string_array(*t, "sources_add", where, v.sources_add) ||
             !read_string_array(*t, "sources_remove", where, v.sources_remove) ||
-            !read_string(*t, "output", where, v.output))
+            !read_string(*t, "output", where, v.output) || !read_boot_image(*t, where, v.boot_image))
             return false;
         v.defines = v.add.defines;
         if (const toml::node* kn = t->get("kconfig"); kn && !kn->is_table()) {

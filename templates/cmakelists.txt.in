@@ -142,6 +142,7 @@ set(NAV_APP_LIBS)
 set(NAV_APP_SYSCALLS nosys)
 set(NAV_APP_LINKER_FRAGMENT_POSITION before)
 set(NAV_APP_DEPS_OPT)
+set(NAV_APP_BOOT_IMAGE)
 if(EXISTS "${CMAKE_BINARY_DIR}/nav-app.cmake")
     include("${CMAKE_BINARY_DIR}/nav-app.cmake")
 endif()
@@ -223,6 +224,12 @@ elseif(NOT NAV_BOARD_ARCH STREQUAL "avr")
         "No linker script: extern/NavHAL exports no NAVHAL_LINKER_SCRIPT. "
         "Update NavHAL to v0.3.11 or later (set [navhal] ref in nav.toml to a "
         "release that has it).")
+endif()
+# [build] boot_image: a NavHAL boot script replaces the board script as the main
+# -T (a second -T would not replace it). nav checks that the file exists.
+if(NAV_APP_BOOT_IMAGE)
+    set(NAV_LINKER_SCRIPT "${NAV_APP_BOOT_IMAGE}")
+    set_property(TARGET ${PROJECT_NAME} APPEND PROPERTY LINK_DEPENDS "${NAV_APP_BOOT_IMAGE}")
 endif()
 # [build] linker_fragment: an app script layered on the board script. By default
 # its -T comes BEFORE the board's: GNU ld only resolves an `INSERT AFTER .text;`

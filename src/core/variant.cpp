@@ -59,6 +59,7 @@ std::optional<ProjectConfig> apply_variant(const ProjectConfig& cfg, const std::
     for (const auto& [n, a] : v->board) fold_additions(b.variant_board[n], a);
     for (const auto& [n, a] : v->kconfig_when) fold_additions(b.variant_kconfig[n], a);
     if (!v->output.empty()) b.output = v->output;
+    if (!v->boot_image.empty()) b.boot_image = v->boot_image;
     b.declared = true;  // a variant always needs the [build]-aware CMakeLists.txt
     return out;
 }
