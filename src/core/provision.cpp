@@ -219,6 +219,9 @@ int install_tools(IExecutionContext& ctx, const std::vector<std::string>& binari
         // already installed and current; that is success for our purposes.
         if (pm == PackageManager::Winget && rc == static_cast<int>(0x8A15002Bu)) rc = 0;
 #endif
+        // The package manager changed the persistent PATH, not ours; pick it up
+        // before anything re-checks for the freshly installed binaries.
+        refresh_path_from_environment();
         if (rc != 0) { ui::error("Package manager install failed."); ok = false; }
     }
 
