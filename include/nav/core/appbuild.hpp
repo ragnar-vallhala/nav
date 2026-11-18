@@ -95,6 +95,12 @@ bool cmakelists_supports_app_kconfig(const std::string& cmakelists_text);
 // NavHAL by path, not by a copy into the shared checkout).
 bool cmakelists_supports_dep_opts(const std::string& cmakelists_text);
 
+/// True when a generated CMakeLists.txt has every feature the current template
+/// has, so `nav regen` has nothing to do. Every new template marker belongs in
+/// this one function: a check that regen does not know about leaves a project
+/// told to run `nav regen` while regen says it is already current.
+bool cmakelists_is_current(const std::string& cmakelists_text);
+
 // The version a NavHAL include/navhal.h declares (VERSION_MAJOR/MINOR/PATCH, or
 // NAVHAL_VERSION_MAJOR/MINOR/PATCH given as plain numbers). False when any of
 // the three is missing or not a number.

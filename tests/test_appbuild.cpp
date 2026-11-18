@@ -609,6 +609,23 @@ TEST(AppBuildTemplate, OlderTemplateWithoutConfigFileMarkerIsStale) {
     EXPECT_FALSE(cmakelists_supports_dep_opts(t));
 }
 
+TEST(AppBuildTemplate, CurrentTemplateIsCurrent) {
+    EXPECT_TRUE(cmakelists_is_current(render_app_cmakelists("p")));
+}
+
+// regen must not call a CMakeLists current when build would refuse it: one that
+// predates boot_image is stale even though everything else in it is up to date.
+TEST(AppBuildTemplate, TemplateWithoutBootImageIsNotCurrent) {
+    std::string t = render_app_cmakelists("p");
+    ASSERT_TRUE(cmakelists_is_current(t));
+    const std::string marker = "NAV_APP_BOOT_IMAGE";
+    for (auto pos = t.find(marker); pos != std::string::npos; pos = t.find(marker))
+        t.erase(pos, marker.size());
+    EXPECT_TRUE(cmakelists_supports_app_build(t));
+    EXPECT_TRUE(cmakelists_supports_dep_opts(t));
+    EXPECT_FALSE(cmakelists_is_current(t));
+}
+
 TEST(AppBuildTemplate, PassesConfigToNavhalByPathWhenSupported) {
     const std::string t = render_app_cmakelists("p");
     const auto by_path = t.find("set(NAVHAL_CONFIG_FILE \"${NAV_APP_CONFIG_FILE}\")");

@@ -365,6 +365,11 @@ bool cmakelists_supports_boot_image(const std::string& t) {
     return t.find("NAV_APP_BOOT_IMAGE") != std::string::npos;
 }
 
+bool cmakelists_is_current(const std::string& t) {
+    return cmakelists_supports_app_build(t) && cmakelists_supports_dep_opts(t) &&
+           cmakelists_supports_boot_image(t);
+}
+
 bool cmakelists_supports_dep_opts(const std::string& t) {
     // NAV_LINK_STUBS_AFTER_GROUP marks the link line with the system libraries in
     // the dependency group and -lnosys after it; older templates mis-link syscalls.
